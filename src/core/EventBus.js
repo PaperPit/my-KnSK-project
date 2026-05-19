@@ -27,7 +27,9 @@ class EventBus {
     
     // Проверка на максимальное количество слушателей
     if (listeners.length >= this.maxListeners) {
-      console.warn(`[EventBus] Событие ${event} имеет ${listeners.length} слушателей, возможна утечка памяти`);
+      if (typeof console !== 'undefined') {
+        console.warn(`[EventBus] Событие ${event} имеет ${listeners.length} слушателей, возможна утечка памяти`);
+      }
     }
     
     const listener = { callback, context };
@@ -97,13 +99,17 @@ class EventBus {
    * @returns {Promise<Array>} - Результаты всех обработчиков
    */
   async emit(event, data = null) {
-    const startTime = performance.now();
+    const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
     
     // Прогон через middleware
     let processedData = data;
     for (const middleware of this.middlewares) {
-      const result = await middleware(event, processedData);
-      if (result !== undefined) processedData = result;
+      try {
+        const result = await middleware(event, processedData);
+        if (result !== undefined) processedData = result;
+      } catch (err) {
+        this._log('error', `[EventBus] Ошибка в middleware ${event}:`, err);
+      }
     }
     
     const handlers = [];
@@ -139,7 +145,7 @@ class EventBus {
       }
     }));
     
-    const duration = performance.now() - startTime;
+    const duration = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTime;
     if (duration > 100) {
       this._log('warn', `[EventBus] Событие ${event} обрабатывалось ${duration.toFixed(2)}ms`);
     }
@@ -189,46 +195,53 @@ class EventBus {
    * Логирование через D2
    */
   _log(level, ...args) {
-    if (typeof Logger !== 'undefined') {
+    if (typeof Logger !== 'undefined' && Logger[level]) {
       Logger[level](...args);
-    } else if (CONFIG?.dev?.debug && console[level]) {
+    } else if (typeof CONFIG !== 'undefined' && CONFIG?.dev?.debug && typeof console !== 'undefined' && console[level]) {
       console[level](...args);
     }
   }
 }
 
-// Глобальный экземпляр
-window.EventBus = new EventBus();
+// Глобальный экземпляр (только в браузере)
+if (typeof window !== 'undefined') {
+  window.EventBus = new EventBus();
 
-// Предустановленные события приложения
-window.AppEvents = {
-  // Данные
-  DATA_LOADING: 'data:loading',
-  DATA_LOADED: 'data:loaded',
-  DATA_ERROR: 'data:error',
-  DATA_UPDATED: 'data:updated',
-  
-  // CSV
-  CSV_PARSE_START: 'csv:parseStart',
-  CSV_PARSE_PROGRESS: 'csv:parseProgress',
-  CSV_PARSE_COMPLETE: 'csv:parseComplete',
-  
-  // Таблица
-  TABLE_RENDER_START: 'table:renderStart',
-  TABLE_RENDER_COMPLETE: 'table:renderComplete',
-  TABLE_ROW_CLICK: 'table:rowClick',
-  TABLE_SORT: 'table:sort',
-  
-  // UI
-  UI_MOBILE_TOGGLE: 'ui:mobileToggle',
-  UI_THEME_CHANGE: 'ui:themeChange',
-  UI_NOTIFICATION: 'ui:notification',
-  
-  // Ошибки
-  ERROR_GLOBAL: 'error:global',
-  ERROR_NETWORK: 'error:network',
-  
-  // Бэкапы
-  BACKUP_CREATED: 'backup:created',
-  BACKUP_RESTORED: 'backup:restored',
-};
+  // Предустановленные события приложения
+  window.AppEvents = {
+    // Данные
+    DATA_LOADING: 'data:loading',
+    DATA_LOADED: 'data:loaded',
+    DATA_ERROR: 'data:error',
+    DATA_UPDATED: 'data:updated',
+    
+    // CSV
+    CSV_PARSE_START: 'csv:parseStart',
+    CSV_PARSE_PROGRESS: 'csv:parseProgress',
+    CSV_PARSE_COMPLETE: 'csv:parseComplete',
+    
+    // Таблица
+    TABLE_RENDER_START: 'table:renderStart',
+    TABLE_RENDER_COMPLETE: 'table:renderComplete',
+    TABLE_ROW_CLICK: 'table:rowClick',
+    TABLE_SORT: 'table:sort',
+    
+    // UI
+    UI_MOBILE_TOGGLE: 'ui:mobileToggle',
+    UI_THEME_CHANGE: 'ui:themeChange',
+    UI_NOTIFICATION: 'ui:notification',
+    
+    // Ошибки
+    ERROR_GLOBAL: 'error:global',
+    ERROR_NETWORK: 'error:network',
+    
+    // Бэкапы
+    BACKUP_CREATED: 'backup:created',
+    BACKUP_RESTORED: 'backup:restored',
+  };
+}
+
+// Для Google Apps Script (экспорт)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { EventBus };
+}
