@@ -12,6 +12,7 @@ class GoogleAppsScriptAdapter {
       timeout: config.timeout || 30000,
       queueEnabled: config.queueEnabled !== false,
       maxConcurrent: config.maxConcurrent || 5,
+      debug: config.debug || false,
     };
     
     this.queue = [];           // Очередь запросов
@@ -27,7 +28,7 @@ class GoogleAppsScriptAdapter {
       ? google.script.run 
       : null;
     
-    if (!this.originalRun) {
+    if (!this.originalRun && typeof console !== 'undefined') {
       console.warn('[Adapter] google.script.run не найден, работа в демо-режиме');
     }
   }
@@ -198,7 +199,11 @@ class GoogleAppsScriptAdapter {
                     params,
                     withSuccessHandler: handler,
                     withFailureHandler: errorHandler,
-                  }).catch(console.error);
+                  }).catch((err) => {
+                    if (typeof console !== 'undefined') {
+                      console.error(err);
+                    }
+                  });
                 };
               }
             });
@@ -217,17 +222,26 @@ class GoogleAppsScriptAdapter {
    * Логирование
    */
   _log(level, ...args) {
-    if (typeof Logger !== 'undefined' && Logger.log) {
+    if (typeof Logger !== 'undefined' && Logger[level]) {
       Logger[level](...args);
-    } else if (this.config.debug && console[level]) {
+    } else if (this.config.debug && typeof console !== 'undefined' && console[level]) {
       console[level](...args);
     }
   }
 }
 
-// Создаём глобальный экземпляр
-window.GASAdapter = new GoogleAppsScriptAdapter(CONFIG?.api);
+// Создаём глобальный экземпляр (только в браузере)
+if (typeof window !== 'undefined') {
+  // Получаем конфигурацию, если она существует
+  let config = null;
+  if (typeof CONFIG !== 'undefined' && CONFIG?.api) {
+    config = CONFIG.api;
+  }
+  
+  window.GASAdapter = new GoogleAppsScriptAdapter(config);
+}
 
-// Обёртка для совместимости со старым кодом
-// Старый google.script.run остаётся нетронутым
-// Новый код может использовать window.GASAdapter.call('functionName', { params: [...] })
+// Для Google Apps Script (экспорт)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { GoogleAppsScriptAdapter };
+}
