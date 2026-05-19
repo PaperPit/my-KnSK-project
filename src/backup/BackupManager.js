@@ -60,8 +60,8 @@ class BackupManager {
       this._log('info', `Бэкап ${backupId} создан, размер: ${(backup.size / 1024).toFixed(2)} KB`);
       
       // Эмит события (только в браузере)
-      if (typeof window !== 'undefined' && window.EventBus) {
-        window.EventBus.emit(AppEvents.BACKUP_CREATED, backup);
+      if (typeof window !== 'undefined' && window.EventBus && window.AppEvents) {
+        window.EventBus.emit(window.AppEvents.BACKUP_CREATED, backup);
       }
       
       return backup;
@@ -94,8 +94,8 @@ class BackupManager {
       this._log('info', `Успешное восстановление из бэкапа ${backupId}`);
       
       // Эмит события (только в браузере)
-      if (typeof window !== 'undefined' && window.EventBus) {
-        window.EventBus.emit(AppEvents.BACKUP_RESTORED, backup);
+      if (typeof window !== 'undefined' && window.EventBus && window.AppEvents) {
+        window.EventBus.emit(window.AppEvents.BACKUP_RESTORED, backup);
       }
       
       return true;
@@ -266,10 +266,21 @@ class BackupManager {
 
 // Глобальный экземпляр (только в браузере)
 if (typeof window !== 'undefined') {
-  window.BackupManager = new BackupManager(CONFIG?.backup);
+  // Безопасное получение конфигурации
+  let config = null;
+  if (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.backup) {
+    config = CONFIG.backup;
+  }
+  
+  window.BackupManager = new BackupManager(config);
 
   // Автоматическая обёртка для опасных операций
-  if (window.BackupManager && window.BackupManager.config.autoBackup) {
+  if (window.BackupManager && window.BackupManager.config && window.BackupManager.config.autoBackup) {
     window.BackupManager.withBackup = window.BackupManager.withBackup.bind(window.BackupManager);
   }
+}
+
+// Для Google Apps Script (экспорт)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { BackupManager };
 }
