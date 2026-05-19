@@ -59,8 +59,8 @@ class BackupManager {
       
       this._log('info', `Бэкап ${backupId} создан, размер: ${(backup.size / 1024).toFixed(2)} KB`);
       
-      // Эмит события
-      if (window.EventBus) {
+      // Эмит события (только в браузере)
+      if (typeof window !== 'undefined' && window.EventBus) {
         window.EventBus.emit(AppEvents.BACKUP_CREATED, backup);
       }
       
@@ -93,7 +93,8 @@ class BackupManager {
     if (restored) {
       this._log('info', `Успешное восстановление из бэкапа ${backupId}`);
       
-      if (window.EventBus) {
+      // Эмит события (только в браузере)
+      if (typeof window !== 'undefined' && window.EventBus) {
         window.EventBus.emit(AppEvents.BACKUP_RESTORED, backup);
       }
       
@@ -196,10 +197,12 @@ class BackupManager {
           .withFailureHandler(() => resolve(false))
           .saveBackupToSheet(this.config.backupSheet, backup);
       } else {
-        // Демо-режим: сохраняем в localStorage
-        const backups = JSON.parse(localStorage.getItem('demo_backups') || '[]');
-        backups.unshift(backup);
-        localStorage.setItem('demo_backups', JSON.stringify(backups.slice(0, this.config.maxBackups)));
+        // Демо-режим: сохраняем в localStorage (только в браузере)
+        if (typeof localStorage !== 'undefined') {
+          const backups = JSON.parse(localStorage.getItem('demo_backups') || '[]');
+          backups.unshift(backup);
+          localStorage.setItem('demo_backups', JSON.stringify(backups.slice(0, this.config.maxBackups)));
+        }
         resolve(true);
       }
     });
@@ -214,9 +217,11 @@ class BackupManager {
           .deleteBackupFromSheet(this.config.backupSheet, backupId);
       } else {
         // Демо-режим
-        const backups = JSON.parse(localStorage.getItem('demo_backups') || '[]');
-        const filtered = backups.filter(b => b.id !== backupId);
-        localStorage.setItem('demo_backups', JSON.stringify(filtered));
+        if (typeof localStorage !== 'undefined') {
+          const backups = JSON.parse(localStorage.getItem('demo_backups') || '[]');
+          const filtered = backups.filter(b => b.id !== backupId);
+          localStorage.setItem('demo_backups', JSON.stringify(filtered));
+        }
         resolve(true);
       }
     });
@@ -240,24 +245,31 @@ class BackupManager {
     if (typeof localStorage !== 'undefined') {
       const stored = localStorage.getItem('backups_list_demo');
       if (stored) {
-        this.backups = JSON.parse(stored);
+        try {
+          this.backups = JSON.parse(stored);
+        } catch (e) {
+          this.backups = [];
+        }
       }
     }
   }
   
   _log(level, ...args) {
-    if (window.Logger) {
+    // Проверяем наличие Logger в браузере
+    if (typeof window !== 'undefined' && window.Logger) {
       window.Logger[level](`[BackupManager]`, ...args);
-    } else if (console[level]) {
+    } else if (typeof console !== 'undefined' && console[level]) {
       console[level](`[BackupManager]`, ...args);
     }
   }
 }
 
-// Глобальный экземпляр
-window.BackupManager = new BackupManager(CONFIG?.backup);
+// Глобальный экземпляр (только в браузере)
+if (typeof window !== 'undefined') {
+  window.BackupManager = new BackupManager(CONFIG?.backup);
 
-// Автоматическая обёртка для опасных операций
-if (window.BackupManager && window.BackupManager.config.autoBackup) {
-  window.BackupManager.withBackup = window.BackupManager.withBackup.bind(window.BackupManager);
+  // Автоматическая обёртка для опасных операций
+  if (window.BackupManager && window.BackupManager.config.autoBackup) {
+    window.BackupManager.withBackup = window.BackupManager.withBackup.bind(window.BackupManager);
+  }
 }
