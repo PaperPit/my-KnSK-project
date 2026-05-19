@@ -1,0 +1,238 @@
+/**
+ * C3: Адаптивный дизайн для мобильных устройств
+ * Полностью совместим с существующей вёрсткой
+ */
+
+/* Мобильные устройства до 768px */
+@media screen and (max-width: 768px) {
+  /* Контейнеры */
+  .container, .main-container, .app-container {
+    padding: 10px !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  
+  /* Таблицы - горизонтальный скролл */
+  .data-table-wrapper, .table-responsive {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  table.data-table, table.responsive-table {
+    min-width: 600px !important;
+    font-size: 13px !important;
+  }
+  
+  table.data-table td, 
+  table.data-table th,
+  .responsive-table td,
+  .responsive-table th {
+    padding: 8px 6px !important;
+    white-space: nowrap;
+  }
+  
+  /* Навигация - бургер-меню */
+  .navbar, .nav-menu, .top-nav {
+    position: relative;
+  }
+  
+  .nav-links, .menu-items {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    z-index: 1000;
+    flex-direction: column;
+    padding: 10px 0;
+  }
+  
+  .nav-links.active, .menu-items.active {
+    display: flex;
+  }
+  
+  .burger-menu {
+    display: block;
+    cursor: pointer;
+    padding: 10px;
+    background: none;
+    border: none;
+    font-size: 24px;
+  }
+  
+  /* Формы и инпуты */
+  input, select, textarea, button {
+    font-size: 16px !important; /* Предотвращает зумирование на iOS */
+    padding: 10px !important;
+  }
+  
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  select,
+  textarea {
+    width: 100% !important;
+    box-sizing: border-box;
+  }
+  
+  /* Кнопки в ряд на мобильных */
+  .button-group, .action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .button-group button,
+  .action-buttons button {
+    width: 100%;
+  }
+  
+  /* Модальные окна */
+  .modal-content, .dialog-box {
+    width: 95% !important;
+    max-width: 95% !important;
+    margin: 10px auto !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+  }
+  
+  /* Карточки и гриды */
+  .card-grid, .dashboard-grid {
+    grid-template-columns: 1fr !important;
+    gap: 15px !important;
+  }
+  
+  /* Боковые панели */
+  .sidebar, .side-panel {
+    position: fixed;
+    top: 0;
+    left: -280px;
+    width: 280px;
+    height: 100%;
+    transition: left 0.3s ease;
+    z-index: 1001;
+    background: white;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+  }
+  
+  .sidebar.open, .side-panel.open {
+    left: 0;
+  }
+  
+  .sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    display: none;
+  }
+  
+  .sidebar-overlay.active {
+    display: block;
+  }
+  
+  /* Табы */
+  .tabs {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  
+  .tab {
+    flex: 1 0 auto;
+    text-align: center;
+    padding: 10px 5px;
+    font-size: 14px;
+  }
+  
+  /* Отступы */
+  h1, h2, h3 {
+    font-size: 1.5em;
+    margin: 0.5em 0;
+  }
+  
+  p, .text-content {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+}
+
+/* Планшеты (768px - 1024px) */
+@media screen and (min-width: 769px) and (max-width: 1024px) {
+  .container {
+    padding: 15px;
+  }
+  
+  table.data-table {
+    font-size: 14px;
+  }
+  
+  .card-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* Десктопная навигация скрываем бургер */
+@media screen and (min-width: 769px) {
+  .burger-menu {
+    display: none !important;
+  }
+  
+  .nav-links, .menu-items {
+    display: flex !important;
+    position: static !important;
+    flex-direction: row !important;
+    background: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Утилиты для мобильных */
+.mobile-only {
+  display: none;
+}
+
+@media screen and (max-width: 768px) {
+  .mobile-only {
+    display: block;
+  }
+  
+  .desktop-only {
+    display: none;
+  }
+  
+  /* Оптимизация тач-целей */
+  button, 
+  .clickable,
+  [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Бургер-меню анимация */
+.burger-menu span {
+  display: block;
+  width: 25px;
+  height: 3px;
+  background: #333;
+  margin: 5px 0;
+  transition: 0.3s;
+}
+
+.burger-menu.active span:nth-child(1) {
+  transform: rotate(45deg) translate(5px, 5px);
+}
+
+.burger-menu.active span:nth-child(2) {
+  opacity: 0;
+}
+
+.burger-menu.active span:nth-child(3) {
+  transform: rotate(-45deg) translate(7px, -6px);
+}

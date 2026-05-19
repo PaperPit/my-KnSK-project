@@ -19,6 +19,39 @@ function doGet(e) {
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 }
+// Получение текущих данных для бэкапа
+function getCurrentDataForBackup() {
+  try {
+    const sheet = SpreadsheetApp.getActiveSheet();
+    const data = sheet.getDataRange().getValues();
+    return data;
+  } catch (error) {
+    console.error('Ошибка получения данных для бэкапа:', error);
+    return [];
+  }
+}
+
+// Сохранение бэкапа в отдельный лист
+function saveBackupToSheet(sheetName, backup) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+    }
+    
+    // Добавляем заголовки если лист новый
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(['ID', 'Timestamp', 'Operation', 'Data', 'Size']);
+    }
+    
+    sheet.appendRow([
+      backup.id,
+      backup.timestamp,
+      backup.operation,
+      JSON.stringify(backup.data),
+      backup.size
+    ]);
 
 // ==================== РАБОТА С АРХИВОМ ====================
 

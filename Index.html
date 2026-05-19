@@ -6,6 +6,11 @@
     <title>Онкоскрининг — дашборд (Apps Script)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="config.js"></script>
+    <script src="src/core/Logger.js"></script>
+    <script src="src/core/EventBus.js"></script>
+    <script src="src/core/StateManager.js"></script>
+    <script src="src/core/GoogleAppsScriptAdapter.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1115,6 +1120,69 @@
         document.getElementById('periodInput').addEventListener('input', syncPeriodToDashboard);
         document.getElementById('refreshArchiveBtn').addEventListener('click', loadArchiveList);
     });
+</script>
+<script src="config.js"></script>
+<!-- D2: Логирование -->
+<script src="src/core/Logger.js"></script>
+
+<!-- A2: Шина событий -->
+<script src="src/core/EventBus.js"></script>
+
+<!-- A3: Менеджер состояния -->
+<script src="src/core/StateManager.js"></script>
+
+<!-- A1: Адаптер для google.script.run -->
+<script src="src/core/GoogleAppsScriptAdapter.js"></script>
+
+<!-- C3: Адаптивный CSS -->
+<link rel="stylesheet" href="src/ui/ResponsiveLayout.css">
+
+<!-- C4: Скелетоны загрузки -->
+<script src="src/ui/SkeletonLoader.js"></script>
+
+<!-- E1: Виртуальная таблица -->
+<script src="src/ui/VirtualTable.js"></script>
+
+<!-- D4: Резервное копирование -->
+<script src="src/backup/BackupManager.js"></script>
+
+<!-- F1: Генератор документации -->
+<script src="src/docs/DocGenerator.js"></script>
+
+<!-- E4: Регистрация Web Worker для CSV -->
+<script>
+if (window.Worker && window.CONFIG?.csv?.useWorker) {
+    const csvWorker = new Worker('src/workers/csvParser.worker.js');
+    csvWorker.onmessage = function(e) {
+        const data = e.data;
+        if (data.type === 'complete') {
+            console.log(`Парсинг завершён: ${data.totalRows} строк`);
+            // Используйте данные
+            window.processCSVData(data.data);
+        } else if (data.type === 'progress') {
+            console.log(`Прогресс: ${data.percentage.toFixed(1)}% (${data.rows} строк)`);
+        } else if (data.type === 'error') {
+            console.error('Ошибка парсинга CSV:', data.error);
+        }
+    };
+    window.csvWorker = csvWorker;
+}
+</script>
+
+<!-- Инициализация бэкапов -->
+<script>
+if (window.BackupManager && window.BackupManager.config.autoBackup) {
+    // Автоматическое создание бэкапа перед важными операциями
+    const originalDeleteRow = window.deleteRow;
+    if (originalDeleteRow) {
+        window.deleteRow = async function(rowId) {
+            await window.BackupManager.withBackup(
+                () => originalDeleteRow(rowId),
+                'delete'
+            );
+        };
+    }
+}
 </script>
 </body>
 </html>
