@@ -9,8 +9,10 @@ class SkeletonLoader {
     this.defaultRows = config.defaultRows || 15;
     this.animationDuration = config.animationDuration || 1.2;
     
-    // Стили будут добавлены динамически
-    this._injectStyles();
+    // Стили будут добавлены динамически (только в браузере)
+    if (typeof document !== 'undefined') {
+      this._injectStyles();
+    }
   }
   
   /**
@@ -22,14 +24,16 @@ class SkeletonLoader {
   createTableSkeleton(rows = this.defaultRows, columns = null) {
     if (!this.enabled) return '';
     
-    // Определение количества колонок из существующей таблицы
-    if (!columns) {
+    // Определение количества колонок из существующей таблицы (только в браузере)
+    if (!columns && typeof document !== 'undefined') {
       const existingTable = document.querySelector('table thead tr');
       if (existingTable) {
         columns = existingTable.children.length;
       } else {
         columns = 5; // По умолчанию
       }
+    } else if (!columns) {
+      columns = 5;
     }
     
     let html = '<tbody class="skeleton-wrapper">';
@@ -46,7 +50,7 @@ class SkeletonLoader {
           </td>
         `;
       }
-      html += '</tr>';
+      html += '</table>';
     }
     
     html += '</tbody>';
@@ -216,6 +220,7 @@ class SkeletonLoader {
   }
   
   _injectStyles() {
+    if (typeof document === 'undefined') return;
     if (document.getElementById('skeleton-styles')) return;
     
     const styles = `
@@ -380,23 +385,36 @@ class SkeletonLoader {
   }
 }
 
-// Глобальный экземпляр
-window.SkeletonLoader = new SkeletonLoader(CONFIG?.ui);
+// Глобальный экземпляр (только в браузере)
+if (typeof window !== 'undefined') {
+  // Получаем конфигурацию из CONFIG (если есть)
+  let config = null;
+  if (typeof CONFIG !== 'undefined' && CONFIG?.ui) {
+    config = CONFIG.ui;
+  }
+  
+  window.SkeletonLoader = new SkeletonLoader(config);
+  
+  // Автоматическая обёртка для загрузок
+  if (window.SkeletonLoader && window.StateManager) {
+    // Подписка на события загрузки
+    window.StateManager.subscribe('loading', (isLoading) => {
+      if (isLoading && window.SkeletonLoader.enabled) {
+        const mainContainer = document.querySelector('.main-container, .data-container, #app');
+        if (mainContainer && !mainContainer.querySelector('.skeleton-active')) {
+          window.SkeletonLoader.show(mainContainer, 'table');
+        }
+      } else if (!isLoading) {
+        const skeletonContainer = document.querySelector('.skeleton-active');
+        if (skeletonContainer) {
+          window.SkeletonLoader.hide(skeletonContainer);
+        }
+      }
+    });
+  }
+}
 
-// Автоматическая обёртка для загрузок
-if (window.SkeletonLoader && window.StateManager) {
-  // Подписка на события загрузки
-  window.StateManager.subscribe('loading', (isLoading) => {
-    if (isLoading && window.SkeletonLoader.enabled) {
-      const mainContainer = document.querySelector('.main-container, .data-container, #app');
-      if (mainContainer && !mainContainer.querySelector('.skeleton-active')) {
-        window.SkeletonLoader.show(mainContainer, 'table');
-      }
-    } else if (!isLoading) {
-      const skeletonContainer = document.querySelector('.skeleton-active');
-      if (skeletonContainer) {
-        window.SkeletonLoader.hide(skeletonContainer);
-      }
-    }
-  });
+// Для Google Apps Script (экспорт)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { SkeletonLoader };
 }

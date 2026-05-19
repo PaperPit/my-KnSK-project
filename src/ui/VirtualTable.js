@@ -5,14 +5,25 @@
 
 class VirtualTable {
   constructor(container, options = {}) {
+    // Проверяем, что мы в браузере
+    if (typeof document === 'undefined') {
+      console.warn('[VirtualTable] Не в браузерной среде, инициализация пропущена');
+      return;
+    }
+    
     this.container = typeof container === 'string' 
       ? document.querySelector(container) 
       : container;
     
+    if (!this.container) {
+      console.warn('[VirtualTable] Контейнер не найден');
+      return;
+    }
+    
     this.options = {
       rowHeight: options.rowHeight || 35,
       overscan: options.overscan || 5,
-      threshold: options.threshold || 500, // Включать после N строк
+      threshold: options.threshold || 500,
       ...options
     };
     
@@ -29,19 +40,25 @@ class VirtualTable {
     
     // Обработчик скролла (с дебаунсом)
     this._onScroll = this._onScroll.bind(this);
-    this.scrollContainer.addEventListener('scroll', () => {
-      if (this.renderTimeout) clearTimeout(this.renderTimeout);
-      this.renderTimeout = setTimeout(() => this._onScroll(), 16); // 60fps
-    });
+    if (this.scrollContainer) {
+      this.scrollContainer.addEventListener('scroll', () => {
+        if (this.renderTimeout) clearTimeout(this.renderTimeout);
+        this.renderTimeout = setTimeout(() => this._onScroll(), 16);
+      });
+    }
     
-    // Обновление размера окна
-    window.addEventListener('resize', () => this._updateViewport());
+    // Обновление размера окна (только в браузере)
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', () => this._updateViewport());
+    }
   }
   
   /**
    * Установка данных
    */
   setData(data, columns = null) {
+    if (!this.container) return;
+    
     this.data = data || [];
     
     // Автоопределение колонок
@@ -69,6 +86,7 @@ class VirtualTable {
    * Обновление данных (для реактивности)
    */
   updateData(data) {
+    if (!this.container) return;
     this.data = data;
     this._updateTotalHeight();
     this._render();
@@ -78,6 +96,7 @@ class VirtualTable {
    * Установка колонок
    */
   setColumns(columns) {
+    if (!this.container) return;
     this.columns = columns;
     this._render();
   }
@@ -86,8 +105,9 @@ class VirtualTable {
    * Прокрутка к строке
    */
   scrollToRow(index) {
+    if (!this.container || !this.tableBody) return;
+    
     if (!this.isActive) {
-      // Для обычной таблицы
       const rows = this.tableBody.querySelectorAll('tr');
       if (rows[index]) {
         rows[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -95,9 +115,10 @@ class VirtualTable {
       return;
     }
     
-    // Для виртуальной таблицы
-    const targetScrollTop = index * this.options.rowHeight;
-    this.scrollContainer.scrollTop = targetScrollTop;
+    if (this.scrollContainer) {
+      const targetScrollTop = index * this.options.rowHeight;
+      this.scrollContainer.scrollTop = targetScrollTop;
+    }
   }
   
   /**
@@ -105,7 +126,6 @@ class VirtualTable {
    */
   getVisibleRows() {
     if (!this.isActive) {
-      // Возвращаем все строки
       return this.data;
     }
     
@@ -122,6 +142,7 @@ class VirtualTable {
    * Очистка таблицы
    */
   clear() {
+    if (!this.container) return;
     this.data = [];
     this.columns = [];
     this._render();
@@ -132,10 +153,10 @@ class VirtualTable {
    * @private
    */
   _createStructure() {
-    // Очистка контейнера
+    if (!this.container || typeof document === 'undefined') return;
+    
     this.container.innerHTML = '';
     
-    // Создание обёртки для скролла
     this.scrollContainer = document.createElement('div');
     this.scrollContainer.className = 'virtual-table-scroll';
     this.scrollContainer.style.cssText = `
@@ -146,7 +167,6 @@ class VirtualTable {
       max-height: 600px;
     `;
     
-    // Контейнер для таблицы
     this.table = document.createElement('table');
     this.table.className = 'virtual-table';
     this.table.style.cssText = `
@@ -155,11 +175,9 @@ class VirtualTable {
       table-layout: fixed;
     `;
     
-    // Заголовок
     this.thead = document.createElement('thead');
     this.table.appendChild(this.thead);
     
-    // Контейнер для тела с абсолютным позиционированием
     this.tbodyContainer = document.createElement('div');
     this.tbodyContainer.style.position = 'relative';
     
@@ -176,23 +194,24 @@ class VirtualTable {
    * @private
    */
   _render() {
-    if (!this.columns.length) return;
+    if (!this.columns.length || !this.tableBody) return;
     
-    // Рендер заголовка
     this._renderHeader();
     
     if (!this.isActive || this.data.length <= this.options.threshold) {
-      // Обычный рендер всех строк
       this._renderAllRows();
       this.tableBody.style.position = '';
-      this.tbodyContainer.style.height = 'auto';
+      if (this.tbodyContainer) {
+        this.tbodyContainer.style.height = 'auto';
+      }
     } else {
-      // Виртуальный рендер
       this._renderVirtualRows();
     }
   }
   
   _renderHeader() {
+    if (!this.thead) return;
+    
     const headerRow = document.createElement('tr');
     
     for (const col of this.columns) {
@@ -206,8 +225,6 @@ class VirtualTable {
       th.style.position = 'sticky';
       th.style.top = '0';
       th.style.zIndex = '10';
-      
-      // Добавление сортировки
       th.style.cursor = 'pointer';
       th.addEventListener('click', () => this._sortBy(col.field));
       
@@ -219,11 +236,13 @@ class VirtualTable {
   }
   
   _renderAllRows() {
+    if (!this.tableBody) return;
+    
     const fragment = document.createDocumentFragment();
     
     for (let i = 0; i < this.data.length; i++) {
       const row = this._createRow(this.data[i], i);
-      fragment.appendChild(row);
+      if (row) fragment.appendChild(row);
     }
     
     this.tableBody.innerHTML = '';
@@ -232,6 +251,8 @@ class VirtualTable {
   }
   
   _renderVirtualRows() {
+    if (!this.tableBody || !this.tbodyContainer) return;
+    
     const startIdx = Math.max(0, Math.floor(this.scrollTop / this.options.rowHeight) - this.options.overscan);
     const endIdx = Math.min(
       this.data.length,
@@ -244,7 +265,7 @@ class VirtualTable {
     
     for (let i = startIdx; i < endIdx; i++) {
       const row = this._createRow(this.data[i], i);
-      fragment.appendChild(row);
+      if (row) fragment.appendChild(row);
     }
     
     this.tableBody.innerHTML = '';
@@ -254,24 +275,23 @@ class VirtualTable {
     this.tableBody.style.left = '0';
     this.tableBody.style.right = '0';
     
-    // Обновление высоты контейнера
     this.tbodyContainer.style.height = `${this.totalHeight}px`;
     this.tbodyContainer.style.position = 'relative';
   }
   
   _createRow(data, index) {
+    if (typeof document === 'undefined') return null;
+    
     const row = document.createElement('tr');
     row.style.height = `${this.options.rowHeight}px`;
     row.style.borderBottom = '1px solid #eee';
     
-    // Чередование цветов
     if (index % 2 === 0) {
       row.style.backgroundColor = '#ffffff';
     } else {
       row.style.backgroundColor = '#fafafa';
     }
     
-    // Hover эффект
     row.addEventListener('mouseenter', () => {
       row.style.backgroundColor = '#f0f0f0';
     });
@@ -291,12 +311,11 @@ class VirtualTable {
       if (typeof value === 'object') value = JSON.stringify(value);
       
       td.textContent = value;
-      td.title = value; // Tooltip для длинного текста
+      td.title = value;
       
       row.appendChild(td);
     }
     
-    // Клик по строке
     row.addEventListener('click', () => {
       if (this.options.onRowClick) {
         this.options.onRowClick(data, index);
@@ -311,11 +330,13 @@ class VirtualTable {
   }
   
   _updateViewport() {
-    this.viewportHeight = this.scrollContainer.clientHeight;
+    if (this.scrollContainer) {
+      this.viewportHeight = this.scrollContainer.clientHeight;
+    }
   }
   
   _onScroll() {
-    if (!this.isActive) return;
+    if (!this.isActive || !this.scrollContainer) return;
     
     const newScrollTop = this.scrollContainer.scrollTop;
     if (Math.abs(newScrollTop - this.scrollTop) < this.options.rowHeight) return;
@@ -325,7 +346,6 @@ class VirtualTable {
   }
   
   _sortBy(field) {
-    // Сортировка (простая)
     this.data.sort((a, b) => {
       const valA = a[field] || '';
       const valB = b[field] || '';
@@ -342,10 +362,20 @@ class VirtualTable {
   }
   
   _log(level, ...args) {
-    if (window.Logger) {
+    if (typeof window !== 'undefined' && window.Logger) {
       window.Logger[level](`[VirtualTable]`, ...args);
+    } else if (typeof console !== 'undefined' && console[level]) {
+      console[level](`[VirtualTable]`, ...args);
     }
   }
 }
 
-// Экспорт для
+// Глобальный экспорт (только в браузере)
+if (typeof window !== 'undefined') {
+  window.VirtualTable = VirtualTable;
+}
+
+// Для Google Apps Script (экспорт)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { VirtualTable };
+}
