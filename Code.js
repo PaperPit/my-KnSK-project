@@ -113,26 +113,39 @@ function saveReportToArchive(reportData) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let archiveSheet = ss.getSheetByName('Архив');
+    
+    // Если архива нет, создаем с правильными заголовками
     if (!archiveSheet) {
       archiveSheet = ss.insertSheet('Архив');
       archiveSheet.appendRow(['ID', 'Дата сохранения', 'Данные (JSON)', 'Период']);
     }
     
+    // Проверяем заголовки (защита от будущих проблем)
+    const lastRow = archiveSheet.getLastRow();
+    if (lastRow === 0) {
+      archiveSheet.appendRow(['ID', 'Дата сохранения', 'Данные (JSON)', 'Период']);
+    } else {
+      const firstRow = archiveSheet.getRange(1, 1, 1, 4).getValues()[0];
+      if (firstRow[0] !== 'ID') {
+        // Заголовки повреждены, вставляем правильные
+        archiveSheet.insertRowBefore(1);
+        archiveSheet.getRange(1, 1, 1, 4).setValues([['ID', 'Дата сохранения', 'Данные (JSON)', 'Период']]);
+      }
+    }
+    
     const now = new Date();
-    // ✅ Сохраняем как ISO строку для надежности
-    const dateISO = now.toISOString();  // 2026-05-19T12:00:00.000Z
-    const dateDisplay = `${now.getDate().toString().padStart(2, '0')}.${(now.getMonth() + 1).toString().padStart(2, '0')}.${now.getFullYear()}`;
-    
     const json = JSON.stringify(reportData);
-    const newId = archiveSheet.getLastRow();
     
-    // ✅ Сохраняем оба формата: ISO для порядка, Display для показа
-    archiveSheet.appendRow([newId, dateISO, json, reportData.period || '']);
+    // Получаем следующий ID
+    const dataRows = archiveSheet.getLastRow() - 1; // минус заголовок
+    const newId = dataRows + 1;
+    
+    archiveSheet.appendRow([newId, now, json, reportData.period || '']);
     
     return {
-      message: `✅ Отчёт сохранён в архив: ${dateDisplay}`,
+      message: `✅ Отчёт сохранён в архив с ID ${newId}`,
       id: newId,
-      timestamp: dateDisplay
+      timestamp: now.toLocaleDateString('ru-RU')
     };
   } catch (error) {
     console.error('Ошибка сохранения в архив:', error);
@@ -157,53 +170,74 @@ function getArchivedReportsList() {
       return [];
     }
     
-    const range = sheet.getRange(2, 1, lastRow - 1, 2);
+    // Получаем данные со 2-й строки (после заголовков)
+    const range = sheet.getRange(2, 1, lastRow - 1, 2); // Колонки A и B
     const values = range.getValues();
     
     const list = [];
     for (let i = 0; i < values.length; i++) {
       const id = values[i][0];
       const dateValue = values[i][1];
-      let dateStr = '';
       
-      // ✅ Единообразное преобразование даты
+      // Пропускаем строки с некорректным ID
+      if (!id || isNaN(parseInt(id))) continue;
+      
+      let dateStr = '';
       if (dateValue instanceof Date) {
-        // Если это Date объект
-        const d = dateValue;
-        dateStr = `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getFullYear()}`;
+        dateStr = `${dateValue.getDate().toString().padStart(2, '0')}.${(dateValue.getMonth() + 1).toString().padStart(2, '0')}.${dateValue.getFullYear()}`;
       } else if (typeof dateValue === 'string') {
-        // Если строка, проверяем формат
-        if (dateValue.includes('T')) {
-          // ISO формат: 2026-05-19T12:00:00.000Z
-          const d = new Date(dateValue);
-          if (!isNaN(d.getTime())) {
-            dateStr = `${d.getDate().toString().padStart(2, '0')}.${(d.getMonth() + 1).toString().padStart(2, '0')}.${d.getFullYear()}`;
-          } else {
-            dateStr = dateValue.split('T')[0]; // fallback
-          }
-        } else {
-          // Уже формат dd.mm.yyyy
-          dateStr = dateValue;
-        }
+        dateStr = dateValue.split('T')[0];
       } else {
         dateStr = String(dateValue);
       }
       
       list.push({
-        id: id,
+        id: parseInt(id),
         dateStr: dateStr
       });
     }
     
-    // ✅ Сортируем по ID (новые сверху)
+    // Сортируем по ID (новые сверху)
     list.sort((a, b) => b.id - a.id);
     
+    console.log(`Найдено ${list.length} отчётов в архиве`);
     return list;
   } catch (error) {
     console.error('Ошибка получения списка архива:', error);
     return [];
   }
 }
+
+// Получение конкретного архивного отчёта по ID
+function getArchivedReportById(id) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('Архив');
+    
+    if (!sheet) throw new Error('Лист Архив не найден');
+    
+    const data = sheet.getDataRange().getValues();
+    const rowIndex = data.findIndex(row => row[0] === id);
+    
+    if (rowIndex === -1) throw new Error('Отчёт не найден');
+    
+    const row = data[rowIndex];
+    const report = JSON.parse(row[2]);
+    
+    const dateValue = row[1];
+    if (dateValue instanceof Date) {
+      report.timestamp = `${dateValue.getDate().toString().padStart(2, '0')}.${(dateValue.getMonth() + 1).toString().padStart(2, '0')}.${dateValue.getFullYear()}`;
+    } else {
+      report.timestamp = String(dateValue).split(' ')[0];
+    }
+    
+    return report;
+  } catch (error) {
+    console.error('Ошибка получения отчёта по ID:', error);
+    throw new Error('Не удалось загрузить отчёт: ' + error.message);
+  }
+}
+
   function migrateArchiveDates() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName('Архив');
@@ -243,35 +277,28 @@ function getArchivedReportsList() {
     console.log(`Мигрировано ${fixed} записей в ISO формат`);
     return `Мигрировано ${fixed} записей`;
   }
-
-// Получение конкретного архивного отчёта по ID
-function getArchivedReportById(id) {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName('Архив');
-    
-    if (!sheet) throw new Error('Лист Архив не найден');
-    
-    const data = sheet.getDataRange().getValues();
-    const rowIndex = data.findIndex(row => row[0] === id);
-    
-    if (rowIndex === -1) throw new Error('Отчёт не найден');
-    
-    const row = data[rowIndex];
-    const report = JSON.parse(row[2]);
-    
-    const dateValue = row[1];
-    if (dateValue instanceof Date) {
-      report.timestamp = `${dateValue.getDate().toString().padStart(2, '0')}.${(dateValue.getMonth() + 1).toString().padStart(2, '0')}.${dateValue.getFullYear()}`;
-    } else {
-      report.timestamp = String(dateValue).split(' ')[0];
-    }
-    
-    return report;
-  } catch (error) {
-    console.error('Ошибка получения отчёта по ID:', error);
-    throw new Error('Не удалось загрузить отчёт: ' + error.message);
+function replaceBrokenArchive() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const oldSheet = ss.getSheetByName('Архив');
+  const tempSheet = ss.getSheetByName('Архив_temp');
+  
+  if (!tempSheet) {
+    console.log('❌ Лист Архив_temp не найден');
+    return;
   }
+  
+  // Удаляем старый сломанный архив
+  if (oldSheet) {
+    ss.deleteSheet(oldSheet);
+    console.log('🗑️ Старый лист "Архив" удалён');
+  }
+  
+  // Переименовываем временный
+  tempSheet.setName('Архив');
+  console.log('✅ Лист переименован в "Архив"');
+  console.log('🎉 Архив восстановлен!');
+  
+  return 'Архив успешно восстановлен!';
 }
 
 // ==================== ДОПОЛНИТЕЛЬНО: ЧТЕНИЕ ИЗ ЛИСТА "ДАННЫЕ" ====================

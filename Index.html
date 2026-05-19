@@ -769,20 +769,24 @@
         if (typeof google !== 'undefined' && google.script && google.script.run) {
             google.script.run
                 .withSuccessHandler(function(list) {
-                select.innerHTML = '<option value="">— Выберите отчёт —</option>';
-                if (list && Array.isArray(list) && list.length > 0) {
-                    // ✅ Уже отсортировано на сервере
-                    list.forEach(item => {
+                    select.innerHTML = '<option value="">— Выберите отчёт —</option>';
+                    if (list && Array.isArray(list) && list.length > 0) {
+                        list.sort((a, b) => b.id - a.id);
+                        list.forEach(item => {
+                            const option = document.createElement('option');
+                            option.value = item.id;
+                            option.textContent = item.dateStr || 'Без даты';
+                            select.appendChild(option);
+                        });
+                        setStatus(`✅ Загружено ${list.length} архивных отчётов`, true);
+                    } else {
                         const option = document.createElement('option');
-                        option.value = item.id;
-                        // ✅ Безопасное отображение даты
-                        option.textContent = item.dateStr || `Отчёт #${item.id}`;
+                        option.value = '';
+                        option.disabled = true;
+                        option.textContent = 'Нет архивных отчётов';
                         select.appendChild(option);
-                    });
-                    setStatus(`✅ Загружено ${list.length} архивных отчётов`, true);
-                } else {
-                    // ... остальной код
-                }
+                        setStatus('В архиве нет сохранённых отчётов', false);
+                    }
                 })
                 .withFailureHandler(function(err) {
                     select.innerHTML = '<option value="">— Ошибка загрузки —</option>';
