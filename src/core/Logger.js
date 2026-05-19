@@ -20,7 +20,7 @@ class Logger {
     };
     
     // Загрузка сохранённых логов
-    if (this.persistToLocalStorage) {
+    if (this.persistToLocalStorage && typeof localStorage !== 'undefined') {
       this._loadFromStorage();
     }
   }
@@ -46,12 +46,12 @@ class Logger {
     }
     
     // Сохранение в localStorage
-    if (this.persistToLocalStorage) {
+    if (this.persistToLocalStorage && typeof localStorage !== 'undefined') {
       this._saveToStorage();
     }
     
     // Вывод в консоль
-    if (this.showInConsole && console[level]) {
+    if (this.showInConsole && typeof console !== 'undefined' && console[level]) {
       console[level](`[${entry.timestamp}]`, ...args);
     }
     
@@ -106,7 +106,7 @@ class Logger {
    */
   clear() {
     this.buffer = [];
-    if (this.persistToLocalStorage) {
+    if (this.persistToLocalStorage && typeof localStorage !== 'undefined') {
       localStorage.removeItem('app_logs');
     }
     this.info('Логи очищены');
@@ -167,7 +167,7 @@ class Logger {
   
   _getStackTrace() {
     const err = new Error();
-    const stack = err.stack.split('\n').slice(2, 5).join('\n');
+    const stack = err.stack ? err.stack.split('\n').slice(2, 5).join('\n') : '';
     return stack;
   }
   
@@ -176,7 +176,9 @@ class Logger {
       const toStore = this.buffer.slice(0, this.maxEntries);
       localStorage.setItem('app_logs', JSON.stringify(toStore));
     } catch (e) {
-      console.warn('Не удалось сохранить логи в localStorage:', e);
+      if (typeof console !== 'undefined') {
+        console.warn('Не удалось сохранить логи в localStorage:', e);
+      }
     }
   }
   
@@ -191,7 +193,9 @@ class Logger {
         }
       }
     } catch (e) {
-      console.warn('Не удалось загрузить логи из localStorage:', e);
+      if (typeof console !== 'undefined') {
+        console.warn('Не удалось загрузить логи из localStorage:', e);
+      }
     }
   }
   
@@ -214,16 +218,32 @@ class Logger {
   }
 }
 
-// Глобальный экземпляр
-window.Logger = new Logger(CONFIG?.logging);
-
-// Замена console.log для перехвата
-if (CONFIG?.logging?.captureConsole) {
-  const originalConsole = { ...console };
-  for (const level of ['debug', 'info', 'warn', 'error']) {
-    console[level] = (...args) => {
-      window.Logger[level](...args);
-      originalConsole[level](...args);
-    };
+// Глобальный экземпляр (только в браузере)
+if (typeof window !== 'undefined') {
+  // Получаем конфигурацию, если она существует
+  let config = null;
+  if (typeof CONFIG !== 'undefined' && CONFIG?.logging) {
+    config = CONFIG.logging;
   }
+  
+  window.Logger = new Logger(config);
+  
+  // Замена console.log для перехвата (только если включено в конфиге)
+  if (config?.captureConsole && typeof console !== 'undefined') {
+    const originalConsole = { ...console };
+    for (const level of ['debug', 'info', 'warn', 'error']) {
+      const original = originalConsole[level];
+      if (original) {
+        console[level] = (...args) => {
+          window.Logger[level](...args);
+          original(...args);
+        };
+      }
+    }
+  }
+}
+
+// Для Google Apps Script (экспорт)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { Logger };
 }
