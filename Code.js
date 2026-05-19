@@ -1,10 +1,10 @@
 // ==================== ОСНОВНАЯ ФУНКЦИЯ ВХОДА ====================
 function doGet(e) {
   // Проверяем параметр viewer в URL
-  if (e.parameter.viewer === '1') {
+  if (e && e.parameter && e.parameter.viewer === '1') {
     // Режим ПРОСМОТРА (Viewer.html)
     const template = HtmlService.createTemplateFromFile('Viewer');
-    template.reportId = e.parameter.id || null; // передаём ID отчёта, если есть
+    template.reportId = e.parameter.id || null;
     return template.evaluate()
       .setTitle('Просмотр отчёта Онкоскрининг')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1')
@@ -12,13 +12,16 @@ function doGet(e) {
   } else {
     // Режим РЕДАКТОРА (Index.html) – по умолчанию
     const template = HtmlService.createTemplateFromFile('Index');
-    template.planWeekly = 3333; // можно передавать настройки
+    template.planWeekly = 3333;
     return template.evaluate()
       .setTitle('Онкоскрининг — Редактор')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 }
+
+// ==================== D4: ФУНКЦИИ ДЛЯ РЕЗЕРВНОГО КОПИРОВАНИЯ ====================
+
 // Получение текущих данных для бэкапа
 function getCurrentDataForBackup() {
   try {
@@ -52,97 +55,162 @@ function saveBackupToSheet(sheetName, backup) {
       JSON.stringify(backup.data),
       backup.size
     ]);
+    
+    // Ограничиваем количество бэкапов
+    const maxBackups = 10;
+    const totalRows = sheet.getLastRow();
+    if (totalRows > maxBackups + 1) {
+      sheet.deleteRows(maxBackups + 2, totalRows - maxBackups - 1);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Ошибка сохранения бэкапа:', error);
+    return false;
+  }
+}
+
+// Восстановление из бэкапа
+function restoreFromBackup(backupData) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSheet();
+    sheet.clear();
+    if (backupData && backupData.length > 0) {
+      sheet.getRange(1, 1, backupData.length, backupData[0].length).setValues(backupData);
+    }
+    return true;
+  } catch (error) {
+    console.error('Ошибка восстановления из бэкапа:', error);
+    return false;
+  }
+}
+
+// Удаление старого бэкапа
+function deleteBackupFromSheet(sheetName, backupId) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return false;
+    
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === backupId) {
+        sheet.deleteRow(i + 1);
+        return true;
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error('Ошибка удаления бэкапа:', error);
+    return false;
+  }
+}
 
 // ==================== РАБОТА С АРХИВОМ ====================
 
 // Сохранение отчёта в архив
 function saveReportToArchive(reportData) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let archiveSheet = ss.getSheetByName('Архив');
-  if (!archiveSheet) {
-    archiveSheet = ss.insertSheet('Архив');
-    archiveSheet.appendRow(['Дата сохранения', 'Данные (JSON)']);
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let archiveSheet = ss.getSheetByName('Архив');
+    if (!archiveSheet) {
+      archiveSheet = ss.insertSheet('Архив');
+      archiveSheet.appendRow(['ID', 'Дата сохранения', 'Данные (JSON)', 'Период']);
+    }
+    
+    const now = new Date();
+    const dateStr = `${now.getDate().toString().padStart(2, '0')}.${(now.getMonth() + 1).toString().padStart(2, '0')}.${now.getFullYear()}`;
+    
+    const json = JSON.stringify(reportData);
+    const newId = archiveSheet.getLastRow();
+    archiveSheet.appendRow([newId, dateStr, json, reportData.period || '']);
+    
+    return {
+      message: `✅ Отчёт сохранён в архив: ${dateStr}`,
+      id: newId
+    };
+  } catch (error) {
+    console.error('Ошибка сохранения в архив:', error);
+    throw new Error('Не удалось сохранить отчёт: ' + error.message);
   }
-  
-  // Сохраняем дату как текст в формате ДД.ММ.ГГГГ
-  const now = new Date();
-  const dateStr = `${now.getDate().toString().padStart(2, '0')}.${(now.getMonth() + 1).toString().padStart(2, '0')}.${now.getFullYear()}`;
-  
-  const json = JSON.stringify(reportData);
-  archiveSheet.appendRow([dateStr, json]);
-  
-  const newId = archiveSheet.getLastRow() - 2;
-  
-  return {
-    message: `✅ Отчёт сохранён в архив: ${dateStr}`,
-    id: newId
-  };
 }
 
 // Получение списка архивных отчётов
 function getArchivedReportsList() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('Архив');
-  
-  if (!sheet) {
-    console.log('Лист "Архив" не найден');
-    return [];
-  }
-  
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    console.log('В листе "Архив" нет данных');
-    return [];
-  }
-  
-  const range = sheet.getRange(2, 1, lastRow - 1, 1);
-  const values = range.getValues();
-  
-  const list = [];
-  for (let i = 0; i < values.length; i++) {
-    const dateValue = values[i][0];
-    let dateStr = '';
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('Архив');
     
-    if (dateValue instanceof Date) {
-      // Форматируем дату в ДД.ММ.ГГГГ
-      dateStr = `${dateValue.getDate().toString().padStart(2, '0')}.${(dateValue.getMonth() + 1).toString().padStart(2, '0')}.${dateValue.getFullYear()}`;
-    } else {
-      // Если это уже строка — берём как есть или обрезаем
-      dateStr = String(dateValue).split(' ')[0]; // Берём только первую часть до пробела
+    if (!sheet) {
+      console.log('Лист "Архив" не найден');
+      return [];
     }
     
-    list.push({
-      id: i,
-      dateStr: dateStr
-    });
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      console.log('В листе "Архив" нет данных');
+      return [];
+    }
+    
+    const range = sheet.getRange(2, 1, lastRow - 1, 2);
+    const values = range.getValues();
+    
+    const list = [];
+    for (let i = 0; i < values.length; i++) {
+      const id = values[i][0];
+      const dateValue = values[i][1];
+      let dateStr = '';
+      
+      if (dateValue instanceof Date) {
+        dateStr = `${dateValue.getDate().toString().padStart(2, '0')}.${(dateValue.getMonth() + 1).toString().padStart(2, '0')}.${dateValue.getFullYear()}`;
+      } else {
+        dateStr = String(dateValue).split(' ')[0];
+      }
+      
+      list.push({
+        id: id,
+        dateStr: dateStr
+      });
+    }
+    
+    return list;
+  } catch (error) {
+    console.error('Ошибка получения списка архива:', error);
+    return [];
   }
-  
-  return list;
-}
-// Получение конкретного архивного отчёта по ID
-function getArchivedReportById(id) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('Архив');
-  
-  if (!sheet) throw new Error('Лист Архив не найден');
-  
-  const data = sheet.getDataRange().getValues();
-  if (id + 1 >= data.length) throw new Error('Отчёт не найден');
-  
-  const row = data[id + 1];
-  const report = JSON.parse(row[1]);
-  
-  const dateValue = row[0];
-  if (dateValue instanceof Date) {
-    report.timestamp = `${dateValue.getDate().toString().padStart(2, '0')}.${(dateValue.getMonth() + 1).toString().padStart(2, '0')}.${dateValue.getFullYear()}`;
-  } else {
-    report.timestamp = String(dateValue).split(' ')[0]; // Берём только дату
-  }
-  
-  return report;
 }
 
-// ==================== ДОПОЛНИТЕЛЬНО: ЧТЕНИЕ ИЗ ЛИСТА "ДАННЫЕ" (если понадобится) ====================
+// Получение конкретного архивного отчёта по ID
+function getArchivedReportById(id) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('Архив');
+    
+    if (!sheet) throw new Error('Лист Архив не найден');
+    
+    const data = sheet.getDataRange().getValues();
+    const rowIndex = data.findIndex(row => row[0] === id);
+    
+    if (rowIndex === -1) throw new Error('Отчёт не найден');
+    
+    const row = data[rowIndex];
+    const report = JSON.parse(row[2]);
+    
+    const dateValue = row[1];
+    if (dateValue instanceof Date) {
+      report.timestamp = `${dateValue.getDate().toString().padStart(2, '0')}.${(dateValue.getMonth() + 1).toString().padStart(2, '0')}.${dateValue.getFullYear()}`;
+    } else {
+      report.timestamp = String(dateValue).split(' ')[0];
+    }
+    
+    return report;
+  } catch (error) {
+    console.error('Ошибка получения отчёта по ID:', error);
+    throw new Error('Не удалось загрузить отчёт: ' + error.message);
+  }
+}
+
+// ==================== ДОПОЛНИТЕЛЬНО: ЧТЕНИЕ ИЗ ЛИСТА "ДАННЫЕ" ====================
 function getCurrentData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Данные');
