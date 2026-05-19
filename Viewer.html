@@ -12,7 +12,7 @@
         body { 
             background: #f0f2f8; 
             font-family: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif; 
-            padding: 0;  /* убираем отступы, чтобы логотип был в самом углу */
+            padding: 0;
             color: #1e293b; 
         }
         .dashboard { 
@@ -22,10 +22,9 @@
             display: flex; 
             flex-direction: column; 
             gap: 24px; 
-            padding: 20px 16px; /* внутренние отступы для контента, но логотип останется слева */
+            padding: 20px 16px;
         }
         
-        /* Панель с логотипом и управлением */
         .viewer-select-panel { 
             background: white; 
             border-radius: 28px; 
@@ -37,7 +36,6 @@
             margin-bottom: 8px; 
         }
         
-        /* Шапка с логотипом — прижимаем к левому краю */
         .viewer-header {
             display: flex;
             align-items: center;
@@ -50,40 +48,36 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            flex-shrink: 0;  /* не сжимается */
+            flex-shrink: 0;
         }
-        /* АДАПТИВНЫЙ SVG: масштабируется, не вылезает за пределы */
         .logo-img {
             max-width: 100%;
             height: auto;
             width: auto;
-            max-height: 70px;   /* комфортная высота на десктопе */
+            max-height: 70px;
             display: block;
         }
-        /* Текст рядом с логотипом (если нужен) */
         .logo-text {
             font-weight: 700;
             color: #1e4663;
             line-height: 1.3;
             font-size: 1rem;
         }
-        /* Блок "Отчёт подготовлен ЦВИ" — справа от логотипа, не мешает левому углу */
         .prepared-by {
             display: flex;
             align-items: center;
             gap: 12px;
-            font-size: 0.85 rem;
+            font-size: 0.85rem;
             color: #1e4663;
             background: #f8fafc;
             padding: 6px 14px;
             border-radius: 40px;
-            margin-left: auto;  /* прижимает вправо */
+            margin-left: auto;
         }
         .prepared-by i {
             color: #2c7da0;
         }
         
-        /* Строка управления (select + кнопки) */
         .controls-row {
             display: flex;
             align-items: center;
@@ -124,7 +118,7 @@
         .refresh-btn.secondary { background: #5b6e8c; }
         .refresh-btn.secondary:hover { background: #4a5a73; }
         
-        /* Остальные стили (KPI, графики, таблицы) без изменений */
+        /* Основные карточки и графики */
         .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 14px; width: 100%; }
         .kpi-card { background: white; border-radius: 24px; padding: 18px 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
         .kpi-title { font-size: 0.8rem; text-transform: uppercase; font-weight: 600; color: #5b6e8c; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
@@ -136,7 +130,20 @@
         canvas { max-height: 280px; width: 100%; }
         .rank-card h4 { margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
         .rank-list { display: flex; flex-direction: column; gap: 10px;}
-        .rank-item { display: flex; justify-content: space-between; padding: 8px 0; padding-left: 20px; border-bottom: 1px solid #edf2f7; }
+        
+        /* Стили для элементов рейтинга с выравниванием вправо */
+        .rank-item { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: baseline; 
+            padding: 8px 0; 
+            border-bottom: 1px solid #edf2f7; 
+        }
+        .rank-item-left { font-weight: 600; }
+        .rank-item-right { text-align: right; }
+        .rank-item-right .percent { font-weight: 600; font-size: 1rem; }
+        .rank-item-right .detail { font-size: 0.7rem; color: #5b6e8c; margin-top: 2px; }
+        
         .period-info-block { background: white; border-radius: 24px; padding: 20px 22px; border: 1px solid #eef2f6; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; margin-bottom: 14px; width: 100%; }
         .period-info-text { font-size: 1.3rem; font-weight: 500; color: #1e4663; line-height: 1.4; letter-spacing: 0.3px; }
         .info-blocks-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; width: 100%; margin-bottom: 20px; }
@@ -159,11 +166,10 @@
         .medium { background: #fff3e0; color: #e67e22; }
         .low { background: #ffebee; color: #c0392b; }
         .growth-positive { color: #1f8a4c; font-weight: 600; }
-        footer { text-align: center; font-size: 0.7rem; color: #6c7a91; padding-top: 16px; border-top: 1px solid #e2e8f0; }
+        footer { text-align: center; font-size: 0.7rem; color: #6c7a91; padding-top: 16px; border-top: 1px solid #e2e8f0; margin-top: 16px; }
         .error-message { background: #fee; color: #c00; padding: 40px; text-align: center; border-radius: 24px; font-size: 1.2rem; }
         .loading-message { background: #e8f4f8; color: #1e4663; padding: 40px; text-align: center; border-radius: 24px; font-size: 1.2rem; }
-
-        /* Адаптивность для мобильных */
+        
         @media (max-width: 780px) {
             body { padding: 0; }
             .dashboard { padding: 12px; gap: 16px; }
@@ -176,7 +182,7 @@
             .viewer-select-panel { padding: 16px; }
             .controls-row { flex-direction: column; align-items: stretch; }
             #archiveSelect { min-width: 100%; }
-            .logo-img { max-height: 50px; } /* чуть меньше на планшетах */
+            .logo-img { max-height: 50px; }
         }
         @media (max-width: 640px) {
             .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -186,7 +192,7 @@
             .info-card { padding: 16px; }
             .period-info-text { font-size: 0.95rem; }
             .viewer-header { flex-direction: column; align-items: flex-start; }
-            .prepared-by { margin-left: 0; } /* на узких экранах не прижимаем вправо */
+            .prepared-by { margin-left: 0; }
         }
         @media (max-width: 480px) {
             .dashboard { padding: 8px !important; gap: 12px; }
@@ -203,21 +209,19 @@
 </head>
 <body>
 <div class="dashboard" id="dashboardContainer">
-    <!-- Панель выбора отчёта с логотипом -->
     <div class="viewer-select-panel">
         <div class="viewer-header">
             <div class="logo-container">
-            <svg xmlns="http://www.w3.org/2000/svg" width="103" height="37" viewBox="0 0 1034 371">
-              <path fill="#eb536b" fill-rule="evenodd" d="M27 10q-10 5-17 17c-2 5-2 7-2 16s0 12 3 19q11 27 39 49c15 11 15 11 15 13q-1 2 3 5l3 2 4-2c23-13 46-32 57-48q14-21 14-39c0-6-3-17-7-21Q129 6 109 8q-19 2-27 17-5 11-11-1-6-9-17-14c-7-3-19-3-27 0"/>
-              <path fill="#242c54" fill-rule="evenodd" d="M33 1Q13 4 4 24c-3 6-3 7-3 19 0 10 0 12 3 20q10 28 37 50c17 13 22 16 24 11 0-2-2-4-14-12-18-14-34-33-40-50-3-7-3-10-3-19s0-11 2-16Q19 8 41 8q19 1 30 16 6 12 11 1 8-15 27-17t30 13c4 4 7 15 7 21q-1 28-30 57-32 30-74 44c-13 4-14 5-15 7l1 3 37 1h35v3l2 11q6 40 37 69 23 22 24 36 2 3-3 4c-5 3-6 6-6 30 0 25 1 29 6 34q6 7 20 7h8l1 5q1 9 10 15c4 2 5 3 31 3 27 0 31 0 37-4 4-3 9-12 9-16v-3h8l11-1q10-4 14-14v-51l-5-4q-6-2 0-14c4-8 8-13 21-27a121 121 0 0 0 38-88v-26c-10-55-50-97-105-109-12-2-40-2-52 0-16 4-39 13-45 19q-3 3-2 5 2 6 10 0c18-11 46-18 69-17q47 3 81 36 20 21 29 47c9 24 9 53 1 78-6 20-14 33-32 51-17 17-22 25-25 38l-1 5H174l-2-7c-3-11-8-19-25-36a115 115 0 0 1-37-76v-3h75l3 33 5 35h7l7-39 6-38 5 20 6 24 4 2c4 0 4 0 7-19l4-16 10-1c15 0 15 0 17-7l3-5 3 6 2 5h68v-6l-32-1h-31l-2-7-5-9q-5-6-11 10l-2 6h-12c-11 0-12 0-14 2l-3 11-2 8-5-25-6-25h-7l-7 37-6 37-3-21q-2-21-4-22c-1-2-5-2-68-2H55l13-6q66-33 82-81c3-9 3-26 0-34q-4-12-15-19c-17-11-42-7-55 8l-4 4-3-4C65 5 48-1 33 1m365 86v33h57v16h7v-22h-10V54h-8v60h-39V54h-7zm77 0v33h47v-6h-39V90h34v-7h-34V60h38v-6h-46zm62 0v33h8V90h40v30h8V54h-8v29h-40V54h-8zm67-30v3h23v60h7V90l1-29 11-1h12v-6h-54zm65 30v33h8v-20h8q24 0 31-8c7-8 7-23-1-31-6-6-11-7-30-7h-16zm8-11v17h9q17 1 23-6c3-3 4-3 4-10s-1-8-3-11c-4-4-8-5-21-6h-12zM398 197v33h20c19 0 21-1 25-3q8-5 8-14 0-13-9-16l-3-1 3-2q6-4 6-15-1-9-9-12c-3-2-6-3-22-3h-19zm70 0v33h8v-30h40v30h8v-66h-8v29h-40v-29h-8zm77 0v33h47v-6h-40v-24h35v-6l-18-1h-17v-23h39v-6h-46zm68-30-1 20q-2 24-6 32-1 4-6 4l-4 1v21h8v-15h56v15h8v-21h-10v-60h-45zm68 30v33h8v-20h8q18 0 25-4c12-7 15-25 5-35-6-6-11-7-30-7h-16zm65 0v33h48v-6h-40v-24h34v-7h-34v-23h38v-6h-46zm62 0v33h8v-30h40v30h8v-66h-8v29h-40v-29h-8zm77 0v33h4c3 0 4 0 24-26l20-26v52h8v-66h-4c-3 0-4 1-23 26l-20 26-1-26v-26h-8zm85-31q-9 5-12 15c-3 11 3 24 11 27l2 1-7 11-7 10h9l6-10 7-10h23v20h8v-66h-17c-16 0-18 0-23 2m-565 16v12h13c14-1 17-2 20-5s3-11 0-14q-3-5-21-5h-12zm215-11-1 17q-1 25-6 33l-2 3h39v-54h-15zm69 15v17h9q17 1 23-5 4-3 4-10t-2-10c-4-5-8-7-22-8h-12zm290-15q-15 2-14 18 1 9 8 12 3 3 16 3h13v-34h-9zm-574 41v12h13l17-1c10-3 12-17 3-21q-3-2-18-2h-15zm586 45 2 4c5 11 26 10 29-2q2-4-2-3l-4 2c-2 7-15 8-18 1q-1-3-4-3zm-514 17q-9 3-7 7l2 3 4-2c6-3 17-4 24-2q7 4 7 11 1 12-21 11h-7v6h9q23 0 22 11-1 15-21 14-9-1-19-7l-2 3v3l14 7c16 4 33-3 36-15q1-12-9-18-5-2-2-2l5-4q2-2 3-9 0-6-2-9-5-7-13-9c-6-2-17-1-23 1m-79 32v33h3c4 0 5-1 24-26l20-27 1 27v26h8v-66h-4c-3 0-4 0-24 27l-20 26-1-26v-27h-7zm136 0v33h8v-25l1-25 12 21q12 21 14 21c1 0 4-4 14-21l13-21v50h8v-66h-4c-3 0-3 1-17 24l-14 24-7-12-14-24c-7-12-7-12-11-12h-3zm91 0v33h47v-6h-40v-24h34v-7h-34v-23h39v-6h-46zm61 0v33h8v-30h40v30h8v-66h-8v29h-40v-29h-8zm77 0v33h48v-6h-40v-24h34v-7h-34v-23h38v-6h-46zm62 0v33h8v-30h40v30h8v-66h-8v29h-40v-29h-8zm77 0v33h4c3 0 4-2 23-26l21-26v52h8v-66h-4c-3 0-4 0-24 27l-20 26-1-26v-27h-7zm77 0v33h4c3 0 4 0 24-26l20-26v52h7v-66h-3c-3 0-5 3-23 26l-20 26-1-26v-26h-8zm-815 3v23l3 3 3 3h62c55 0 62 0 64-2 4-3 5-6 5-29v-21H164zm34 43q2 8 11 9l27 1c27-1 28-1 31-11v-2h-69z"/>
-            </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="103" height="37" viewBox="0 0 1034 371">
+                  <path fill="#eb536b" fill-rule="evenodd" d="M27 10q-10 5-17 17c-2 5-2 7-2 16s0 12 3 19q11 27 39 49c15 11 15 11 15 13q-1 2 3 5l3 2 4-2c23-13 46-32 57-48q14-21 14-39c0-6-3-17-7-21Q129 6 109 8q-19 2-27 17-5 11-11-1-6-9-17-14c-7-3-19-3-27 0"/>
+                  <path fill="#242c54" fill-rule="evenodd" d="M33 1Q13 4 4 24c-3 6-3 7-3 19 0 10 0 12 3 20q10 28 37 50c17 13 22 16 24 11 0-2-2-4-14-12-18-14-34-33-40-50-3-7-3-10-3-19s0-11 2-16Q19 8 41 8q19 1 30 16 6 12 11 1 8-15 27-17t30 13c4 4 7 15 7 21q-1 28-30 57-32 30-74 44c-13 4-14 5-15 7l1 3 37 1h35v3l2 11q6 40 37 69 23 22 24 36 2 3-3 4c-5 3-6 6-6 30 0 25 1 29 6 34q6 7 20 7h8l1 5q1 9 10 15c4 2 5 3 31 3 27 0 31 0 37-4 4-3 9-12 9-16v-3h8l11-1q10-4 14-14v-51l-5-4q-6-2 0-14c4-8 8-13 21-27a121 121 0 0 0 38-88v-26c-10-55-50-97-105-109-12-2-40-2-52 0-16 4-39 13-45 19q-3 3-2 5 2 6 10 0c18-11 46-18 69-17q47 3 81 36 20 21 29 47c9 24 9 53 1 78-6 20-14 33-32 51-17 17-22 25-25 38l-1 5H174l-2-7c-3-11-8-19-25-36a115 115 0 0 1-37-76v-3h75l3 33 5 35h7l7-39 6-38 5 20 6 24 4 2c4 0 4 0 7-19l4-16 10-1c15 0 15 0 17-7l3-5 3 6 2 5h68v-6l-32-1h-31l-2-7-5-9q-5-6-11 10l-2 6h-12c-11 0-12 0-14 2l-3 11-2 8-5-25-6-25h-7l-7 37-6 37-3-21q-2-21-4-22c-1-2-5-2-68-2H55l13-6q66-33 82-81c3-9 3-26 0-34q-4-12-15-19c-17-11-42-7-55 8l-4 4-3-4C65 5 48-1 33 1m365 86v33h57v16h7v-22h-10V54h-8v60h-39V54h-7zm77 0v33h47v-6h-39V90h34v-7h-34V60h38v-6h-46zm62 0v33h8V90h40v30h8V54h-8v29h-40V54h-8zm67-30v3h23v60h7V90l1-29 11-1h12v-6h-54zm65 30v33h8v-20h8q24 0 31-8c7-8 7-23-1-31-6-6-11-7-30-7h-16zm8-11v17h9q17 1 23-6c3-3 4-3 4-10s-1-8-3-11c-4-4-8-5-21-6h-12zM398 197v33h20c19 0 21-1 25-3q8-5 8-14 0-13-9-16l-3-1 3-2q6-4 6-15-1-9-9-12c-3-2-6-3-22-3h-19zm70 0v33h8v-30h40v30h8v-66h-8v29h-40v-29h-8zm77 0v33h47v-6h-40v-24h35v-6l-18-1h-17v-23h39v-6h-46zm68-30-1 20q-2 24-6 32-1 4-6 4l-4 1v21h8v-15h56v15h8v-21h-10v-60h-45zm68 30v33h8v-20h8q18 0 25-4c12-7 15-25 5-35-6-6-11-7-30-7h-16zm65 0v33h48v-6h-40v-24h34v-7h-34v-23h38v-6h-46zm62 0v33h8v-30h40v30h8v-66h-8v29h-40v-29h-8zm77 0v33h4c3 0 4 0 24-26l20-26v52h8v-66h-4c-3 0-4 1-23 26l-20 26-1-26v-26h-8zm85-31q-9 5-12 15c-3 11 3 24 11 27l2 1-7 11-7 10h9l6-10 7-10h23v20h8v-66h-17c-16 0-18 0-23 2m-565 16v12h13c14-1 17-2 20-5s3-11 0-14q-3-5-21-5h-12zm215-11-1 17q-1 25-6 33l-2 3h39v-54h-15zm69 15v17h9q17 1 23-5 4-3 4-10t-2-10c-4-5-8-7-22-8h-12zm290-15q-15 2-14 18 1 9 8 12 3 3 16 3h13v-34h-9zm-574 41v12h13l17-1c10-3 12-17 3-21q-3-2-18-2h-15zm586 45 2 4c5 11 26 10 29-2q2-4-2-3l-4 2c-2 7-15 8-18 1q-1-3-4-3zm-514 17q-9 3-7 7l2 3 4-2c6-3 17-4 24-2q7 4 7 11 1 12-21 11h-7v6h9q23 0 22 11-1 15-21 14-9-1-19-7l-2 3v3l14 7c16 4 33-3 36-15q1-12-9-18-5-2-2-2l5-4q2-2 3-9 0-6-2-9-5-7-13-9c-6-2-17-1-23 1m-79 32v33h3c4 0 5-1 24-26l20-27 1 27v26h8v-66h-4c-3 0-4 0-24 27l-20 26-1-26v-27h-7zm136 0v33h8v-25l1-25 12 21q12 21 14 21c1 0 4-4 14-21l13-21v50h8v-66h-4c-3 0-3 1-17 24l-14 24-7-12-14-24c-7-12-7-12-11-12h-3zm91 0v33h47v-6h-40v-24h34v-7h-34v-23h39v-6h-46zm61 0v33h8v-30h40v30h8v-66h-8v29h-40v-29h-8zm77 0v33h48v-6h-40v-24h34v-7h-34v-23h38v-6h-46zm62 0v33h8v-30h40v30h8v-66h-8v29h-40v-29h-8zm77 0v33h4c3 0 4-2 23-26l21-26v52h8v-66h-4c-3 0-4 0-24 27l-20 26-1-26v-27h-7zm77 0v33h4c3 0 4 0 24-26l20-26v52h7v-66h-3c-3 0-5 3-23 26l-20 26-1-26v-26h-8zm-815 3v23l3 3 3 3h62c55 0 62 0 64-2 4-3 5-6 5-29v-21H164zm34 43q2 8 11 9l27 1c27-1 28-1 31-11v-2h-69z"/>
+                </svg>
             </div>
             <div class="prepared-by">
-            <span>Отчёт подготовлен ЦВИ</span>
+                <span>Отчёт подготовлен ЦВИ</span>
             </div>
         </div>
         
-        <!-- Строка управления -->
         <div class="controls-row">
             <label>
                 <i class="fas fa-history"></i> Выберите отчёт из архива:
@@ -230,7 +234,6 @@
         </div>
     </div>
 
-    <!-- Контейнер для контента -->
     <div id="dashboardContent">
         <div class="loading-message">
             <i class="fas fa-chart-line"></i> Выберите отчёт и нажмите «Загрузить»
@@ -244,6 +247,7 @@
     const PLAN_WEEKLY = 3333;
     let dynamicChart = null;
     let planFactChart = null;
+    let coverageChart = null;
     
     function formatDate(dateStr) {
         if (!dateStr) return '';
@@ -262,6 +266,35 @@
         nextFriday.setDate(nextMonday.getDate() + 4);
         const format = d => `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
         return { display: `${format(nextMonday)} - ${format(nextFriday)}` };
+    }
+    
+    // Улучшенная функция: парсит дату в формате dd.mm.yyyy (и игнорирует возможные пробелы/время)
+    function getWeekRangeFromReportDate(reportDateStr) {
+        if (!reportDateStr) return 'Дата не указана';
+        // Ищем подстроку вида dd.mm.yyyy
+        const match = reportDateStr.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+        if (!match) {
+            console.warn('Не удалось распарсить дату (нет dd.mm.yyyy):', reportDateStr);
+            return reportDateStr; // вернём как есть
+        }
+        const day = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10);
+        const year = parseInt(match[3], 10);
+        const reportDate = new Date(year, month - 1, day);
+        if (isNaN(reportDate.getTime())) {
+            console.warn('Некорректная дата после парсинга:', reportDateStr);
+            return reportDateStr;
+        }
+        
+        const dayOfWeek = reportDate.getDay(); // 0 вс, 1 пн ... 5 пт, 6 сб
+        let daysToMonday = (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
+        const monday = new Date(reportDate);
+        monday.setDate(reportDate.getDate() - daysToMonday);
+        const friday = new Date(monday);
+        friday.setDate(monday.getDate() + 4);
+        
+        const format = d => `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
+        return `${format(monday)} – ${format(friday)}`;
     }
     
     function renderHtmlContent(text) {
@@ -369,19 +402,85 @@
         const percent = totalGrowth ? (totalGrowth / PLAN_WEEKLY * 100).toFixed(1) : 0;
         const planFactNote = document.getElementById('planFactNote');
         if (planFactNote) {
-            planFactNote.innerHTML = `⚠️ <strong>${percent}% выполнения недельного плана`;
+            planFactNote.innerHTML = `⚠️ <strong>${percent}% выполнения недельного плана</strong>`;
         }
+    }
+    
+    function buildCoverageChart(mosData) {
+        if (!mosData.length) return;
+        const withCoverage = mosData.map(mo => {
+            let coverage = 0;
+            if (mo.hasDev && mo.hasDev > 0) {
+                coverage = (mo.colon / mo.hasDev) * 100;
+            }
+            return {
+                name: mo.name,
+                coverage: coverage,
+                colon: mo.colon,
+                hasDev: mo.hasDev
+            };
+        });
+        const sorted = [...withCoverage].sort((a,b) => b.coverage - a.coverage);
+        const top10 = sorted.slice(0,10);
+        const labels = top10.map(m => m.name.length > 25 ? m.name.slice(0,22)+'...' : m.name);
+        const data = top10.map(m => m.coverage);
+        
+        const ctx = document.getElementById('coverageChart').getContext('2d');
+        if (coverageChart) coverageChart.destroy();
+        coverageChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Охват колоноскопией, %',
+                    data: data,
+                    backgroundColor: '#2c7da0',
+                    borderRadius: 8,
+                    barPercentage: 0.7
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `${ctx.raw.toFixed(1)}% (Колоноскопий: ${top10[ctx.dataIndex].colon} из ${top10[ctx.dataIndex].hasDev} положит.)`
+                        }
+                    },
+                    datalabels: {
+                        display: true,
+                        color: '#1e293b',
+                        anchor: 'end',
+                        align: 'top',
+                        formatter: (val) => val.toFixed(1) + '%',
+                        font: { weight: 'bold', size: 11 }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        title: { display: true, text: 'Процент охвата (%)' },
+                        ticks: { callback: (val) => val + '%' }
+                    },
+                    x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 30 } }
+                }
+            }
+        });
     }
     
     function renderDashboard(report) {
         const container = document.getElementById('dashboardContent');
         const timestamp = report.timestamp || new Date().toLocaleDateString('ru-RU');
+        // Вычисляем неделю на основе timestamp (дата в формате дд.мм.гггг)
+        const currentWeekRange = getWeekRangeFromReportDate(timestamp);
         const periodText = report.period || 'Период не указан';
         const nextWeek = getNextWeekPeriod();
         
         container.innerHTML = `
             <div class="period-info-block">
-                <div class="period-info-text" id="periodDisplayText">${periodText}</div>
+                <div class="period-info-text" id="periodDisplayText">${escapeHtml(periodText)}</div>
             </div>
             
             <div class="kpi-grid">
@@ -405,30 +504,44 @@
             </div>
 
             <div class="rank-row">
-                <div class="rank-card"><h4><i class="fas fa-trophy" style="color:#f39c12;"></i> Топ-5 лучших по % выполнению плана</h4><div id="top5List" class="rank-list">--</div></div>
-                <div class="rank-card"><h4><i class="fas fa-exclamation-triangle" style="color:#e74c3c;"></i> Топ-5 отстающих</h4><div id="bottom5List" class="rank-list">--</div></div>
+                <div class="rank-card"><h4><i class="fas fa-trophy" style="color:#f39c12;"></i> Топ-5 лучших по % выполнения плана иссл. КнСК </h4><div id="top5List" class="rank-list">--</div></div>
+                <div class="rank-card"><h4><i class="fas fa-exclamation-triangle" style="color:#e74c3c;"></i> Топ-5 отстающих по % выполнения плана иссл. КнСК </h4><div id="bottom5List" class="rank-list">--</div></div>
+            </div>
+            
+            <div class="rank-row">
+                <div class="rank-card"><h4><i class="fas fa-trophy" style="color:#f39c12;"></i> Топ-5 лучших по % охвата колоноскопией пациентов с КнСК+ </h4><div id="topCoverageList" class="rank-list">--</div></div>
+                <div class="rank-card"><h4><i class="fas fa-exclamation-triangle" style="color:#e74c3c;"></i> Топ-5 отстающих по % охвата колоноскопией пациентов с КнСК+ </h4><div id="bottomCoverageList" class="rank-list">--</div></div>
+            </div>
+            
+            <div class="charts-row">
+                <div class="chart-card" style="grid-column: span 2;">
+                    <div class="chart-title"><i class="fas fa-chart-bar"></i> Охват колоноскопией среди КнСК+ (топ-10 МО)</div>
+                    <canvas id="coverageChart" height="250"></canvas>
+                </div>
             </div>
             
             <div class="info-blocks-row">
-                <div class="info-card">
-                    <h4>✅ Сделано</h4>
-                    <div class="info-card-content" id="doneTextDisplay">${renderHtmlContent(report.doneText)}</div>
-                    <div class="info-date" id="doneDateDisplay"><i class="far fa-calendar-alt"></i> ${timestamp}</div>
-                </div>
-                <div class="info-card">
-                    <h4 style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">📅 Планы
-                        <span class="next-week-period" id="nextWeekPeriodDisplay">${nextWeek.display}</span>
-                    </h4>
-                    <div class="info-card-content" id="plansTextDisplay">${renderHtmlContent(report.plansText)}</div>
-                    <div class="info-date" id="plansDateDisplay"><i class="far fa-calendar-alt"></i> ${timestamp}</div>
-                </div>
-            </div>
+              <div class="info-card">
+                  <h4>✅ Сделано</h4>
+                  <div class="info-card-content" id="doneTextDisplay">${renderHtmlContent(report.doneText)}</div>
+                  <div class="info-date" id="doneDateDisplay">
+                      <i class="far fa-calendar-alt"></i> Отчётная неделя: ${escapeHtml(currentWeekRange)}
+                  </div>
+              </div>
+              <div class="info-card">
+                  <h4 style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">📅 Планы
+                      <span class="next-week-period" id="nextWeekPeriodDisplay">${escapeHtml(nextWeek.display)}</span>
+                  </h4>
+                  <div class="info-card-content" id="plansTextDisplay">${renderHtmlContent(report.plansText)}</div>
+                  <div class="info-date" id="plansDateDisplay"><i class="far fa-calendar-alt"></i> ${escapeHtml(timestamp)}</div>
+              </div>
+          </div>
 
             <div class="table-container">
                 <h3><i class="fas fa-table-list"></i> Сводная таблица по МО (скрининг КнСК)</h3>
                 <div style="overflow-x: auto;"><table id="mainTable"><thead><tr><th>№</th><th>МО</th><th>План</th><th>Итого</th><th>%</th><th>Динамика</th><th>Нет откл.</th><th>Есть откл.</th><th>Колоноск.</th><th>ЗНО</th></tr></thead><tbody id="tableBody"></tbody></table></div>
             </div>
-            <footer> Отчёт подготовлен ЦВИ: <span id="reportDate">${timestamp}</span></footer>
+            <footer> Отчёт подготовлен ЦВИ: <span id="reportDate">${escapeHtml(timestamp)}</span></footer>
         `;
         
         const mosData = report.mosData;
@@ -508,15 +621,68 @@
         document.getElementById('colonPercent').innerHTML = `${totalHasDev ? (totalColon/totalHasDev*100).toFixed(1) : 0}% из ${totalHasDev.toLocaleString()} положительных КНСК`;
         document.getElementById('totalZno').innerHTML = totalZno.toLocaleString();
         
-        const sorted = [...mos].sort((a,b) => b.percent - a.percent);
-        document.getElementById('top5List').innerHTML = sorted.slice(0,5).map(m => `<div class="rank-item"><span><strong>${m.name}</strong></span><span style="color:#2ecc71;">${m.percent.toFixed(1)}%</span></div>`).join('');
-        document.getElementById('bottom5List').innerHTML = sorted.slice(-5).reverse().map(m => `<div class="rank-item"><span><strong>${m.name}</strong></span><span style="color:#e67e22;">${m.percent.toFixed(1)}%</span></div>`).join('');
+        // Рейтинг по выполнению плана с добавлением факт/план
+        const sortedByPlan = [...mos].sort((a,b) => b.percent - a.percent);
+        document.getElementById('top5List').innerHTML = sortedByPlan.slice(0,5).map(m => 
+            `<div class="rank-item">
+                <span class="rank-item-left"><strong>${escapeHtml(m.name)}</strong></span>
+                <span class="rank-item-right">
+                    <span class="percent" style="color:#2ecc71;">${m.percent.toFixed(1)}%</span>
+                    <div class="detail">${m.fact.toLocaleString()} / ${m.plan.toLocaleString()}</div>
+                </span>
+            </div>`
+        ).join('');
         
+        document.getElementById('bottom5List').innerHTML = sortedByPlan.slice(-5).reverse().map(m => 
+            `<div class="rank-item">
+                <span class="rank-item-left"><strong>${escapeHtml(m.name)}</strong></span>
+                <span class="rank-item-right">
+                    <span class="percent" style="color:#e67e22;">${m.percent.toFixed(1)}%</span>
+                    <div class="detail">${m.fact.toLocaleString()} / ${m.plan.toLocaleString()}</div>
+                </span>
+            </div>`
+        ).join('');
+        
+        // Рейтинг по охвату колоноскопией
+        const withCoverage = mos.map(mo => {
+            let coverage = 0;
+            if (mo.hasDev && mo.hasDev > 0) {
+                coverage = (mo.colon / mo.hasDev) * 100;
+            }
+            return { ...mo, coverage };
+        });
+        const sortedByCoverage = [...withCoverage].sort((a,b) => b.coverage - a.coverage);
+        const topCoverage = sortedByCoverage.slice(0,5);
+        const bottomCoverage = sortedByCoverage.slice(-5).reverse();
+        
+        document.getElementById('topCoverageList').innerHTML = topCoverage.map(m => `
+            <div class="rank-item">
+                <span class="rank-item-left"><strong>${escapeHtml(m.name)}</strong></span>
+                <div class="rank-item-right">
+                    <div class="percent" style="color:#2ecc71;">${m.coverage.toFixed(1)}%</div>
+                    <div class="detail">(${m.colon}/${m.hasDev})</div>
+                </div>
+            </div>
+        `).join('');
+        
+        document.getElementById('bottomCoverageList').innerHTML = bottomCoverage.map(m => `
+            <div class="rank-item">
+                <span class="rank-item-left"><strong>${escapeHtml(m.name)}</strong></span>
+                <div class="rank-item-right">
+                    <div class="percent" style="color:#e67e22;">${m.coverage.toFixed(1)}%</div>
+                    <div class="detail">(${m.colon}/${m.hasDev})</div>
+                </div>
+            </div>
+        `).join('');
+        
+        buildCoverageChart(mos);
+        
+        // Таблица
         document.getElementById('tableBody').innerHTML = mos.map((m, i) => {
             const cls = m.percent >= 80 ? 'high' : (m.percent >= 40 ? 'medium' : 'low');
             return `<tr>
                 <td>${i+1}</td>
-                <td style="text-align:left;">${m.name}</td>
+                <td style="text-align:left;">${escapeHtml(m.name)}</td>
                 <td>${m.plan.toLocaleString()}</td>
                 <td>${m.fact.toLocaleString()}</td>
                 <td><span class="progress-badge ${cls}">${m.percent.toFixed(1)}%</span></td>
@@ -530,6 +696,19 @@
         
         updatePlanFactChart(totalGrowth);
         updateTrendGraph(report.weeksData || []);
+    }
+    
+    // Простейшая функция для экранирования HTML (чтобы избежать XSS и битых строк)
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
+            return c;
+        });
     }
     
     function loadArchiveList() {
@@ -584,7 +763,6 @@
     
     window.addEventListener('load', function() {
         loadArchiveList();
-        
         document.getElementById('loadReportBtn').addEventListener('click', function() {
             const select = document.getElementById('archiveSelect');
             const selectedId = select.value;
@@ -594,7 +772,6 @@
             }
             loadReportById(selectedId);
         });
-        
         document.getElementById('refreshListBtn').addEventListener('click', loadArchiveList);
     });
 </script>

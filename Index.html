@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Онкоскринингг — дашборд (Apps Script)</title>
+    <title>Онкоскрининг — дашборд (Apps Script)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
@@ -59,8 +59,12 @@
         .chart-title { font-weight: 700; font-size: 1.1rem; margin-bottom: 14px; padding-left: 12px; display: flex; align-items: center; gap: 10px; }
         canvas { max-height: 280px; width: 100%; }
         .rank-card h4 { margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
-        .rank-list { display: flex; flex-direction: column; gap: 10px;}
-        .rank-item { display: flex; justify-content: space-between; padding: 8px 0; padding-left: 20px; border-bottom: 1px solid #edf2f7; }
+        .rank-list { display: flex; flex-direction: column; gap: 12px;}
+        .rank-item { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-bottom: 1px solid #edf2f7; }
+        .rank-item-left { font-weight: 600; }
+        .rank-item-right { text-align: right; }
+        .rank-item-right .percent { font-weight: 600; font-size: 1rem; }
+        .rank-item-right .detail { font-size: 0.7rem; color: #5b6e8c; margin-top: 2px; }
         .period-info-block { background: white; border-radius: 24px; padding: 20px 22px; border: 1px solid #eef2f6; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center; margin-bottom: 14px; width: 100%; }
         .period-info-text { font-size: 1.3rem; font-weight: 500; color: #1e4663; line-height: 1.4; letter-spacing: 0.3px; }
         .info-blocks-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; width: 100%; margin-bottom: 20px; }
@@ -205,8 +209,21 @@
         </div>
 
         <div class="rank-row">
-            <div class="rank-card"><h4><i class="fas fa-trophy" style="color:#f39c12;"></i> Топ-5 лучших по % выполнения плана</h4><div id="top5List" class="rank-list">--</div></div>
-            <div class="rank-card"><h4><i class="fas fa-exclamation-triangle" style="color:#e74c3c;"></i> Топ-5 отстающих</h4><div id="bottom5List" class="rank-list">--</div></div>
+            <div class="rank-card"><h4><i class="fas fa-trophy" style="color:#f39c12;"></i> Топ-5 лучших по % выполнения плана иссл. КнСК</h4><div id="top5List" class="rank-list">--</div></div>
+            <div class="rank-card"><h4><i class="fas fa-exclamation-triangle" style="color:#e74c3c;"></i> Топ-5 отстающих по % выполнения плана иссл. КнСК</h4><div id="bottom5List" class="rank-list">--</div></div>
+        </div>
+
+        <!-- Блоки с выравниванием по правому краю -->
+        <div class="rank-row">
+            <div class="rank-card"><h4><i class="fas fa-trophy" style="color:#f39c12;"></i> Топ-5 лучших по % охвата колоноскопией пациентов с КнСК+</h4><div id="topCoverageList" class="rank-list">--</div></div>
+            <div class="rank-card"><h4><i class="fas fa-exclamation-triangle" style="color:#e74c3c;"></i> Топ-5 отстающих по % охвата колоноскопией пациентов с КнСК+</h4><div id="bottomCoverageList" class="rank-list">--</div></div>
+        </div>
+
+        <div class="charts-row">
+            <div class="chart-card" style="grid-column: span 2;">
+                <div class="chart-title"><i class="fas fa-chart-bar"></i> Охват колоноскопией среди пациентов КнСК+ (топ-10 МО)</div>
+                <canvas id="coverageChart" height="250"></canvas>
+            </div>
         </div>
         
         <div class="info-blocks-row" id="customInfoBlocks">
@@ -226,7 +243,7 @@
 
         <div class="table-container">
             <h3><i class="fas fa-table-list"></i> Сводная таблица по МО (скрининг КнСК)</h3>
-            <div style="overflow-x: auto;"><table id="mainTable"><thead><tr><th>№</th><th>МО</th><th>План</th><th>Итого</th><th>%</th><th>Динамика</th><th>Нет откл.</th><th>Есть откл.</th><th>Колоноск.</th><th>ЗНО</th></tr></thead><tbody id="tableBody"></tbody></table></div>
+            <div style="overflow-x: auto;"><table id="mainTable"><thead><tr><th>№</th><th>МО</th><th>План</th><th>Итого</th><th>%</th><th>Динамика с прошлой недели</th><th>Нет откл.</th><th>Есть откл.</th><th>Колоноск.</th><th>ЗНО</th><tr></thead><tbody id="tableBody"></tbody></table></div>
             <div style="margin-top: 12px; font-size: 0.7rem; text-align: right;" id="updateTime"></div>
         </div>
         <footer>Отчёт сформирован: <span id="reportDate"></span></footer>
@@ -243,6 +260,7 @@
     const PLAN_WEEKLY = 3333;
     let dynamicChart = null;
     let planFactChart = null;
+    let coverageChart = null;
     
     // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
     function getTextareaSelection(textareaId) {
@@ -325,7 +343,7 @@
         document.getElementById('nextWeekPeriodDisplay').innerHTML = getNextWeekPeriod().display;
     }
     
-    // ==================== ФУНКЦИИ ДЛЯ НЕДЕЛЬНОЙ ДИНАМИКИ ====================
+    // ==================== НЕДЕЛЬНАЯ ДИНАМИКА ====================
     function formatDate(dateStr) {
         if (!dateStr) return '';
         const d = new Date(dateStr);
@@ -409,6 +427,70 @@
         const pct = growth ? (growth / PLAN_WEEKLY * 100).toFixed(1) : 0;
         document.getElementById('planFactNote').innerHTML = `⚠️ <strong>${pct}% выполнения недельного плана</strong>`;
     }
+
+    function buildCoverageChart(mosData) {
+        if (!mosData.length) return;
+        const withCoverage = mosData.map(mo => {
+            let coverage = 0;
+            if (mo.hasDev && mo.hasDev > 0) {
+                coverage = (mo.colon / mo.hasDev) * 100;
+            }
+            return {
+                name: mo.name,
+                coverage: coverage,
+                colon: mo.colon,
+                hasDev: mo.hasDev
+            };
+        });
+        const sorted = [...withCoverage].sort((a,b) => b.coverage - a.coverage);
+        const top10 = sorted.slice(0,10);
+        const labels = top10.map(m => m.name.length > 25 ? m.name.slice(0,22)+'...' : m.name);
+        const data = top10.map(m => m.coverage);
+        
+        const ctx = document.getElementById('coverageChart').getContext('2d');
+        if (coverageChart) coverageChart.destroy();
+        coverageChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Охват колоноскопией, %',
+                    data: data,
+                    backgroundColor: '#2c7da0',
+                    borderRadius: 8,
+                    barPercentage: 0.7
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `${ctx.raw.toFixed(1)}% (Колоноскопий: ${top10[ctx.dataIndex].colon} из ${top10[ctx.dataIndex].hasDev} положит.)`
+                        }
+                    },
+                    datalabels: {
+                        display: true,
+                        color: '#1e293b',
+                        anchor: 'end',
+                        align: 'top',
+                        formatter: (val) => val.toFixed(1) + '%',
+                        font: { weight: 'bold', size: 11 }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        title: { display: true, text: 'Процент охвата (%)' },
+                        ticks: { callback: (val) => val + '%' }
+                    },
+                    x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 30 } }
+                }
+            }
+        });
+    }
     
     // ==================== ПАРСИНГ CSV И ОТРИСОВКА ====================
     function extractNumber(v) {
@@ -484,7 +566,7 @@
                     name: r.name || 'МО',
                     plan: plan,
                     fact: fact,
-                    percent: r.percent || (plan ? (fact / plan * 100) : 0),
+                    percent: plan ? (fact / plan * 100) : 0,
                     growth: growth,
                     colon: colon,
                     zno: zno,
@@ -526,6 +608,7 @@
         
         currentMOSData = mos;
         
+        // KPI
         document.getElementById('totalPercent').innerHTML = `${(tFact / tPlan * 100).toFixed(1)}%`;
         document.getElementById('totalPlanFact').innerHTML = `${tFact.toLocaleString()} / ${tPlan.toLocaleString()}`;
         document.getElementById('totalKsk').innerHTML = tFact.toLocaleString();
@@ -534,15 +617,49 @@
         document.getElementById('colonPercent').innerHTML = `${tHasDev ? (tColon / tHasDev * 100).toFixed(1) : 0}% из ${tHasDev.toLocaleString()} положительных КНСК`;
         document.getElementById('totalZno').innerHTML = tZno.toLocaleString();
         
-        const sorted = [...mos].sort((a, b) => b.percent - a.percent);
-        document.getElementById('top5List').innerHTML = sorted.slice(0, 5).map(m => 
-            `<div class="rank-item"><span><strong>${m.name}</strong></span><span style="color:#2ecc71;">${m.percent.toFixed(1)}%</span></div>`
+        // Рейтинги по выполнению плана (с добавлением факта исследований)
+        const sortedByPlan = [...mos].sort((a, b) => b.percent - a.percent);
+        document.getElementById('top5List').innerHTML = sortedByPlan.slice(0, 5).map(m => 
+            `<div class="rank-item"><span class="rank-item-left"><strong>${m.name}</strong></span><span class="rank-item-right"><span class="percent" style="color:#2ecc71;">${m.percent.toFixed(1)}%</span><div class="detail">${m.fact.toLocaleString()} / ${m.plan.toLocaleString()}</div></span></div>`
+        ).join('');
+        document.getElementById('bottom5List').innerHTML = sortedByPlan.slice(-5).reverse().map(m => 
+            `<div class="rank-item"><span class="rank-item-left"><strong>${m.name}</strong></span><span class="rank-item-right"><span class="percent" style="color:#e67e22;">${m.percent.toFixed(1)}%</span><div class="detail">${m.fact.toLocaleString()} / ${m.plan.toLocaleString()}</div></span></div>`
         ).join('');
         
-        document.getElementById('bottom5List').innerHTML = sorted.slice(-5).reverse().map(m => 
-            `<div class="rank-item"><span><strong>${m.name}</strong></span><span style="color:#e67e22;">${m.percent.toFixed(1)}%</span></div>`
-        ).join('');
+        // Рейтинги по охвату колоноскопией (с выравниванием вправо)
+        const withCoverage = mos.map(mo => {
+            let coverage = 0;
+            if (mo.hasDev && mo.hasDev > 0) {
+                coverage = (mo.colon / mo.hasDev) * 100;
+            }
+            return { ...mo, coverage };
+        });
+        const sortedByCoverage = [...withCoverage].sort((a,b) => b.coverage - a.coverage);
+        const topCoverage = sortedByCoverage.slice(0,5);
+        const bottomCoverage = sortedByCoverage.slice(-5).reverse();
         
+        document.getElementById('topCoverageList').innerHTML = topCoverage.map(m => `
+            <div class="rank-item">
+                <span class="rank-item-left"><strong>${m.name}</strong></span>
+                <div class="rank-item-right">
+                    <div class="percent" style="color:#2ecc71;">${m.coverage.toFixed(1)}%</div>
+                    <div class="detail">(${m.colon}/${m.hasDev})</div>
+                </div>
+            </div>
+        `).join('');
+        document.getElementById('bottomCoverageList').innerHTML = bottomCoverage.map(m => `
+            <div class="rank-item">
+                <span class="rank-item-left"><strong>${m.name}</strong></span>
+                <div class="rank-item-right">
+                    <div class="percent" style="color:#e67e22;">${m.coverage.toFixed(1)}%</div>
+                    <div class="detail">(${m.colon}/${m.hasDev})</div>
+                </div>
+            </div>
+        `).join('');
+        
+        buildCoverageChart(mos);
+        
+        // Таблица МО
         document.getElementById('tableBody').innerHTML = mos.map((m, i) => {
             const cls = m.percent >= 80 ? 'high' : (m.percent >= 40 ? 'medium' : 'low');
             return `<tr>
@@ -681,185 +798,259 @@
     function saveAsHtml() {
         syncTextsToDashboard();
         syncPeriodToDashboard();
-        
+    
+        if (!currentMOSData || currentMOSData.length === 0) {
+            setStatus('Нет данных для сохранения. Загрузите CSV или архив.', false);
+            return;
+        }
+    
         const dashboardContent = document.getElementById('dashboardContent').cloneNode(true);
-        const styles = document.querySelector('style').innerHTML;
+        
+        let allStyles = '';
+        const styleNodes = document.querySelectorAll('style');
+        styleNodes.forEach(style => { allStyles += style.innerHTML; });
+    
         const weeksDataForExport = weeksData.map(w => ({ start: w.start, end: w.end, value: w.value }));
         const mosDataForExport = currentMOSData;
-        const totalGrowthForExport = currentMOSData.reduce((sum, m) => sum + (m.growth || 0), 0);
+        const periodText = document.getElementById('periodInput').value;
+        const doneText = document.getElementById('doneTextInput').value;
+        const plansText = document.getElementById('plansTextInput').value;
+        const currentDate = new Date().toLocaleString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
         
-        const now = new Date();
-        const filename = `oncoscreen_report_${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}.html`;
-        
+        function getNextWeekPeriodExport() {
+            const today = new Date();
+            let nextMonday = new Date(today);
+            const day = today.getDay();
+            let daysUntilMonday = (day === 0 ? 1 : 8 - day);
+            if (day === 1) daysUntilMonday = 0;
+            nextMonday.setDate(today.getDate() + daysUntilMonday);
+            let nextFriday = new Date(nextMonday);
+            nextFriday.setDate(nextMonday.getDate() + 4);
+            const format = d => `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
+            return `${format(nextMonday)} - ${format(nextFriday)}`;
+        }
+    
         const exportHtml = `<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Отчёт по онкоскринингу</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"><\/script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #f0f2f8; font-family: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif; padding: 24px 16px; color: #1e293b; }
-        .dashboard { max-width: 1600px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 24px; }
-        .control-panel, .dynamic-panel, .text-fields-panel, .period-input-panel { display: none !important; }
-        ${styles}
-    </style>
-</head>
-<body>
-<div class="dashboard">
-    ${dashboardContent.outerHTML}
-</div>
-<script>
-    Chart.register(ChartDataLabels);
-    
-    const EXPORTED_WEEKS = ${JSON.stringify(weeksDataForExport)};
-    const EXPORTED_MOS = ${JSON.stringify(mosDataForExport)};
-    const PLAN_WEEKLY = ${PLAN_WEEKLY};
-    
-    let dynamicChart = null;
-    let planFactChart = null;
-    
-    function formatDate(dateStr) {
-        if (!dateStr) return '';
-        const d = new Date(dateStr);
-        return d.getDate().toString().padStart(2,'0') + '.' + (d.getMonth()+1).toString().padStart(2,'0');
-    }
-    
-    function getWeeksData() {
-        return EXPORTED_WEEKS.map(w => ({ 
-            period: formatDate(w.start) + '-' + formatDate(w.end), 
-            value: w.value 
-        }));
-    }
-    
-    function updateTrendGraph() {
-        const weeks = getWeeksData();
-        if (!weeks.length) return;
-        const labels = weeks.map(w => w.period);
-        const facts = weeks.map(w => w.value);
-        const planLine = new Array(weeks.length).fill(PLAN_WEEKLY);
-        const ctx = document.getElementById('trendChart').getContext('2d');
-        if (dynamicChart) dynamicChart.destroy();
-        dynamicChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+        <title>Отчёт по онкоскринингу ${new Date().toLocaleDateString()}</title>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>
+        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"><\/script>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+        <style>
+            ${allStyles}
+            .control-panel, .dynamic-panel, .text-fields-panel, .period-input-panel,
+            .btn-group, .archive-controls, .info-text, .upload-btn, .save-html-btn,
+            .btn-add-week, .btn-update-chart, .btn-remove-week, #csvFile {
+                display: none !important;
+            }
+            @media (max-width: 780px) {
+                body { padding: 12px !important; }
+                .dashboard { gap: 16px; }
+                .kpi-grid { gap: 12px; }
+                .kpi-card { padding: 14px; }
+                .kpi-value { font-size: 1.6rem; }
+                .charts-row, .rank-row { grid-template-columns: 1fr !important; }
+                .info-blocks-row { grid-template-columns: 1fr !important; }
+                .table-container { overflow-x: auto; }
+                table { min-width: 600px; }
+            }
+        </style>
+    </head>
+    <body>
+    <div class="dashboard">
+        ${dashboardContent.outerHTML}
+    <\/div>
+    <script>
+        Chart.register(ChartDataLabels);
+        
+        const EXPORTED_WEEKS = ${JSON.stringify(weeksDataForExport)};
+        const EXPORTED_MOS = ${JSON.stringify(mosDataForExport)};
+        const PLAN_WEEKLY = ${PLAN_WEEKLY};
+        const DONE_TEXT = ${JSON.stringify(doneText)};
+        const PLANS_TEXT = ${JSON.stringify(plansText)};
+        const PERIOD_TEXT = ${JSON.stringify(periodText)};
+        const NEXT_WEEK_PERIOD = ${JSON.stringify(getNextWeekPeriodExport())};
+        const CURRENT_DATE = ${JSON.stringify(currentDate)};
+        
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            const d = new Date(dateStr);
+            return d.getDate().toString().padStart(2,'0') + '.' + (d.getMonth()+1).toString().padStart(2,'0');
+        }
+        
+        function renderHtmlContent(text) {
+            if (!text || text.trim() === '') return '—';
+            let safe = text;
+            if (!safe.includes('<br') && !safe.includes('<p') && !safe.includes('<div') && !safe.includes('<li')) {
+                safe = safe.replace(/\\n/g, '<br>');
+            }
+            return safe;
+        }
+        
+        document.getElementById('doneTextDisplay').innerHTML = renderHtmlContent(DONE_TEXT);
+        document.getElementById('plansTextDisplay').innerHTML = renderHtmlContent(PLANS_TEXT);
+        document.getElementById('doneDateDisplay').innerHTML = '<i class="far fa-calendar-alt"></i> ' + CURRENT_DATE;
+        document.getElementById('plansDateDisplay').innerHTML = '<i class="far fa-calendar-alt"></i> ' + CURRENT_DATE;
+        document.getElementById('nextWeekPeriodDisplay').innerHTML = NEXT_WEEK_PERIOD;
+        document.getElementById('periodDisplayText').innerHTML = PERIOD_TEXT || 'Период не указан';
+        
+        let dynamicChart = null, planFactChart = null, coverageChart = null;
+        
+        function getWeeksData() {
+            return EXPORTED_WEEKS.map(w => ({ 
+                period: formatDate(w.start) + '-' + formatDate(w.end), 
+                value: w.value 
+            }));
+        }
+        
+        function updateTrendGraph() {
+            const weeks = getWeeksData();
+            if (!weeks.length) return;
+            const labels = weeks.map(w => w.period);
+            const facts = weeks.map(w => w.value);
+            const planLine = new Array(weeks.length).fill(PLAN_WEEKLY);
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            if (dynamicChart) dynamicChart.destroy();
+            dynamicChart = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets: [
                     { label: 'Факт КнСК', data: facts, borderColor: '#1f6392', borderWidth: 3, tension: 0.2, fill: false, pointRadius: 6 },
                     { label: 'План', data: planLine, borderColor: '#e67e22', borderWidth: 2.5, borderDash: [8,6], fill: false }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    datalabels: { display: false },
-                    tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + ctx.raw.toLocaleString() + ' иссл.' } }
+                ]},
+                options: { responsive: true, maintainAspectRatio: true, plugins: { datalabels: { display: false }, tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + ctx.raw.toLocaleString() + ' иссл.' } } } }
+            });
+            const last = facts[facts.length-1];
+            document.getElementById('trendNote').innerHTML = '* Последняя точка: ' + weeks[weeks.length-1].period + ' — <strong>' + last.toLocaleString() + '<\/strong> (план ~' + PLAN_WEEKLY.toLocaleString() + ')';
+        }
+        
+        function updatePlanFactChart(growth) {
+            const ctx = document.getElementById('planFactChart').getContext('2d');
+            if (planFactChart) planFactChart.destroy();
+            planFactChart = new Chart(ctx, {
+                type: 'bar',
+                data: { labels: ['Недельный план', 'Факт'], datasets: [{ label: 'Исследования КнСК', data: [PLAN_WEEKLY, growth || 0], backgroundColor: ['#2c7da0', '#e9b35f'], borderRadius: 12, barPercentage: 0.6 }] },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { datalabels: { display: true, color: '#1e293b', anchor: 'center', align: 'center', font: { size: 14, weight: 'bold' }, formatter: v => v.toLocaleString() } }, scales: { y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() } } } }
+            });
+            const pct = growth ? (growth / PLAN_WEEKLY * 100).toFixed(1) : 0;
+            document.getElementById('planFactNote').innerHTML = '⚠️ <strong>' + pct + '% выполнения недельного плана<\/strong>';
+        }
+        
+        function buildCoverageChart(mosData) {
+            if (!mosData.length) return;
+            const withCoverage = mosData.map(mo => {
+                let coverage = 0;
+                if (mo.hasDev && mo.hasDev > 0) coverage = (mo.colon / mo.hasDev) * 100;
+                return { name: mo.name, coverage, colon: mo.colon, hasDev: mo.hasDev };
+            });
+            const sorted = [...withCoverage].sort((a,b) => b.coverage - a.coverage);
+            const top10 = sorted.slice(0,10);
+            const labels = top10.map(m => m.name.length > 25 ? m.name.slice(0,22)+'...' : m.name);
+            const data = top10.map(m => m.coverage);
+            const ctx = document.getElementById('coverageChart').getContext('2d');
+            if (coverageChart) coverageChart.destroy();
+            coverageChart = new Chart(ctx, {
+                type: 'bar',
+                data: { labels, datasets: [{ label: 'Охват колоноскопией, %', data, backgroundColor: '#2c7da0', borderRadius: 8, barPercentage: 0.7 }] },
+                options: {
+                    responsive: true, maintainAspectRatio: true,
+                    plugins: {
+                        tooltip: { callbacks: { label: (ctx) => ctx.raw.toFixed(1) + '% (Колоноскопий: ' + top10[ctx.dataIndex].colon + ' из ' + top10[ctx.dataIndex].hasDev + ' положит.)' } },
+                        datalabels: { display: true, color: '#1e293b', anchor: 'end', align: 'top', formatter: (val) => val.toFixed(1)+'%', font: { weight: 'bold', size: 11 } }
+                    },
+                    scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Процент охвата (%)' }, ticks: { callback: (val) => val+'%' } }, x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 30 } } }
                 }
-            }
-        });
-        document.getElementById('trendNote').innerHTML = '* Последняя точка: ' + weeks[weeks.length-1].period + ' — <strong>' + facts[facts.length-1].toLocaleString() + '</strong> (план ~' + PLAN_WEEKLY.toLocaleString() + ')';
-    }
+            });
+        }
+        
+        (function render() {
+            let tPlan = 0, tFact = 0, tColon = 0, tZno = 0, tHasDev = 0, tGrowth = 0;
+            const mos = EXPORTED_MOS.map(m => {
+                tPlan += m.plan || 0;
+                tFact += m.fact || 0;
+                tColon += m.colon || 0;
+                tZno += m.zno || 0;
+                tHasDev += m.hasDev || 0;
+                tGrowth += m.growth || 0;
+                return m;
+            });
+            
+            updatePlanFactChart(tGrowth);
+            updateTrendGraph();
+            buildCoverageChart(mos);
+            
+            document.getElementById('totalPercent').innerHTML = (tFact/tPlan*100).toFixed(1) + '%';
+            document.getElementById('totalPlanFact').innerHTML = tFact.toLocaleString() + ' / ' + tPlan.toLocaleString();
+            document.getElementById('totalKsk').innerHTML = tFact.toLocaleString();
+            document.getElementById('weeklyGrowth').innerHTML = '<i class="fas fa-arrow-up"><\/i> +' + tGrowth.toLocaleString() + ' за неделю';
+            document.getElementById('totalColonPassed').innerHTML = tColon.toLocaleString();
+            document.getElementById('colonPercent').innerHTML = (tHasDev ? (tColon/tHasDev*100).toFixed(1) : 0) + '% из ' + tHasDev.toLocaleString() + ' положительных КНСК';
+            document.getElementById('totalZno').innerHTML = tZno.toLocaleString();
+            
+            const sortedByPlan = [...mos].sort((a,b) => b.percent - a.percent);
+            document.getElementById('top5List').innerHTML = sortedByPlan.slice(0,5).map(m => 
+                '<div class="rank-item"><span class="rank-item-left"><strong>' + m.name + '<\/strong><\/span><span class="rank-item-right"><span class="percent" style="color:#2ecc71;">' + m.percent.toFixed(1) + '%<\/span><div class="detail">' + m.fact.toLocaleString() + ' / ' + m.plan.toLocaleString() + '<\/div><\/span><\/div>'
+            ).join('');
+            document.getElementById('bottom5List').innerHTML = sortedByPlan.slice(-5).reverse().map(m => 
+                '<div class="rank-item"><span class="rank-item-left"><strong>' + m.name + '<\/strong><\/span><span class="rank-item-right"><span class="percent" style="color:#e67e22;">' + m.percent.toFixed(1) + '%<\/span><div class="detail">' + m.fact.toLocaleString() + ' / ' + m.plan.toLocaleString() + '<\/div><\/span><\/div>'
+            ).join('');
+            
+            const withCoverage = mos.map(m => ({ ...m, coverage: (m.hasDev && m.hasDev>0) ? (m.colon/m.hasDev)*100 : 0 }));
+            const sortedCoverage = [...withCoverage].sort((a,b) => b.coverage - a.coverage);
+            document.getElementById('topCoverageList').innerHTML = sortedCoverage.slice(0,5).map(m => 
+                '<div class="rank-item"><span class="rank-item-left"><strong>' + m.name + '<\/strong><\/span><div class="rank-item-right"><div class="percent" style="color:#2ecc71;">' + m.coverage.toFixed(1) + '%<\/div><div class="detail">(' + m.colon + '/' + m.hasDev + ')<\/div><\/div><\/div>'
+            ).join('');
+            document.getElementById('bottomCoverageList').innerHTML = sortedCoverage.slice(-5).reverse().map(m => 
+                '<div class="rank-item"><span class="rank-item-left"><strong>' + m.name + '<\/strong><\/span><div class="rank-item-right"><div class="percent" style="color:#e67e22;">' + m.coverage.toFixed(1) + '%<\/div><div class="detail">(' + m.colon + '/' + m.hasDev + ')<\/div><\/div><\/div>'
+            ).join('');
+            
+            document.getElementById('tableBody').innerHTML = mos.map((m, i) => {
+                const cls = m.percent >= 80 ? 'high' : (m.percent >= 40 ? 'medium' : 'low');
+                return '<tr>' +
+                    '<td>' + (i+1) + '<\/td>' +
+                    '<td style="text-align:left;">' + m.name + '<\/td>' +
+                    '<td>' + m.plan.toLocaleString() + '<\/td>' +
+                    '<td>' + m.fact.toLocaleString() + '<\/td>' +
+                    '<td><span class="progress-badge ' + cls + '">' + m.percent.toFixed(1) + '%<\/span><\/td>' +
+                    '<td class="growth-positive">+' + m.growth + '<\/td>' +
+                    '<td>' + m.noDev + '<\/td>' +
+                    '<td>' + m.hasDev + '<\/td>' +
+                    '<td>' + m.colon + '<\/td>' +
+                    '<td>' + m.zno + '<\/td>' +
+                '<\/tr>';
+            }).join('');
+            
+            const updateTime = new Date().toLocaleString();
+            document.getElementById('updateTime').innerHTML = '<i class="far fa-clock"><\/i> Обновлено: ' + updateTime;
+            document.getElementById('reportDate').innerHTML = updateTime;
+        })();
+    <\/script>
+    </body>
+    </html>`;
     
-    function updatePlanFactChart(growth) {
-        const ctx = document.getElementById('planFactChart').getContext('2d');
-        if (planFactChart) planFactChart.destroy();
-        planFactChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: ['Недельный план', 'Факт'],
-                datasets: [{
-                    label: 'Исследования КнСК',
-                    data: [PLAN_WEEKLY, growth || 0],
-                    backgroundColor: ['#2c7da0', '#e9b35f'],
-                    borderRadius: 12
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    datalabels: {
-                        display: true,
-                        color: '#1e293b',
-                        anchor: 'center',
-                        align: 'center',
-                        font: { size: 14, weight: 'bold' },
-                        formatter: v => v.toLocaleString()
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: { callback: v => v.toLocaleString() }
-                    }
-                }
-            }
-        });
-        const pct = growth ? (growth / PLAN_WEEKLY * 100).toFixed(1) : 0;
-        document.getElementById('planFactNote').innerHTML = '⚠️ <strong>' + pct + '% выполнения недельного плана</strong>';
-    }
-    
-    (function render() {
-        let tPlan = 0, tFact = 0, tColon = 0, tZno = 0, tHasDev = 0, tGrowth = 0;
-        const mos = EXPORTED_MOS.map(m => {
-            tPlan += m.plan || 0;
-            tFact += m.fact || 0;
-            tColon += m.colon || 0;
-            tZno += m.zno || 0;
-            tHasDev += m.hasDev || 0;
-            tGrowth += m.growth || 0;
-            return m;
-        });
-        
-        updatePlanFactChart(tGrowth);
-        updateTrendGraph();
-        
-        document.getElementById('totalPercent').innerHTML = (tFact/tPlan*100).toFixed(1) + '%';
-        document.getElementById('totalPlanFact').innerHTML = tFact.toLocaleString() + ' / ' + tPlan.toLocaleString();
-        document.getElementById('totalKsk').innerHTML = tFact.toLocaleString();
-        document.getElementById('weeklyGrowth').innerHTML = '<i class="fas fa-arrow-up"></i> +' + tGrowth.toLocaleString() + ' за неделю';
-        document.getElementById('totalColonPassed').innerHTML = tColon.toLocaleString();
-        document.getElementById('colonPercent').innerHTML = (tHasDev ? (tColon/tHasDev*100).toFixed(1) : 0) + '% из ' + tHasDev.toLocaleString() + ' положительных КНСК';
-        document.getElementById('totalZno').innerHTML = tZno.toLocaleString();
-        
-        const sorted = [...mos].sort((a,b) => b.percent - a.percent);
-        document.getElementById('top5List').innerHTML = sorted.slice(0,5).map(m => '<div class="rank-item"><span><strong>' + m.name + '</strong></span><span style="color:#2ecc71;">' + m.percent.toFixed(1) + '%</span></div>').join('');
-        document.getElementById('bottom5List').innerHTML = sorted.slice(-5).reverse().map(m => '<div class="rank-item"><span><strong>' + m.name + '</strong></span><span style="color:#e67e22;">' + m.percent.toFixed(1) + '%</span></div>').join('');
-        
-        document.getElementById('tableBody').innerHTML = mos.map((m, i) => {
-            const cls = m.percent >= 80 ? 'high' : (m.percent >= 40 ? 'medium' : 'low');
-            return '<tr><td>' + (i+1) + '</td><td style="text-align:left;">' + m.name + '</td><td>' + m.plan.toLocaleString() + '</td><td>' + m.fact.toLocaleString() + '</td><td><span class="progress-badge ' + cls + '">' + m.percent.toFixed(1) + '%</span></td><td class="growth-positive">+' + m.growth + '</td><td>' + m.noDev + '</td><td>' + m.hasDev + '</td><td>' + m.colon + '</td><td>' + m.zno + '</td></tr>';
-        }).join('');
-    })();
-<\/script>
-</body>
-</html>`;
-        
         const blob = new Blob([exportHtml], { type: 'text/html;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = filename;
+        a.download = `oncoscreen_report_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.html`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        setStatus('HTML-файл сохранён', true);
+        setStatus('HTML-файл сохранён ✅', true);
     }
     
     // ==================== ИНИЦИАЛИЗАЦИЯ ====================
     window.addEventListener('load', function() {
         function initDemo() {
             const demoCSV = `№,Наименование МО,План на год,Общий итог,Динамика с прошлой недели,Нет отклонений,Есть отклонения,Прошли колоноскопию,Выявлено ЗНО C18-C21
-1,Одинцовская ОБ,6227,6052 (97%),+266,5720 (95%),332 (5%),42,9
-2,Дубненская Б,2068,1515 (73%),+163,1459 (96%),56 (4%),5,13
-3,Наро-Фоминская Б,2691,1818 (68%),+115,1728 (95%),90 (5%),4,3
-4,Жуковская ОКБ,2220,1457 (66%),+73,1360 (93%),97 (7%),31,1
-5,Павлово-Посадская Б,2365,1405 (59%),+1,1326 (94%),79 (6%),19,17`;
+    1,Одинцовская ОБ,6227,6052 (97%),+266,5720 (95%),332 (5%),42,9
+    2,Дубненская Б,2068,1515 (73%),+163,1459 (96%),56 (4%),5,13
+    3,Наро-Фоминская Б,2691,1818 (68%),+115,1728 (95%),90 (5%),4,3
+    4,Жуковская ОКБ,2220,1457 (66%),+73,1360 (93%),97 (7%),31,1
+    5,Павлово-Посадская Б,2365,1405 (59%),+1,1326 (94%),79 (6%),19,17`;
             currentMOSData = parseCSV(demoCSV);
             renderMOSDashboard(currentMOSData);
         }
@@ -910,9 +1101,7 @@
         
         document.getElementById('webVersionBtn').addEventListener('click', function () {
             const baseUrl = "https://script.google.com/macros/s/AKfycbx2Fha1Jakdp4DWvgdgj78-iKuoUMg2_52a2QUgP6vk/dev";
-
             const url = baseUrl + '?viewer=1';
-
             window.open(url, '_blank');
         });
         

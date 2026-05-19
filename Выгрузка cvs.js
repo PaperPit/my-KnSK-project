@@ -1,9 +1,9 @@
-function exportRangeA1I50toCSV() {
+function exportRangeA1I49toCSV() {
   // Получаем активную таблицу
   var sheet = SpreadsheetApp.getActiveSheet();
   
-  // Указываем диапазон A1:I50
-  var range = sheet.getRange("A1:I50");
+  // Указываем диапазон A1:I49
+  var range = sheet.getRange("A1:I49");
   
   // Получаем данные из диапазона
   var data = range.getValues();
@@ -12,7 +12,7 @@ function exportRangeA1I50toCSV() {
   var csvContent = convertToCSV(data);
   
   // Создаём файл для скачивания
-  downloadCSV(csvContent, 'export_range_A1_I50.csv');
+  downloadCSV(csvContent, 'export_range_A1_I49.csv');
 }
 
 function convertToCSV(data) {
@@ -69,19 +69,19 @@ function downloadCSV(csvContent, filename) {
 // Дополнительная функция: скачать только видимые строки (если есть фильтры)
 function exportVisibleRangeA1I50toCSV() {
   var sheet = SpreadsheetApp.getActiveSheet();
-  var range = sheet.getRange("A1:I50");
+  var range = sheet.getRange("A1:I49");
   
   // Получаем только видимые строки (учитывая фильтры)
   var data = range.getDisplayValues();
   var csvContent = convertToCSV(data);
-  downloadCSV(csvContent, 'export_visible_range_A1_I50.csv');
+  downloadCSV(csvContent, 'export_visible_range_A1_I49.csv');
 }
 
 // Дополнительная функция: добавить кнопку в меню
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
   ui.createMenu('📊 Экспорт в CSV')
-    .addItem('Экспорт диапазона A1:I50', 'exportRangeA1I50toCSV')
+    .addItem('Экспорт диапазона A1:I49', 'exportRangeA1I49toCSV')
     .addItem('Экспорт только видимых строк (с фильтрами)', 'exportVisibleRangeA1I50toCSV')
     .addToUi();
 }
