@@ -12,8 +12,8 @@ class StateManager {
     this.historyLimit = 50;
     this.middlewares = [];
     
-    // Заморозка в production
-    if (!CONFIG?.dev?.debug) {
+    // Заморозка в production (только если CONFIG существует)
+    if (typeof CONFIG !== 'undefined' && CONFIG?.dev?.debug === false) {
       this._deepFreeze(this.state);
     }
   }
@@ -62,8 +62,12 @@ class StateManager {
     // Прогон через middleware
     let processedValue = value;
     for (const middleware of this.middlewares) {
-      const result = middleware(path, processedValue, oldValue);
-      if (result !== undefined) processedValue = result;
+      try {
+        const result = middleware(path, processedValue, oldValue);
+        if (result !== undefined) processedValue = result;
+      } catch (err) {
+        this._log('error', `[State] Ошибка в middleware:`, err);
+      }
     }
     
     // Обновление состояния
@@ -84,8 +88,8 @@ class StateManager {
       current[lastPart] = this._deepClone(processedValue);
     }
     
-    // Заморозка в production
-    if (!CONFIG?.dev?.debug) {
+    // Заморозка в production (только если CONFIG существует)
+    if (typeof CONFIG !== 'undefined' && CONFIG?.dev?.debug === false) {
       this._deepFreeze(this.state);
     }
     
@@ -305,10 +309,12 @@ class StateManager {
   
   _deepFreeze(obj) {
     if (obj === null || typeof obj !== 'object') return obj;
-    Object.freeze(obj);
-    for (const key in obj) {
-      if (obj.hasOwnProperty(key)) {
-        this._deepFreeze(obj[key]);
+    if (typeof Object.freeze === 'function') {
+      Object.freeze(obj);
+      for (const key in obj) {
+        if (obj.hasOwnProperty(key)) {
+          this._deepFreeze(obj[key]);
+        }
       }
     }
   }
@@ -329,31 +335,44 @@ class StateManager {
   }
   
   _log(level, ...args) {
-    if (typeof Logger !== 'undefined') {
+    if (typeof Logger !== 'undefined' && Logger[level]) {
       Logger[level](...args);
-    } else if (CONFIG?.dev?.debug && console[level]) {
+    } else if (typeof CONFIG !== 'undefined' && CONFIG?.dev?.debug && typeof console !== 'undefined' && console[level]) {
       console[level](...args);
     }
   }
 }
 
-// Глобальный экземпляр
-window.StateManager = new StateManager({
-  data: null,
-  loading: false,
-  error: null,
-  ui: {
-    isMobile: window.innerWidth <= (CONFIG?.ui?.mobileBreakpoint || 768),
-    theme: 'light',
-    notifications: [],
-  },
-  table: {
-    scrollTop: 0,
-    renderedRows: [],
-    totalRows: 0,
-  },
-  csv: {
-    isProcessing: false,
-    progress: 0,
-  },
-});
+// Глобальный экземпляр (только в браузере)
+if (typeof window !== 'undefined') {
+  // Получаем настройки из CONFIG (если есть)
+  let mobileBreakpoint = 768;
+  if (typeof CONFIG !== 'undefined' && CONFIG?.ui?.mobileBreakpoint) {
+    mobileBreakpoint = CONFIG.ui.mobileBreakpoint;
+  }
+  
+  window.StateManager = new StateManager({
+    data: null,
+    loading: false,
+    error: null,
+    ui: {
+      isMobile: typeof window !== 'undefined' ? window.innerWidth <= mobileBreakpoint : false,
+      theme: 'light',
+      notifications: [],
+    },
+    table: {
+      scrollTop: 0,
+      renderedRows: [],
+      totalRows: 0,
+    },
+    csv: {
+      isProcessing: false,
+      progress: 0,
+    },
+  });
+}
+
+// Для Google Apps Script (экспорт)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { StateManager };
+}
