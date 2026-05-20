@@ -101,6 +101,7 @@
             min-width: 280px; 
             flex: 1; 
             color: #1e293b; 
+            cursor: pointer;
         }
         .refresh-btn { 
             background: #2c7da0; 
@@ -229,14 +230,13 @@
             <select id="archiveSelect">
                 <option value="">— Загрузка списка... —</option>
             </select>
-            <button class="refresh-btn" id="loadReportBtn"><i class="fas fa-download"></i> Загрузить отчёт</button>
-            <button class="refresh-btn secondary" id="refreshListBtn"><i class="fas fa-sync-alt"></i> Обновить</button>
+            <button class="refresh-btn secondary" id="refreshListBtn"><i class="fas fa-sync-alt"></i> Обновить список</button>
         </div>
     </div>
 
     <div id="dashboardContent">
         <div class="loading-message">
-            <i class="fas fa-chart-line"></i> Выберите отчёт и нажмите «Загрузить»
+            <i class="fas fa-spinner fa-pulse"></i> Загрузка последнего отчёта...
         </div>
     </div>
 </div>
@@ -268,14 +268,12 @@
         return { display: `${format(nextMonday)} - ${format(nextFriday)}` };
     }
     
-    // Улучшенная функция: парсит дату в формате dd.mm.yyyy (и игнорирует возможные пробелы/время)
     function getWeekRangeFromReportDate(reportDateStr) {
         if (!reportDateStr) return 'Дата не указана';
-        // Ищем подстроку вида dd.mm.yyyy
         const match = reportDateStr.match(/(\d{2})\.(\d{2})\.(\d{4})/);
         if (!match) {
             console.warn('Не удалось распарсить дату (нет dd.mm.yyyy):', reportDateStr);
-            return reportDateStr; // вернём как есть
+            return reportDateStr;
         }
         const day = parseInt(match[1], 10);
         const month = parseInt(match[2], 10);
@@ -286,7 +284,7 @@
             return reportDateStr;
         }
         
-        const dayOfWeek = reportDate.getDay(); // 0 вс, 1 пн ... 5 пт, 6 сб
+        const dayOfWeek = reportDate.getDay();
         let daysToMonday = (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
         const monday = new Date(reportDate);
         monday.setDate(reportDate.getDate() - daysToMonday);
@@ -473,7 +471,6 @@
     function renderDashboard(report) {
         const container = document.getElementById('dashboardContent');
         const timestamp = report.timestamp || new Date().toLocaleDateString('ru-RU');
-        // Вычисляем неделю на основе timestamp (дата в формате дд.мм.гггг)
         const currentWeekRange = getWeekRangeFromReportDate(timestamp);
         const periodText = report.period || 'Период не указан';
         const nextWeek = getNextWeekPeriod();
@@ -621,7 +618,6 @@
         document.getElementById('colonPercent').innerHTML = `${totalHasDev ? (totalColon/totalHasDev*100).toFixed(1) : 0}% из ${totalHasDev.toLocaleString()} положительных КНСК`;
         document.getElementById('totalZno').innerHTML = totalZno.toLocaleString();
         
-        // Рейтинг по выполнению плана с добавлением факт/план
         const sortedByPlan = [...mos].sort((a,b) => b.percent - a.percent);
         document.getElementById('top5List').innerHTML = sortedByPlan.slice(0,5).map(m => 
             `<div class="rank-item">
@@ -643,7 +639,6 @@
             </div>`
         ).join('');
         
-        // Рейтинг по охвату колоноскопией
         const withCoverage = mos.map(mo => {
             let coverage = 0;
             if (mo.hasDev && mo.hasDev > 0) {
@@ -677,7 +672,6 @@
         
         buildCoverageChart(mos);
         
-        // Таблица
         document.getElementById('tableBody').innerHTML = mos.map((m, i) => {
             const cls = m.percent >= 80 ? 'high' : (m.percent >= 40 ? 'medium' : 'low');
             return `<tr>
@@ -691,14 +685,13 @@
                 <td>${m.hasDev}</td>
                 <td>${m.colon}</td>
                 <td>${m.zno}</td>
-            </tr>`;
+             </tr>`;
         }).join('');
         
         updatePlanFactChart(totalGrowth);
         updateTrendGraph(report.weeksData || []);
     }
     
-    // Простейшая функция для экранирования HTML (чтобы избежать XSS и битых строк)
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/[&<>]/g, function(m) {
@@ -711,38 +704,53 @@
         });
     }
     
+    // Переменная для хранения списка отчётов
+    let reportsList = [];
+    
     function loadArchiveList() {
         const select = document.getElementById('archiveSelect');
-        select.innerHTML = '<option value="">— Загрузка... —</option>';
+        select.innerHTML = '<option value="">— Загрузка списка... —</option>';
+        
         google.script.run
             .withSuccessHandler(function(list) {
-                select.innerHTML = '<option value="">— Выберите отчёт —</option>';
-                if (!list || list.length === 0) {
+                reportsList = list || [];
+                select.innerHTML = '<option value="">— Выберите отчёт (доступно ' + reportsList.length + ') —</option>';
+                
+                if (!reportsList || reportsList.length === 0) {
                     select.innerHTML += '<option disabled>Нет архивных отчётов</option>';
+                    const container = document.getElementById('dashboardContent');
+                    container.innerHTML = '<div class="error-message"><i class="fas fa-exclamation-triangle"></i> Нет сохранённых отчётов в архиве</div>';
                     return;
                 }
-                list.sort((a, b) => b.id - a.id).forEach(item => {
+                
+                // Сортируем по ID (новые сверху)
+                reportsList.sort((a, b) => b.id - a.id);
+                
+                reportsList.forEach(item => {
                     const option = document.createElement('option');
                     option.value = item.id;
-                    option.textContent = item.dateStr;
+                    option.textContent = item.dateStr || `Отчёт #${item.id} от ${item.dateStr || 'неизвестно'}`;
                     select.appendChild(option);
                 });
-                const urlParams = new URLSearchParams(window.location.search);
-                const reportId = urlParams.get('id');
-                if (reportId !== null) {
-                    select.value = reportId;
-                    loadReportById(reportId);
+                
+                // Автоматически загружаем последний отчёт (первый в списке)
+                if (reportsList.length > 0) {
+                    const latestReportId = reportsList[0].id;
+                    select.value = latestReportId;
+                    loadReportById(latestReportId);
                 }
             })
-            .withFailureHandler(err => {
-                select.innerHTML = '<option value="">— Ошибка загрузки —</option>';
+            .withFailureHandler(function(err) {
+                select.innerHTML = '<option value="">— Ошибка загрузки списка —</option>';
+                const container = document.getElementById('dashboardContent');
+                container.innerHTML = `<div class="error-message"><i class="fas fa-times-circle"></i> Ошибка загрузки списка отчётов: ${err.message || err}</div>`;
                 console.error('Ошибка загрузки списка:', err);
             })
             .getArchivedReportsList();
     }
     
     function loadReportById(id) {
-        if (id === '') return;
+        if (!id || id === '') return;
         
         const container = document.getElementById('dashboardContent');
         container.innerHTML = '<div class="loading-message"><i class="fas fa-spinner fa-pulse"></i> Загрузка отчёта...</div>';
@@ -755,7 +763,7 @@
                 renderDashboard(report);
             })
             .withFailureHandler(function(err) {
-                container.innerHTML = `<div class="error-message"><i class="fas fa-times-circle"></i> Ошибка загрузки: ${err.message}</div>`;
+                container.innerHTML = `<div class="error-message"><i class="fas fa-times-circle"></i> Ошибка загрузки отчёта: ${err.message || err}</div>`;
                 console.error('Ошибка загрузки отчёта:', err);
             })
             .getArchivedReportById(parseInt(id));
@@ -763,16 +771,19 @@
     
     window.addEventListener('load', function() {
         loadArchiveList();
-        document.getElementById('loadReportBtn').addEventListener('click', function() {
-            const select = document.getElementById('archiveSelect');
-            const selectedId = select.value;
-            if (!selectedId || selectedId === '') {
-                alert('Пожалуйста, выберите отчёт из списка');
-                return;
+        
+        // При изменении выбора в списке загружаем выбранный отчёт
+        document.getElementById('archiveSelect').addEventListener('change', function() {
+            const selectedId = this.value;
+            if (selectedId && selectedId !== '') {
+                loadReportById(selectedId);
             }
-            loadReportById(selectedId);
         });
-        document.getElementById('refreshListBtn').addEventListener('click', loadArchiveList);
+        
+        // Кнопка обновления списка
+        document.getElementById('refreshListBtn').addEventListener('click', function() {
+            loadArchiveList();
+        });
     });
 </script>
 </body>
