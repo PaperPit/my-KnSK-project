@@ -1,0 +1,273 @@
+/**
+ * Фаза 1: дизайн-токены и стили дашборда
+ */
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap');
+
+:root {
+  --color-primary: #1e4663;
+  --color-primary-dark: #0f2b3d;
+  --color-accent: #2c7da0;
+  --color-success: #1f8a4c;
+  --color-warning: #e67e22;
+  --color-danger: #c0392b;
+  --color-bg: #f0f4f8;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-muted: #5b6e8c;
+  --radius-card: 20px;
+  --shadow-card: 0 1px 3px rgba(15, 43, 61, 0.06), 0 4px 12px rgba(15, 43, 61, 0.04);
+  --font-sans: 'Manrope', 'Inter', system-ui, sans-serif;
+}
+
+body.dashboard-phase1 {
+  background: var(--color-bg);
+  font-family: var(--font-sans);
+  color: #1e293b;
+}
+
+body.dashboard-phase1 .kpi-value,
+body.dashboard-phase1 .period-info-text {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Viewer: легче шапка */
+body.dashboard-phase1.viewer-mode .viewer-select-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-card);
+  color: var(--color-primary);
+}
+
+body.dashboard-phase1.viewer-mode .viewer-select-panel label,
+body.dashboard-phase1.viewer-mode .prepared-by span {
+  color: var(--color-muted);
+}
+
+body.dashboard-phase1.viewer-mode #archiveSelect {
+  border: 1px solid var(--color-border);
+  color: var(--color-primary);
+}
+
+/* Сигналы */
+.signals-panel {
+  background: linear-gradient(135deg, #f8fafc 0%, #eef6fb 100%);
+  border: 1px solid #c5dce8;
+  border-radius: var(--radius-card);
+  padding: 18px 22px;
+  margin-bottom: 4px;
+}
+
+.signals-panel h3.signals-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.signals-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+.signals-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  padding: 10px 14px;
+  background: var(--color-surface);
+  border-radius: 12px;
+  border-left: 4px solid var(--color-accent);
+}
+
+.signals-list li.signal-warn { border-left-color: var(--color-warning); }
+.signals-list li.signal-danger { border-left-color: var(--color-danger); }
+.signals-list li.signal-success { border-left-color: var(--color-success); }
+
+.signals-list li i {
+  margin-top: 2px;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.signals-list li.signal-warn i { color: var(--color-warning); }
+.signals-list li.signal-danger i { color: var(--color-danger); }
+.signals-list li.signal-success i { color: var(--color-success); }
+
+/* KPI дельта */
+.kpi-card {
+  position: relative;
+}
+
+.kpi-delta {
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin-top: 6px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-delta.delta-up {
+  background: #e8f5e9;
+  color: var(--color-success);
+}
+
+.kpi-delta.delta-down {
+  background: #ffebee;
+  color: var(--color-danger);
+}
+
+.kpi-delta.delta-neutral {
+  background: #f1f5f9;
+  color: var(--color-muted);
+}
+
+.kpi-delta.delta-hidden {
+  display: none;
+}
+
+/* Рейтинги — горизонтальные графики */
+.rank-chart-wrap {
+  position: relative;
+  height: 220px;
+  width: 100%;
+}
+
+.rank-chart-wrap canvas {
+  max-height: 220px !important;
+}
+
+/* Таблица */
+.table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.table-toolbar input[type="search"] {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 24px;
+  font-size: 0.88rem;
+  font-family: var(--font-sans);
+}
+
+.table-toolbar input[type="search"]:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(44, 125, 160, 0.2);
+}
+
+.table-filter-hint {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.table-scroll-wrap {
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll-wrap table {
+  margin: 0;
+}
+
+.table-scroll-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f1f5f9;
+  box-shadow: 0 1px 0 var(--color-border);
+}
+
+tr.table-row-hidden {
+  display: none;
+}
+
+/* Heatmap % */
+td.heat-percent {
+  min-width: 120px;
+  padding: 8px 10px !important;
+}
+
+.cell-bar-wrap {
+  position: relative;
+  background: #f1f5f9;
+  border-radius: 8px;
+  height: 28px;
+  overflow: hidden;
+}
+
+.cell-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 8px;
+  opacity: 0.35;
+  transition: width 0.2s ease;
+}
+
+.cell-bar-fill.heat-high { background: #2e7d32; }
+.cell-bar-fill.heat-mid { background: #e67e22; }
+.cell-bar-fill.heat-low { background: #c0392b; }
+
+.cell-bar-label {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  font-weight: 700;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.growth-negative {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+/* График охвата — все МО, горизонтальная прокрутка */
+.coverage-chart-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+}
+
+.coverage-chart-inner {
+  height: 300px;
+  min-width: 480px;
+}
+
+.coverage-chart-card .chart-title span {
+  font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  .signals-list li { font-size: 0.82rem; }
+  .rank-chart-wrap { height: 200px; }
+  .table-scroll-wrap { max-height: 50vh; }
+  .coverage-chart-inner { height: 260px; }
+}

@@ -171,7 +171,7 @@ function getArchivedReportsList() {
     }
     
     // Получаем данные со 2-й строки (после заголовков)
-    const range = sheet.getRange(2, 1, lastRow - 1, 2); // Колонки A и B
+    const range = sheet.getRange(2, 1, lastRow, 2); // Колонки A и B (все строки данных)
     const values = range.getValues();
     
     const list = [];
@@ -216,13 +216,29 @@ function getArchivedReportById(id) {
     
     if (!sheet) throw new Error('Лист Архив не найден');
     
-    const data = sheet.getDataRange().getValues();
-    const rowIndex = data.findIndex(row => row[0] === id);
+    const numId = Number(id);
+    if (isNaN(numId)) throw new Error('Некорректный ID отчёта');
     
-    if (rowIndex === -1) throw new Error('Отчёт не найден');
+    const data = sheet.getDataRange().getValues();
+    const rowIndex = data.findIndex(function(row) {
+      return Number(row[0]) === numId;
+    });
+    
+    if (rowIndex === -1) throw new Error('Отчёт не найден (ID ' + numId + ')');
     
     const row = data[rowIndex];
-    const report = JSON.parse(row[2]);
+    let report;
+    try {
+      report = typeof row[2] === 'string' ? JSON.parse(row[2]) : row[2];
+    } catch (parseErr) {
+      throw new Error('Повреждённые данные отчёта в архиве');
+    }
+    
+    if (!report.mosData && report.MOSData) report.mosData = report.MOSData;
+    if (typeof report.mosData === 'string') {
+      try { report.mosData = JSON.parse(report.mosData); } catch (e) { report.mosData = []; }
+    }
+    if (!Array.isArray(report.mosData)) report.mosData = [];
     
     const dateValue = row[1];
     if (dateValue instanceof Date) {

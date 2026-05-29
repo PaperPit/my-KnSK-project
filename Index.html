@@ -6,6 +6,8 @@
     <title>Онкоскрининг — дашборд (Apps Script)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <?!= include('UiTokens'); ?>
+    <?!= include('DashboardPhase1'); ?>
     <script src="config.js"></script>
     <script src="src/core/Logger.js"></script>
     <script src="src/core/EventBus.js"></script>
@@ -125,7 +127,7 @@
         .refresh-btn { transition: all 0.2s; } .refresh-btn:hover { background: #1f6392 !important; transform: rotate(180deg); }
     </style>
 </head>
-<body>
+<body class="dashboard-phase1">
 <div class="dashboard" id="dashboardContainer">
     <div class="control-panel">
         <div class="btn-group">
@@ -193,11 +195,38 @@
         <div class="period-info-block">
             <div class="period-info-text" id="periodDisplayText">01.01.2025 - 31.03.2025</div>
         </div>
+
+        <div class="signals-panel" id="signalsPanel">
+            <h3 class="signals-title"><i class="fas fa-bell"></i> Ключевые сигналы</h3>
+            <ul class="signals-list" id="signalsList"><li>Загрузите данные для формирования сигналов</li></ul>
+        </div>
+
         <div class="kpi-grid">
-            <div class="kpi-card"><div class="kpi-title"><i class="fas fa-chart-line"></i> План на год</div><div class="kpi-value" id="totalPercent">--</div><div class="kpi-sub" id="totalPlanFact">--</div></div>
-            <div class="kpi-card"><div class="kpi-title"><i class="fas fa-vial"></i> КНСК с начала года</div><div class="kpi-value" id="totalKsk">--</div><div class="kpi-sub" id="weeklyGrowth">--</div></div>
-            <div class="kpi-card"><div class="kpi-title"><i class="fas fa-stethoscope"></i> Прошли колоноскопию</div><div class="kpi-value" id="totalColonPassed">--</div><div class="kpi-sub" id="colonPercent">--</div></div>
-            <div class="kpi-card"><div class="kpi-title"><i class="fas fa-biohazard"></i> Выявлено ЗНО</div><div class="kpi-value" id="totalZno">--</div><div class="kpi-sub">1-2 стадия</div></div>
+            <div class="kpi-card">
+                <div class="kpi-title"><i class="fas fa-chart-line"></i> План на год</div>
+                <div class="kpi-value" id="totalPercent">--</div>
+                <div class="kpi-sub" id="totalPlanFact">--</div>
+                <div id="totalPercentDelta"></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title"><i class="fas fa-vial"></i> КНСК с начала года</div>
+                <div class="kpi-value" id="totalKsk">--</div>
+                <div class="kpi-sub" id="weeklyGrowth">--</div>
+                <div id="totalKskDelta"></div>
+                <div id="totalGrowthDelta"></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title"><i class="fas fa-stethoscope"></i> Прошли колоноскопию</div>
+                <div class="kpi-value" id="totalColonPassed">--</div>
+                <div class="kpi-sub" id="colonPercent">--</div>
+                <div id="totalColonDelta"></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title"><i class="fas fa-biohazard"></i> Выявлено ЗНО</div>
+                <div class="kpi-value" id="totalZno">--</div>
+                <div class="kpi-sub">1-2 стадия</div>
+                <div id="totalZnoDelta"></div>
+            </div>
         </div>
 
         <div class="charts-row">
@@ -214,20 +243,23 @@
         </div>
 
         <div class="rank-row">
-            <div class="rank-card"><h4><i class="fas fa-trophy" style="color:#f39c12;"></i> Топ-5 лучших по % выполнения плана иссл. КнСК</h4><div id="top5List" class="rank-list">--</div></div>
-            <div class="rank-card"><h4><i class="fas fa-exclamation-triangle" style="color:#e74c3c;"></i> Топ-5 отстающих по % выполнения плана иссл. КнСК</h4><div id="bottom5List" class="rank-list">--</div></div>
+            <div class="rank-card"><h4><i class="fas fa-trophy" style="color:#f39c12;"></i> Топ-5 по % плана КнСК</h4><div class="rank-chart-wrap"><canvas id="top5PlanChart"></canvas></div></div>
+            <div class="rank-card"><h4><i class="fas fa-exclamation-triangle" style="color:#e74c3c;"></i> Антитоп-5 по % плана КнСК</h4><div class="rank-chart-wrap"><canvas id="bottom5PlanChart"></canvas></div></div>
         </div>
 
-        <!-- Блоки с выравниванием по правому краю -->
         <div class="rank-row">
-            <div class="rank-card"><h4><i class="fas fa-trophy" style="color:#f39c12;"></i> Топ-5 лучших по % охвата колоноскопией пациентов с КнСК+</h4><div id="topCoverageList" class="rank-list">--</div></div>
-            <div class="rank-card"><h4><i class="fas fa-exclamation-triangle" style="color:#e74c3c;"></i> Топ-5 отстающих по % охвата колоноскопией пациентов с КнСК+</h4><div id="bottomCoverageList" class="rank-list">--</div></div>
+            <div class="rank-card"><h4><i class="fas fa-trophy" style="color:#2c7da0;"></i> Топ-5 по охвату колоноскопией</h4><div class="rank-chart-wrap"><canvas id="top5CoverageChart"></canvas></div></div>
+            <div class="rank-card"><h4><i class="fas fa-exclamation-triangle" style="color:#c0392b;"></i> Антитоп-5 по охвату колоноскопией</h4><div class="rank-chart-wrap"><canvas id="bottom5CoverageChart"></canvas></div></div>
         </div>
 
         <div class="charts-row">
-            <div class="chart-card" style="grid-column: span 2;">
-                <div class="chart-title"><i class="fas fa-chart-bar"></i> Охват колоноскопией среди пациентов КнСК+ (топ-10 МО)</div>
-                <canvas id="coverageChart" height="250"></canvas>
+            <div class="chart-card coverage-chart-card" style="grid-column: span 2;">
+                <div class="chart-title"><i class="fas fa-chart-bar"></i> Охват колоноскопией среди пациентов КнСК+ (все МО) <span style="font-size:0.75rem;font-weight:500;color:#5b6e8c;">— прокрутите график →</span></div>
+                <div class="coverage-chart-scroll" id="coverageChartScroll">
+                    <div class="coverage-chart-inner" id="coverageChartInner">
+                        <canvas id="coverageChart" height="280"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -248,7 +280,13 @@
 
         <div class="table-container">
             <h3><i class="fas fa-table-list"></i> Сводная таблица по МО (скрининг КнСК)</h3>
-            <div style="overflow-x: auto;"><table id="mainTable"><thead><tr><th>№</th><th>МО</th><th>План</th><th>Итого</th><th>%</th><th>Динамика с прошлой недели</th><th>Нет откл.</th><th>Есть откл.</th><th>Колоноск.</th><th>ЗНО</th><tr></thead><tbody id="tableBody"></tbody></table></div>
+            <div class="table-toolbar">
+                <input type="search" id="moTableSearch" placeholder="Поиск по названию МО…" autocomplete="off">
+                <span class="table-filter-hint" id="tableFilterHint"></span>
+            </div>
+            <div class="table-scroll-wrap">
+                <table id="mainTable"><thead><tr><th>№</th><th>МО</th><th>План</th><th>Итого</th><th>%</th><th>Динамика</th><th>Нет откл.</th><th>Есть откл.</th><th>Колоноск.</th><th>ЗНО</th></tr></thead><tbody id="tableBody"></tbody></table>
+            </div>
             <div style="margin-top: 12px; font-size: 0.7rem; text-align: right;" id="updateTime"></div>
         </div>
         <footer>Отчёт сформирован: <span id="reportDate"></span></footer>
@@ -260,12 +298,12 @@
     Chart.register(ChartDataLabels);
     
     let currentMOSData = [];
+    let archiveReportsList = [];
     let weeksData = [];
     let nextId = 1;
     const PLAN_WEEKLY = 3333;
     let dynamicChart = null;
     let planFactChart = null;
-    let coverageChart = null;
     
     // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
     function getTextareaSelection(textareaId) {
@@ -433,70 +471,6 @@
         document.getElementById('planFactNote').innerHTML = `⚠️ <strong>${pct}% выполнения недельного плана</strong>`;
     }
 
-    function buildCoverageChart(mosData) {
-        if (!mosData.length) return;
-        const withCoverage = mosData.map(mo => {
-            let coverage = 0;
-            if (mo.hasDev && mo.hasDev > 0) {
-                coverage = (mo.colon / mo.hasDev) * 100;
-            }
-            return {
-                name: mo.name,
-                coverage: coverage,
-                colon: mo.colon,
-                hasDev: mo.hasDev
-            };
-        });
-        const sorted = [...withCoverage].sort((a,b) => b.coverage - a.coverage);
-        const top10 = sorted.slice(0,10);
-        const labels = top10.map(m => m.name.length > 25 ? m.name.slice(0,22)+'...' : m.name);
-        const data = top10.map(m => m.coverage);
-        
-        const ctx = document.getElementById('coverageChart').getContext('2d');
-        if (coverageChart) coverageChart.destroy();
-        coverageChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Охват колоноскопией, %',
-                    data: data,
-                    backgroundColor: '#2c7da0',
-                    borderRadius: 8,
-                    barPercentage: 0.7
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            label: (ctx) => `${ctx.raw.toFixed(1)}% (Колоноскопий: ${top10[ctx.dataIndex].colon} из ${top10[ctx.dataIndex].hasDev} положит.)`
-                        }
-                    },
-                    datalabels: {
-                        display: true,
-                        color: '#1e293b',
-                        anchor: 'end',
-                        align: 'top',
-                        formatter: (val) => val.toFixed(1) + '%',
-                        font: { weight: 'bold', size: 11 }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: 100,
-                        title: { display: true, text: 'Процент охвата (%)' },
-                        ticks: { callback: (val) => val + '%' }
-                    },
-                    x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 30 } }
-                }
-            }
-        });
-    }
-    
     // ==================== ПАРСИНГ CSV И ОТРИСОВКА ====================
     function extractNumber(v) {
         if (!v) return 0;
@@ -537,156 +511,63 @@
         return data;
     }
     
-    function renderMOSDashboard(data) {
+    function renderMOSDashboard(data, options) {
         if (!data || !data.length) {
             console.warn('renderMOSDashboard: данные пусты');
+            setStatus('Нет данных МО для отображения', false);
             return;
         }
-        
-        const firstRow = data[0];
-        const isProcessedFormat = firstRow.hasOwnProperty('name') && firstRow.hasOwnProperty('plan') && firstRow.hasOwnProperty('fact');
-        
-        let tPlan = 0, tFact = 0, tColon = 0, tZno = 0, tNoDev = 0, tHasDev = 0, tGrowth = 0;
-        const mos = [];
-        
-        if (isProcessedFormat) {
-            data.forEach(r => {
-                const plan = r.plan || 0;
-                const fact = r.fact || 0;
-                const growth = r.growth || 0;
-                const colon = r.colon || 0;
-                const zno = r.zno || 0;
-                const noDev = r.noDev || 0;
-                const hasDev = r.hasDev || 0;
-                
-                tPlan += plan;
-                tFact += fact;
-                tColon += colon;
-                tZno += zno;
-                tNoDev += noDev;
-                tHasDev += hasDev;
-                tGrowth += growth;
-                
-                mos.push({
-                    name: r.name || 'МО',
-                    plan: plan,
-                    fact: fact,
-                    percent: plan ? (fact / plan * 100) : 0,
-                    growth: growth,
-                    colon: colon,
-                    zno: zno,
-                    noDev: noDev,
-                    hasDev: hasDev
-                });
-            });
-        } else {
-            data.forEach(r => {
-                const plan = extractNumber(r['План на год']);
-                const fact = extractFact(r['Общий итог']);
-                const growth = extractNumber(r['Динамика с прошлой недели']);
-                const colon = extractNumber(r['Прошли колоноскопию']);
-                const zno = extractNumber(r['Выявлено ЗНО C18-C21']);
-                const noDev = extractNumber(r['Нет отклонений']);
-                const hasDev = extractNumber(r['Есть отклонения']);
-                
-                tPlan += plan;
-                tFact += fact;
-                tColon += colon;
-                tZno += zno;
-                tNoDev += noDev;
-                tHasDev += hasDev;
-                tGrowth += growth;
-                
-                mos.push({
-                    name: r['Наименование МО'] || 'МО',
-                    plan: plan,
-                    fact: fact,
-                    percent: plan ? (fact / plan * 100) : 0,
-                    growth: growth,
-                    colon: colon,
-                    zno: zno,
-                    noDev: noDev,
-                    hasDev: hasDev
-                });
-            });
+        if (!window.DashboardPhase1) {
+            console.error('DashboardPhase1 не загружен');
+            setStatus('Ошибка: модуль отчёта не загрузился. Обновите страницу или выполните clasp push.', false);
+            return;
         }
-        
+
+        const mos = DashboardPhase1.buildMosFromData(data);
+        if (!mos.length) {
+            console.warn('renderMOSDashboard: не удалось разобрать строки МО', data);
+            setStatus('Данные архива не распознаны. Проверьте формат mosData в листе «Архив».', false);
+            return;
+        }
+
         currentMOSData = mos;
-        
-        // KPI
-        document.getElementById('totalPercent').innerHTML = `${(tFact / tPlan * 100).toFixed(1)}%`;
-        document.getElementById('totalPlanFact').innerHTML = `${tFact.toLocaleString()} / ${tPlan.toLocaleString()}`;
-        document.getElementById('totalKsk').innerHTML = tFact.toLocaleString();
-        document.getElementById('weeklyGrowth').innerHTML = `<i class="fas fa-arrow-up"></i> +${tGrowth.toLocaleString()} за неделю`;
-        document.getElementById('totalColonPassed').innerHTML = tColon.toLocaleString();
-        document.getElementById('colonPercent').innerHTML = `${tHasDev ? (tColon / tHasDev * 100).toFixed(1) : 0}% из ${tHasDev.toLocaleString()} положительных КНСК`;
-        document.getElementById('totalZno').innerHTML = tZno.toLocaleString();
-        
-        // Рейтинги по выполнению плана (с добавлением факта исследований)
-        const sortedByPlan = [...mos].sort((a, b) => b.percent - a.percent);
-        document.getElementById('top5List').innerHTML = sortedByPlan.slice(0, 5).map(m => 
-            `<div class="rank-item"><span class="rank-item-left"><strong>${m.name}</strong></span><span class="rank-item-right"><span class="percent" style="color:#2ecc71;">${m.percent.toFixed(1)}%</span><div class="detail">${m.fact.toLocaleString()} / ${m.plan.toLocaleString()}</div></span></div>`
-        ).join('');
-        document.getElementById('bottom5List').innerHTML = sortedByPlan.slice(-5).reverse().map(m => 
-            `<div class="rank-item"><span class="rank-item-left"><strong>${m.name}</strong></span><span class="rank-item-right"><span class="percent" style="color:#e67e22;">${m.percent.toFixed(1)}%</span><div class="detail">${m.fact.toLocaleString()} / ${m.plan.toLocaleString()}</div></span></div>`
-        ).join('');
-        
-        // Рейтинги по охвату колоноскопией (с выравниванием вправо)
-        const withCoverage = mos.map(mo => {
-            let coverage = 0;
-            if (mo.hasDev && mo.hasDev > 0) {
-                coverage = (mo.colon / mo.hasDev) * 100;
-            }
-            return { ...mo, coverage };
+        const opts = options || {};
+        const result = DashboardPhase1.renderAll(data, {
+            mos: mos,
+            previousTotals: opts.previousTotals || null,
+            previousMos: opts.previousMos || null,
         });
-        const sortedByCoverage = [...withCoverage].sort((a,b) => b.coverage - a.coverage);
-        const topCoverage = sortedByCoverage.slice(0,5);
-        const bottomCoverage = sortedByCoverage.slice(-5).reverse();
-        
-        document.getElementById('topCoverageList').innerHTML = topCoverage.map(m => `
-            <div class="rank-item">
-                <span class="rank-item-left"><strong>${m.name}</strong></span>
-                <div class="rank-item-right">
-                    <div class="percent" style="color:#2ecc71;">${m.coverage.toFixed(1)}%</div>
-                    <div class="detail">(${m.colon}/${m.hasDev})</div>
-                </div>
-            </div>
-        `).join('');
-        document.getElementById('bottomCoverageList').innerHTML = bottomCoverage.map(m => `
-            <div class="rank-item">
-                <span class="rank-item-left"><strong>${m.name}</strong></span>
-                <div class="rank-item-right">
-                    <div class="percent" style="color:#e67e22;">${m.coverage.toFixed(1)}%</div>
-                    <div class="detail">(${m.colon}/${m.hasDev})</div>
-                </div>
-            </div>
-        `).join('');
-        
-        buildCoverageChart(mos);
-        
-        // Таблица МО
-        document.getElementById('tableBody').innerHTML = mos.map((m, i) => {
-            const cls = m.percent >= 80 ? 'high' : (m.percent >= 40 ? 'medium' : 'low');
-            return `<tr>
-                <td>${i + 1}</td>
-                <td style="text-align:left;">${m.name}</td>
-                <td>${m.plan.toLocaleString()}</td>
-                <td>${m.fact.toLocaleString()}</td>
-                <td><span class="progress-badge ${cls}">${m.percent.toFixed(1)}%</span></td>
-                <td class="growth-positive">+${m.growth}</td>
-                <td>${m.noDev}</td>
-                <td>${m.hasDev}</td>
-                <td>${m.colon}</td>
-                <td>${m.zno}</td>
-            </tr>`;
-        }).join('');
-        
-        updatePlanFactChart(tGrowth);
+
+        updatePlanFactChart(result.totals ? result.totals.growth : 0);
         updateTrendGraph();
-        
-        const now = new Date().toLocaleString();
-        document.getElementById('updateTime').innerHTML = `<i class="far fa-clock"></i> Обновлено: ${now}`;
-        document.getElementById('reportDate').innerHTML = now;
+    }
+
+    function applyArchiveReport(report, previousTotals, previousMos) {
+        if (!window.DashboardPhase1) {
+            setStatus('Модуль отчёта не загрузился. Выполните clasp push и обновите деплой.', false);
+            return;
+        }
+        const normalized = DashboardPhase1.normalizeArchiveReport(report);
+        if (!normalized || !normalized.mosData.length) {
+            setStatus('В архивном отчёте нет данных МО (mosData пуст)', false);
+            return;
+        }
+        renderMOSDashboard(normalized.mosData, {
+            previousTotals: previousTotals,
+            previousMos: previousMos || null,
+        });
+        weeksData = (normalized.weeksData || []).map((w) => ({
+            id: nextId++,
+            start: w.start,
+            end: w.end,
+            value: w.value,
+        }));
+        renderWeeksInput();
+        document.getElementById('doneTextInput').value = normalized.doneText || '';
+        document.getElementById('plansTextInput').value = normalized.plansText || '';
+        document.getElementById('periodInput').value = normalized.period || '';
+        syncTextsToDashboard();
+        syncPeriodToDashboard();
     }
     
     // ==================== РАБОТА С GOOGLE APPS SCRIPT ====================
@@ -705,31 +586,50 @@
             setStatus('Сначала выберите отчёт из выпадающего списка "Архив"', false);
             return;
         }
-        setStatus('Загрузка выбранного архивного отчёта...');
-        if (typeof google !== 'undefined' && google.script && google.script.run) {
-            google.script.run
-                .withSuccessHandler(function(report) {
-                    currentMOSData = report.mosData;
-                    renderMOSDashboard(report.mosData);
-                    weeksData = report.weeksData.map((w, idx) => ({ id: nextId++, start: w.start, end: w.end, value: w.value }));
-                    renderWeeksInput();
-                    updateTrendGraph();
-                    document.getElementById('doneTextInput').value = report.doneText || '';
-                    document.getElementById('plansTextInput').value = report.plansText || '';
-                    document.getElementById('periodInput').value = report.period || '';
-                    syncTextsToDashboard();
-                    syncPeriodToDashboard();
-                    const totalGrowth = report.mosData.reduce((sum, m) => sum + (m.growth || 0), 0);
-                    updatePlanFactChart(totalGrowth);
-                    setStatus(`✅ Загружен архивный отчёт от ${report.timestamp || '—'}`, true);
-                })
-                .withFailureHandler(function(err) {
-                    setStatus('Ошибка загрузки: ' + err.message, false);
-                })
-                .getArchivedReportById(parseInt(selectedId));
-        } else {
+        loadArchiveReportById(parseInt(selectedId, 10));
+    }
+
+    function loadArchiveReportById(reportId) {
+        setStatus('Загрузка архивного отчёта...');
+        if (typeof google === 'undefined' || !google.script || !google.script.run) {
             setStatus('Google Apps Script API недоступен. Архив работает только в веб-приложении Google Apps Script.', false);
+            return;
         }
+
+        const prevId = window.DashboardPhase1
+            ? DashboardPhase1.getPreviousArchiveId(archiveReportsList, reportId)
+            : null;
+
+        function onReportLoaded(report, previousTotals, previousMos) {
+            if (!report) {
+                setStatus('Пустой ответ сервера при загрузке архива', false);
+                return;
+            }
+            applyArchiveReport(report, previousTotals, previousMos);
+            setStatus(`✅ Загружен архивный отчёт от ${report.timestamp || '—'}`, true);
+        }
+
+        google.script.run
+            .withSuccessHandler(function (report) {
+                if (!prevId) {
+                    onReportLoaded(report, null, null);
+                    return;
+                }
+                google.script.run
+                    .withSuccessHandler(function (prevReport) {
+                        const prevTotals = DashboardPhase1.computeTotalsFromMosData(prevReport.mosData);
+                        const prevMos = DashboardPhase1.buildMosFromData(prevReport.mosData);
+                        onReportLoaded(report, prevTotals, prevMos);
+                    })
+                    .withFailureHandler(function () {
+                        onReportLoaded(report, null, null);
+                    })
+                    .getArchivedReportById(prevId);
+            })
+            .withFailureHandler(function (err) {
+                setStatus('Ошибка загрузки: ' + err.message, false);
+            })
+            .getArchivedReportById(reportId);
     }
     
     function saveCurrentReportToArchive() {
@@ -769,16 +669,17 @@
         if (typeof google !== 'undefined' && google.script && google.script.run) {
             google.script.run
                 .withSuccessHandler(function(list) {
+                    archiveReportsList = list && Array.isArray(list) ? list : [];
                     select.innerHTML = '<option value="">— Выберите отчёт —</option>';
-                    if (list && Array.isArray(list) && list.length > 0) {
-                        list.sort((a, b) => b.id - a.id);
-                        list.forEach(item => {
+                    if (archiveReportsList.length > 0) {
+                        archiveReportsList.sort((a, b) => b.id - a.id);
+                        archiveReportsList.forEach(item => {
                             const option = document.createElement('option');
                             option.value = item.id;
                             option.textContent = item.dateStr || 'Без даты';
                             select.appendChild(option);
                         });
-                        setStatus(`✅ Загружено ${list.length} архивных отчётов`, true);
+                        setStatus(`✅ Загружено ${archiveReportsList.length} архивных отчётов`, true);
                     } else {
                         const option = document.createElement('option');
                         option.value = '';
@@ -808,12 +709,29 @@
             setStatus('Нет данных для сохранения. Загрузите CSV или архив.', false);
             return;
         }
+
+        setStatus('Подготовка HTML-файла...', true);
     
         const dashboardContent = document.getElementById('dashboardContent').cloneNode(true);
         
         let allStyles = '';
         const styleNodes = document.querySelectorAll('style');
         styleNodes.forEach(style => { allStyles += style.innerHTML; });
+
+        const assetsPromise = Promise.all([
+            fetch('UiTokens.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
+            fetch('DashboardPhase1.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
+        ]);
+
+        assetsPromise.then(([tokensCss, phase1Js]) => {
+            const cssOnly = (tokensCss || '').replace(/<\/?style[^>]*>/gi, '').trim();
+            buildExportHtml(dashboardContent, allStyles + '\n' + cssOnly, phase1Js);
+        }).catch(() => {
+            buildExportHtml(dashboardContent, allStyles, '');
+        });
+    }
+
+    function buildExportHtml(dashboardContent, allStyles, phase1Js) {
     
         const weeksDataForExport = weeksData.map(w => ({ start: w.start, end: w.end, value: w.value }));
         const mosDataForExport = currentMOSData;
@@ -835,7 +753,7 @@
             return `${format(nextMonday)} - ${format(nextFriday)}`;
         }
     
-        const exportHtml = `<!DOCTYPE html>
+        const exportHtmlHead = `<!DOCTYPE html>
     <html lang="ru">
     <head>
         <meta charset="UTF-8">
@@ -864,7 +782,7 @@
             }
         </style>
     </head>
-    <body>
+    <body class="dashboard-phase1">
     <div class="dashboard">
         ${dashboardContent.outerHTML}
     <\/div>
@@ -902,7 +820,7 @@
         document.getElementById('nextWeekPeriodDisplay').innerHTML = NEXT_WEEK_PERIOD;
         document.getElementById('periodDisplayText').innerHTML = PERIOD_TEXT || 'Период не указан';
         
-        let dynamicChart = null, planFactChart = null, coverageChart = null;
+        let dynamicChart = null, planFactChart = null;
         
         function getWeeksData() {
             return EXPORTED_WEEKS.map(w => ({ 
@@ -943,97 +861,30 @@
             document.getElementById('planFactNote').innerHTML = '⚠️ <strong>' + pct + '% выполнения недельного плана<\/strong>';
         }
         
-        function buildCoverageChart(mosData) {
-            if (!mosData.length) return;
-            const withCoverage = mosData.map(mo => {
-                let coverage = 0;
-                if (mo.hasDev && mo.hasDev > 0) coverage = (mo.colon / mo.hasDev) * 100;
-                return { name: mo.name, coverage, colon: mo.colon, hasDev: mo.hasDev };
-            });
-            const sorted = [...withCoverage].sort((a,b) => b.coverage - a.coverage);
-            const top10 = sorted.slice(0,10);
-            const labels = top10.map(m => m.name.length > 25 ? m.name.slice(0,22)+'...' : m.name);
-            const data = top10.map(m => m.coverage);
-            const ctx = document.getElementById('coverageChart').getContext('2d');
-            if (coverageChart) coverageChart.destroy();
-            coverageChart = new Chart(ctx, {
-                type: 'bar',
-                data: { labels, datasets: [{ label: 'Охват колоноскопией, %', data, backgroundColor: '#2c7da0', borderRadius: 8, barPercentage: 0.7 }] },
-                options: {
-                    responsive: true, maintainAspectRatio: true,
-                    plugins: {
-                        tooltip: { callbacks: { label: (ctx) => ctx.raw.toFixed(1) + '% (Колоноскопий: ' + top10[ctx.dataIndex].colon + ' из ' + top10[ctx.dataIndex].hasDev + ' положит.)' } },
-                        datalabels: { display: true, color: '#1e293b', anchor: 'end', align: 'top', formatter: (val) => val.toFixed(1)+'%', font: { weight: 'bold', size: 11 } }
-                    },
-                    scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Процент охвата (%)' }, ticks: { callback: (val) => val+'%' } }, x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 30 } } }
-                }
-            });
-        }
-        
+        `;
+
+        const phase1Block = phase1Js
+            ? phase1Js
+                .replace(/<\/?script[^>]*>/gi, '')
+                .replace(/<\/script>/gi, '<\\/script>') + '\n'
+            : '';
+
+        const exportTail = `
         (function render() {
-            let tPlan = 0, tFact = 0, tColon = 0, tZno = 0, tHasDev = 0, tGrowth = 0;
-            const mos = EXPORTED_MOS.map(m => {
-                tPlan += m.plan || 0;
-                tFact += m.fact || 0;
-                tColon += m.colon || 0;
-                tZno += m.zno || 0;
-                tHasDev += m.hasDev || 0;
-                tGrowth += m.growth || 0;
-                return m;
-            });
-            
+            const mos = EXPORTED_MOS;
+            if (window.DashboardPhase1) {
+                DashboardPhase1.renderAll(mos, { mos: mos });
+            }
+            let tGrowth = 0;
+            mos.forEach(m => { tGrowth += m.growth || 0; });
             updatePlanFactChart(tGrowth);
             updateTrendGraph();
-            buildCoverageChart(mos);
-            
-            document.getElementById('totalPercent').innerHTML = (tFact/tPlan*100).toFixed(1) + '%';
-            document.getElementById('totalPlanFact').innerHTML = tFact.toLocaleString() + ' / ' + tPlan.toLocaleString();
-            document.getElementById('totalKsk').innerHTML = tFact.toLocaleString();
-            document.getElementById('weeklyGrowth').innerHTML = '<i class="fas fa-arrow-up"><\/i> +' + tGrowth.toLocaleString() + ' за неделю';
-            document.getElementById('totalColonPassed').innerHTML = tColon.toLocaleString();
-            document.getElementById('colonPercent').innerHTML = (tHasDev ? (tColon/tHasDev*100).toFixed(1) : 0) + '% из ' + tHasDev.toLocaleString() + ' положительных КНСК';
-            document.getElementById('totalZno').innerHTML = tZno.toLocaleString();
-            
-            const sortedByPlan = [...mos].sort((a,b) => b.percent - a.percent);
-            document.getElementById('top5List').innerHTML = sortedByPlan.slice(0,5).map(m => 
-                '<div class="rank-item"><span class="rank-item-left"><strong>' + m.name + '<\/strong><\/span><span class="rank-item-right"><span class="percent" style="color:#2ecc71;">' + m.percent.toFixed(1) + '%<\/span><div class="detail">' + m.fact.toLocaleString() + ' / ' + m.plan.toLocaleString() + '<\/div><\/span><\/div>'
-            ).join('');
-            document.getElementById('bottom5List').innerHTML = sortedByPlan.slice(-5).reverse().map(m => 
-                '<div class="rank-item"><span class="rank-item-left"><strong>' + m.name + '<\/strong><\/span><span class="rank-item-right"><span class="percent" style="color:#e67e22;">' + m.percent.toFixed(1) + '%<\/span><div class="detail">' + m.fact.toLocaleString() + ' / ' + m.plan.toLocaleString() + '<\/div><\/span><\/div>'
-            ).join('');
-            
-            const withCoverage = mos.map(m => ({ ...m, coverage: (m.hasDev && m.hasDev>0) ? (m.colon/m.hasDev)*100 : 0 }));
-            const sortedCoverage = [...withCoverage].sort((a,b) => b.coverage - a.coverage);
-            document.getElementById('topCoverageList').innerHTML = sortedCoverage.slice(0,5).map(m => 
-                '<div class="rank-item"><span class="rank-item-left"><strong>' + m.name + '<\/strong><\/span><div class="rank-item-right"><div class="percent" style="color:#2ecc71;">' + m.coverage.toFixed(1) + '%<\/div><div class="detail">(' + m.colon + '/' + m.hasDev + ')<\/div><\/div><\/div>'
-            ).join('');
-            document.getElementById('bottomCoverageList').innerHTML = sortedCoverage.slice(-5).reverse().map(m => 
-                '<div class="rank-item"><span class="rank-item-left"><strong>' + m.name + '<\/strong><\/span><div class="rank-item-right"><div class="percent" style="color:#e67e22;">' + m.coverage.toFixed(1) + '%<\/div><div class="detail">(' + m.colon + '/' + m.hasDev + ')<\/div><\/div><\/div>'
-            ).join('');
-            
-            document.getElementById('tableBody').innerHTML = mos.map((m, i) => {
-                const cls = m.percent >= 80 ? 'high' : (m.percent >= 40 ? 'medium' : 'low');
-                return '<tr>' +
-                    '<td>' + (i+1) + '<\/td>' +
-                    '<td style="text-align:left;">' + m.name + '<\/td>' +
-                    '<td>' + m.plan.toLocaleString() + '<\/td>' +
-                    '<td>' + m.fact.toLocaleString() + '<\/td>' +
-                    '<td><span class="progress-badge ' + cls + '">' + m.percent.toFixed(1) + '%<\/span><\/td>' +
-                    '<td class="growth-positive">+' + m.growth + '<\/td>' +
-                    '<td>' + m.noDev + '<\/td>' +
-                    '<td>' + m.hasDev + '<\/td>' +
-                    '<td>' + m.colon + '<\/td>' +
-                    '<td>' + m.zno + '<\/td>' +
-                '<\/tr>';
-            }).join('');
-            
-            const updateTime = new Date().toLocaleString();
-            document.getElementById('updateTime').innerHTML = '<i class="far fa-clock"><\/i> Обновлено: ' + updateTime;
-            document.getElementById('reportDate').innerHTML = updateTime;
         })();
     <\/script>
     </body>
     </html>`;
+
+        const exportHtml = exportHtmlHead + phase1Block + exportTail;
     
         const blob = new Blob([exportHtml], { type: 'text/html;charset=utf-8' });
         const url = URL.createObjectURL(blob);
@@ -1119,6 +970,10 @@
         document.getElementById('plansTextInput').addEventListener('input', syncTextsToDashboard);
         document.getElementById('periodInput').addEventListener('input', syncPeriodToDashboard);
         document.getElementById('refreshArchiveBtn').addEventListener('click', loadArchiveList);
+
+        document.getElementById('archiveSelect').addEventListener('change', function () {
+            if (this.value) loadArchiveReportById(parseInt(this.value, 10));
+        });
     });
 </script>
 <script src="config.js"></script>

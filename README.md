@@ -11,6 +11,7 @@
 ### UI/UX
 - **C3**: Адаптивный дизайн для мобильных устройств
 - **C4**: Skeleton loading для асинхронных операций
+- **Фаза 1**: Сигналы, KPI с дельтой к прошлому архиву, bar-рейтинги, таблица с heatmap и поиском (`UiTokens.html`, `DashboardPhase1.html` в корне — для `include()` в GAS; исходники также в `src/ui/tokens.css`, `src/dashboard/dashboardPhase1.js`)
 
 ### Надёжность
 - **D2**: Логирование с уровнями (debug/info/warn/error)
