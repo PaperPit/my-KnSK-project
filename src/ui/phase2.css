@@ -389,7 +389,7 @@ body.presentation-mode .presentation-exit {
   display: none;
   position: fixed;
   top: 16px;
-  left: calc(16px + max(0px, (100vw - 32px - 1400px) / 2));
+  left: max(16px, calc((100vw - 1600px) / 2 + 16px));
   right: auto;
   z-index: 8000;
   background: rgba(255, 255, 255, 0.95);

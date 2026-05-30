@@ -1,0 +1,16 @@
+# Local build / Node tooling (not valid Apps Script)
+scripts/**
+node_modules/**
+package.json
+package-lock.json
+
+# Source files — synced to root HTML/JS via npm run build:gas
+src/**
+
+# Docs and editor config
+README.md
+migration-guide.md
+git.txt
+my-KnSK-project.code-workspace
+.clasp.json
+.git/**

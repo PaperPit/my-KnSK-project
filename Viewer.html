@@ -7,6 +7,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <script src="constants.js"></script>
+    <?!= include('Shared'); ?>
     <?!= include('UiTokens'); ?>
     <?!= include('UiPhase2'); ?>
     <?!= include('DashboardPhase1'); ?>
@@ -266,14 +268,8 @@
 <script>
     Chart.register(ChartDataLabels);
     
-    const PLAN_WEEKLY = 3333;
-    let dynamicChart = null;
-    let planFactChart = null;
-    
     function formatDate(dateStr) {
-        if (!dateStr) return '';
-        const d = new Date(dateStr);
-        return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
+        return ChartsWeek.formatDate(dateStr);
     }
     
     function getNextWeekPeriod() {
@@ -344,85 +340,11 @@
     }
     
     function updateTrendGraph(weeksArray) {
-        if (!weeksArray || !weeksArray.length) {
-            const trendNote = document.getElementById('trendNote');
-            if (trendNote) trendNote.innerHTML = 'Нет данных о неделях';
-            if (dynamicChart) dynamicChart.destroy();
-            return;
-        }
-        const weeks = weeksArray.map(w => ({ period: `${formatDate(w.start)}-${formatDate(w.end)}`, value: w.value }));
-        const labels = weeks.map(w => w.period);
-        const factValues = weeks.map(w => w.value);
-        const planLine = new Array(weeks.length).fill(PLAN_WEEKLY);
-        const ctx = document.getElementById('trendChart').getContext('2d');
-        if (dynamicChart) dynamicChart.destroy();
-        dynamicChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [
-                    { label: 'Факт КнСК', data: factValues, borderColor: '#1f6392', borderWidth: 3, tension: 0.2, fill: false, pointRadius: 6 },
-                    { label: 'План', data: planLine, borderColor: '#e67e22', borderWidth: 2.5, borderDash: [8,6], fill: false }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    datalabels: { display: false },
-                    tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} иссл.` } }
-                }
-            }
-        });
-        const trendNote = document.getElementById('trendNote');
-        if (trendNote) {
-            trendNote.innerHTML = `* Последняя точка: ${weeks[weeks.length-1].period} — <strong>${factValues[factValues.length-1].toLocaleString()}</strong> (план ~${PLAN_WEEKLY.toLocaleString()})`;
-        }
+        ChartsWeek.updateTrendGraph(weeksArray || []);
     }
     
     function updatePlanFactChart(totalGrowth) {
-        const ctx = document.getElementById('planFactChart').getContext('2d');
-        if (planFactChart) planFactChart.destroy();
-        planFactChart = new Chart(ctx, {
-            type: 'bar', 
-            data: { 
-                labels: ['Недельный план', 'Факт'], 
-                datasets: [{ 
-                    label: 'Исследования КнСК', 
-                    data: [PLAN_WEEKLY, totalGrowth || 0], 
-                    backgroundColor: ['#2c7da0', '#e9b35f'], 
-                    borderRadius: 12,
-                    barPercentage: 0.6,
-                    categoryPercentage: 0.8
-                }] 
-            }, 
-            options: { 
-                responsive: true, 
-                maintainAspectRatio: true,
-                plugins: {
-                    datalabels: {
-                        display: true,
-                        color: '#1e293b',
-                        anchor: 'center',
-                        align: 'center',
-                        font: { size: 14, weight: 'bold' },
-                        formatter: (value) => value.toLocaleString()
-                    }
-                },
-                scales: { 
-                    y: { 
-                        beginAtZero: true, 
-                        title: { display: true, text: 'Количество исследований' },
-                        ticks: { callback: (value) => value.toLocaleString() }
-                    }
-                }
-            }
-        });
-        const percent = totalGrowth ? (totalGrowth / PLAN_WEEKLY * 100).toFixed(1) : 0;
-        const planFactNote = document.getElementById('planFactNote');
-        if (planFactNote) {
-            planFactNote.innerHTML = `⚠️ <strong>${percent}% выполнения недельного плана</strong>`;
-        }
+        ChartsWeek.updatePlanFactChart(totalGrowth);
     }
     
     function renderDashboard(report, previousTotals, previousMos) {
@@ -597,91 +519,64 @@
     function loadArchiveList() {
         const select = document.getElementById('archiveSelect');
         select.innerHTML = '<option value="">— Загрузка списка... —</option>';
-        
-        google.script.run
-            .withSuccessHandler(function(list) {
+
+        ArchiveClient.fetchList(
+            function (list) {
                 reportsList = list || [];
                 window.archiveReportsList = reportsList;
-                select.innerHTML = '<option value="">— Выберите отчёт (доступно ' + reportsList.length + ') —</option>';
-                
-                if (!reportsList || reportsList.length === 0) {
-                    select.innerHTML += '<option disabled>Нет архивных отчётов</option>';
+                reportsList.sort((a, b) => b.id - a.id);
+                ArchiveClient.fillSelect(select, reportsList, {
+                    placeholder: '— Выберите отчёт (доступно ' + reportsList.length + ') —',
+                    emptyLabel: 'Нет архивных отчётов',
+                    formatLabel: (item) => item.dateStr || `Отчёт #${item.id} от ${item.dateStr || 'неизвестно'}`,
+                });
+
+                if (!reportsList.length) {
                     const container = document.getElementById('dashboardContent');
                     container.innerHTML = '<div class="error-message"><i class="fas fa-exclamation-triangle"></i> Нет сохранённых отчётов в архиве</div>';
                     return;
                 }
-                
-                // Сортируем по ID (новые сверху)
-                reportsList.sort((a, b) => b.id - a.id);
-                
-                reportsList.forEach(item => {
-                    const option = document.createElement('option');
-                    option.value = item.id;
-                    option.textContent = item.dateStr || `Отчёт #${item.id} от ${item.dateStr || 'неизвестно'}`;
-                    select.appendChild(option);
-                });
 
                 if (window.DashboardPhase2) {
                     DashboardPhase2.populateCompareSelects(reportsList, null);
                 }
-                
-                // Автоматически загружаем последний отчёт (первый в списке)
-                if (reportsList.length > 0) {
-                    const latestReportId = reportsList[0].id;
-                    select.value = latestReportId;
-                    loadReportById(latestReportId);
-                }
-            })
-            .withFailureHandler(function(err) {
+
+                const latestReportId = reportsList[0].id;
+                select.value = latestReportId;
+                loadReportById(latestReportId);
+            },
+            function (err) {
                 select.innerHTML = '<option value="">— Ошибка загрузки списка —</option>';
                 const container = document.getElementById('dashboardContent');
                 container.innerHTML = `<div class="error-message"><i class="fas fa-times-circle"></i> Ошибка загрузки списка отчётов: ${err.message || err}</div>`;
                 console.error('Ошибка загрузки списка:', err);
-            })
-            .getArchivedReportsList();
+            }
+        );
     }
     
     function loadReportById(id) {
         if (!id || id === '') return;
-        
+
         const container = document.getElementById('dashboardContent');
         container.innerHTML = '<div class="loading-message"><i class="fas fa-spinner fa-pulse"></i> Загрузка отчёта...</div>';
 
         const reportId = parseInt(id, 10);
-        const prevId = window.DashboardPhase1
-            ? DashboardPhase1.getPreviousArchiveId(reportsList, reportId)
-            : null;
 
-        function showReport(report, previousTotals, previousMos) {
-            if (!report) return;
-            if (!report.timestamp) {
-                report.timestamp = new Date().toLocaleDateString('ru-RU');
-            }
-            renderDashboard(report, previousTotals, previousMos);
-        }
-        
-        google.script.run
-            .withSuccessHandler(function(report) {
-                if (!prevId) {
-                    showReport(report, null, null);
-                    return;
+        ArchiveClient.fetchReportWithPrevious(
+            reportId,
+            reportsList,
+            function (report, previousTotals, previousMos) {
+                if (!report) return;
+                if (!report.timestamp) {
+                    report.timestamp = new Date().toLocaleDateString('ru-RU');
                 }
-                google.script.run
-                    .withSuccessHandler(function(prevReport) {
-                        const prevTotals = DashboardPhase1.computeTotalsFromMosData(prevReport.mosData);
-                        const prevMos = DashboardPhase1.buildMosFromData(prevReport.mosData);
-                        showReport(report, prevTotals, prevMos);
-                    })
-                    .withFailureHandler(function() {
-                        showReport(report, null, null);
-                    })
-                    .getArchivedReportById(prevId);
-            })
-            .withFailureHandler(function(err) {
+                renderDashboard(report, previousTotals, previousMos);
+            },
+            function (err) {
                 container.innerHTML = `<div class="error-message"><i class="fas fa-times-circle"></i> Ошибка загрузки отчёта: ${err.message || err}</div>`;
                 console.error('Ошибка загрузки отчёта:', err);
-            })
-            .getArchivedReportById(reportId);
+            }
+        );
     }
     
     window.addEventListener('load', function() {

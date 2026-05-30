@@ -1,0 +1,8 @@
+{
+  "name": "my-knsk-project",
+  "private": true,
+  "scripts": {
+    "build:gas": "node scripts/sync-gas-includes.js",
+    "push": "npm run build:gas && clasp push"
+  }
+}

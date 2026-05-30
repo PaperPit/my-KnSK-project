@@ -8,7 +8,7 @@ const DashboardPhase2 = (function () {
   let lastPreviousMos = null;
 
   function getPlanYear() {
-    return (window.DashboardPhase1 && DashboardPhase1.PLAN_YEAR) || 160000;
+    return window.PLAN_YEAR || 160000;
   }
 
   function truncateName(name, max) {

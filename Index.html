@@ -7,15 +7,12 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <script src="constants.js"></script>
+    <?!= include('Shared'); ?>
     <?!= include('UiTokens'); ?>
     <?!= include('UiPhase2'); ?>
     <?!= include('DashboardPhase1'); ?>
     <?!= include('DashboardPhase2'); ?>
-    <script src="config.js"></script>
-    <script src="src/core/Logger.js"></script>
-    <script src="src/core/EventBus.js"></script>
-    <script src="src/core/StateManager.js"></script>
-    <script src="src/core/GoogleAppsScriptAdapter.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -327,9 +324,6 @@
     let archiveReportsList = [];
     let weeksData = [];
     let nextId = 1;
-    const PLAN_WEEKLY = 3333;
-    let dynamicChart = null;
-    let planFactChart = null;
     
     // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
     function getTextareaSelection(textareaId) {
@@ -414,9 +408,7 @@
     
     // ==================== НЕДЕЛЬНАЯ ДИНАМИКА ====================
     function formatDate(dateStr) {
-        if (!dateStr) return '';
-        const d = new Date(dateStr);
-        return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
+        return ChartsWeek.formatDate(dateStr);
     }
     
     function addWeek() {
@@ -464,37 +456,11 @@
     }
     
     function updateTrendGraph() {
-        const w = getCurrentWeeksData();
-        if (!w.length) {
-            document.getElementById('trendNote').innerHTML = 'Добавьте недели';
-            if (dynamicChart) dynamicChart.destroy();
-            return;
-        }
-        const labels = w.map(item => item.period);
-        const facts = w.map(item => item.value);
-        const planLine = new Array(w.length).fill(PLAN_WEEKLY);
-        const ctx = document.getElementById('trendChart').getContext('2d');
-        if (dynamicChart) dynamicChart.destroy();
-        dynamicChart = new Chart(ctx, {
-            type: 'line',
-            data: { labels, datasets: [
-                { label: 'Факт КнСК', data: facts, borderColor: '#1f6392', borderWidth: 3, tension: 0.2, fill: false, pointRadius: 6 },
-                { label: 'План', data: planLine, borderColor: '#e67e22', borderWidth: 2.5, borderDash: [8,6], fill: false }
-            ]},
-            options: { responsive: true, maintainAspectRatio: true, plugins: { datalabels: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} иссл.` } } } }
-        });
-        document.getElementById('trendNote').innerHTML = `* Последняя точка: ${w[w.length-1].period} — <strong>${facts[facts.length-1].toLocaleString()}</strong> (план ~${PLAN_WEEKLY.toLocaleString()})`;
+        ChartsWeek.updateTrendGraph(getCurrentWeeksData);
     }
     
     function updatePlanFactChart(growth) {
-        if (planFactChart) planFactChart.destroy();
-        const ctx = document.getElementById('planFactChart').getContext('2d');
-        planFactChart = new Chart(ctx, {
-            type: 'bar', data: { labels: ['Недельный план', 'Факт'], datasets: [{ label: 'Исследования КнСК', data: [PLAN_WEEKLY, growth || 0], backgroundColor: ['#2c7da0', '#e9b35f'], borderRadius: 12, barPercentage: 0.6 }] },
-            options: { responsive: true, maintainAspectRatio: true, plugins: { datalabels: { display: true, color: '#1e293b', anchor: 'center', align: 'center', font: { size: 14, weight: 'bold' }, formatter: v => v.toLocaleString() } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Количество исследований' }, ticks: { callback: v => v.toLocaleString() } } } }
-        });
-        const pct = growth ? (growth / PLAN_WEEKLY * 100).toFixed(1) : 0;
-        document.getElementById('planFactNote').innerHTML = `⚠️ <strong>${pct}% выполнения недельного плана</strong>`;
+        ChartsWeek.updatePlanFactChart(growth);
     }
 
     // ==================== ПАРСИНГ CSV И ОТРИСОВКА ====================
@@ -625,45 +591,26 @@
 
     function loadArchiveReportById(reportId) {
         setStatus('Загрузка архивного отчёта...');
-        if (typeof google === 'undefined' || !google.script || !google.script.run) {
+        if (!ArchiveClient.isAvailable()) {
             setStatus('Google Apps Script API недоступен. Архив работает только в веб-приложении Google Apps Script.', false);
             return;
         }
 
-        const prevId = window.DashboardPhase1
-            ? DashboardPhase1.getPreviousArchiveId(archiveReportsList, reportId)
-            : null;
-
-        function onReportLoaded(report, previousTotals, previousMos) {
-            if (!report) {
-                setStatus('Пустой ответ сервера при загрузке архива', false);
-                return;
-            }
-            applyArchiveReport(report, previousTotals, previousMos);
-            setStatus(`✅ Загружен архивный отчёт от ${report.timestamp || '—'}`, true);
-        }
-
-        google.script.run
-            .withSuccessHandler(function (report) {
-                if (!prevId) {
-                    onReportLoaded(report, null, null);
+        ArchiveClient.fetchReportWithPrevious(
+            reportId,
+            archiveReportsList,
+            function (report, previousTotals, previousMos) {
+                if (!report) {
+                    setStatus('Пустой ответ сервера при загрузке архива', false);
                     return;
                 }
-                google.script.run
-                    .withSuccessHandler(function (prevReport) {
-                        const prevTotals = DashboardPhase1.computeTotalsFromMosData(prevReport.mosData);
-                        const prevMos = DashboardPhase1.buildMosFromData(prevReport.mosData);
-                        onReportLoaded(report, prevTotals, prevMos);
-                    })
-                    .withFailureHandler(function () {
-                        onReportLoaded(report, null, null);
-                    })
-                    .getArchivedReportById(prevId);
-            })
-            .withFailureHandler(function (err) {
+                applyArchiveReport(report, previousTotals, previousMos);
+                setStatus(`✅ Загружен архивный отчёт от ${report.timestamp || '—'}`, true);
+            },
+            function (err) {
                 setStatus('Ошибка загрузки: ' + err.message, false);
-            })
-            .getArchivedReportById(reportId);
+            }
+        );
     }
     
     function saveCurrentReportToArchive() {
@@ -697,45 +644,37 @@
     function loadArchiveList() {
         const select = document.getElementById('archiveSelect');
         if (!select) return;
-        
+
         select.innerHTML = '<option value="">— Загрузка... —</option>';
-        
-        if (typeof google !== 'undefined' && google.script && google.script.run) {
-            google.script.run
-                .withSuccessHandler(function(list) {
-                    archiveReportsList = list && Array.isArray(list) ? list : [];
-                    window.archiveReportsList = archiveReportsList;
-                    select.innerHTML = '<option value="">— Выберите отчёт —</option>';
-                    if (archiveReportsList.length > 0) {
-                        archiveReportsList.sort((a, b) => b.id - a.id);
-                        archiveReportsList.forEach(item => {
-                            const option = document.createElement('option');
-                            option.value = item.id;
-                            option.textContent = item.dateStr || 'Без даты';
-                            select.appendChild(option);
-                        });
-                        if (window.DashboardPhase2) {
-                            DashboardPhase2.populateCompareSelects(archiveReportsList, null);
-                        }
-                        setStatus(`✅ Загружено ${archiveReportsList.length} архивных отчётов`, true);
-                    } else {
-                        const option = document.createElement('option');
-                        option.value = '';
-                        option.disabled = true;
-                        option.textContent = 'Нет архивных отчётов';
-                        select.appendChild(option);
-                        setStatus('В архиве нет сохранённых отчётов', false);
-                    }
-                })
-                .withFailureHandler(function(err) {
-                    select.innerHTML = '<option value="">— Ошибка загрузки —</option>';
-                    setStatus('Ошибка загрузки архива: ' + err.message, false);
-                })
-                .getArchivedReportsList();
-        } else {
+
+        if (!ArchiveClient.isAvailable()) {
             select.innerHTML = '<option value="">— API недоступен —</option>';
             setStatus('Google Apps Script API недоступен. Архив работает только в веб-приложении Google Apps Script.', false);
+            return;
         }
+
+        ArchiveClient.fetchList(
+            function (list) {
+                archiveReportsList = list;
+                window.archiveReportsList = archiveReportsList;
+                ArchiveClient.fillSelect(select, archiveReportsList, {
+                    placeholder: '— Выберите отчёт —',
+                    emptyLabel: 'Нет архивных отчётов',
+                });
+                if (window.DashboardPhase2) {
+                    DashboardPhase2.populateCompareSelects(archiveReportsList, null);
+                }
+                if (archiveReportsList.length > 0) {
+                    setStatus(`✅ Загружено ${archiveReportsList.length} архивных отчётов`, true);
+                } else {
+                    setStatus('В архиве нет сохранённых отчётов', false);
+                }
+            },
+            function (err) {
+                select.innerHTML = '<option value="">— Ошибка загрузки —</option>';
+                setStatus('Ошибка загрузки архива: ' + err.message, false);
+            }
+        );
     }
     
     // ==================== СОХРАНЕНИЕ HTML ====================
@@ -759,19 +698,20 @@
         const assetsPromise = Promise.all([
             fetch('UiPhase2.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
             fetch('UiTokens.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
+            fetch('Shared.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
             fetch('DashboardPhase1.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
             fetch('DashboardPhase2.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
         ]);
 
-        assetsPromise.then(([phase2Css, tokensCss, phase1Js, phase2Js]) => {
+        assetsPromise.then(([phase2Css, tokensCss, sharedJs, phase1Js, phase2Js]) => {
             const cssOnly = (tokensCss + '\n' + phase2Css).replace(/<\/?style[^>]*>/gi, '').trim();
-            buildExportHtml(dashboardContent, allStyles + '\n' + cssOnly, phase1Js, phase2Js);
+            buildExportHtml(dashboardContent, allStyles + '\n' + cssOnly, sharedJs, phase1Js, phase2Js);
         }).catch(() => {
-            buildExportHtml(dashboardContent, allStyles, '', '');
+            buildExportHtml(dashboardContent, allStyles, '', '', '');
         });
     }
 
-    function buildExportHtml(dashboardContent, allStyles, phase1Js, phase2Js) {
+    function buildExportHtml(dashboardContent, allStyles, sharedJs, phase1Js, phase2Js) {
     
         const weeksDataForExport = weeksData.map(w => ({ start: w.start, end: w.end, value: w.value }));
         const mosDataForExport = currentMOSData;
@@ -832,7 +772,7 @@
         
         const EXPORTED_WEEKS = ${JSON.stringify(weeksDataForExport)};
         const EXPORTED_MOS = ${JSON.stringify(mosDataForExport)};
-        const PLAN_WEEKLY = ${PLAN_WEEKLY};
+        const PLAN_WEEKLY = ${window.PLAN_WEEKLY || 3333};
         const DONE_TEXT = ${JSON.stringify(doneText)};
         const PLANS_TEXT = ${JSON.stringify(plansText)};
         const PERIOD_TEXT = ${JSON.stringify(periodText)};
@@ -861,8 +801,6 @@
         document.getElementById('nextWeekPeriodDisplay').innerHTML = NEXT_WEEK_PERIOD;
         document.getElementById('periodDisplayText').innerHTML = PERIOD_TEXT || 'Период не указан';
         
-        let dynamicChart = null, planFactChart = null;
-        
         function getWeeksData() {
             return EXPORTED_WEEKS.map(w => ({ 
                 period: formatDate(w.start) + '-' + formatDate(w.end), 
@@ -870,40 +808,11 @@
             }));
         }
         
-        function updateTrendGraph() {
-            const weeks = getWeeksData();
-            if (!weeks.length) return;
-            const labels = weeks.map(w => w.period);
-            const facts = weeks.map(w => w.value);
-            const planLine = new Array(weeks.length).fill(PLAN_WEEKLY);
-            const ctx = document.getElementById('trendChart').getContext('2d');
-            if (dynamicChart) dynamicChart.destroy();
-            dynamicChart = new Chart(ctx, {
-                type: 'line',
-                data: { labels, datasets: [
-                    { label: 'Факт КнСК', data: facts, borderColor: '#1f6392', borderWidth: 3, tension: 0.2, fill: false, pointRadius: 6 },
-                    { label: 'План', data: planLine, borderColor: '#e67e22', borderWidth: 2.5, borderDash: [8,6], fill: false }
-                ]},
-                options: { responsive: true, maintainAspectRatio: true, plugins: { datalabels: { display: false }, tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + ctx.raw.toLocaleString() + ' иссл.' } } } }
-            });
-            const last = facts[facts.length-1];
-            document.getElementById('trendNote').innerHTML = '* Последняя точка: ' + weeks[weeks.length-1].period + ' — <strong>' + last.toLocaleString() + '<\/strong> (план ~' + PLAN_WEEKLY.toLocaleString() + ')';
-        }
-        
-        function updatePlanFactChart(growth) {
-            const ctx = document.getElementById('planFactChart').getContext('2d');
-            if (planFactChart) planFactChart.destroy();
-            planFactChart = new Chart(ctx, {
-                type: 'bar',
-                data: { labels: ['Недельный план', 'Факт'], datasets: [{ label: 'Исследования КнСК', data: [PLAN_WEEKLY, growth || 0], backgroundColor: ['#2c7da0', '#e9b35f'], borderRadius: 12, barPercentage: 0.6 }] },
-                options: { responsive: true, maintainAspectRatio: true, plugins: { datalabels: { display: true, color: '#1e293b', anchor: 'center', align: 'center', font: { size: 14, weight: 'bold' }, formatter: v => v.toLocaleString() } }, scales: { y: { beginAtZero: true, ticks: { callback: v => v.toLocaleString() } } } }
-            });
-            const pct = growth ? (growth / PLAN_WEEKLY * 100).toFixed(1) : 0;
-            document.getElementById('planFactNote').innerHTML = '⚠️ <strong>' + pct + '% выполнения недельного плана<\/strong>';
-        }
-        
         `;
 
+        const sharedBlock = sharedJs
+            ? sharedJs.replace(/<\/?script[^>]*>/gi, '').replace(/<\/script>/gi, '<\\/script>') + '\n'
+            : '';
         const phase1Block = phase1Js
             ? phase1Js.replace(/<\/?script[^>]*>/gi, '').replace(/<\/script>/gi, '<\\/script>') + '\n'
             : '';
@@ -923,14 +832,16 @@
             }
             let tGrowth = 0;
             mos.forEach(m => { tGrowth += m.growth || 0; });
-            updatePlanFactChart(tGrowth);
-            updateTrendGraph();
+            if (window.ChartsWeek) {
+                ChartsWeek.updatePlanFactChart(tGrowth);
+                ChartsWeek.updateTrendGraph(getWeeksData);
+            }
         })();
     <\/script>
     </body>
     </html>`;
 
-        const exportHtml = exportHtmlHead + phase1Block + phase2Block + exportTail;
+        const exportHtml = exportHtmlHead + sharedBlock + phase1Block + phase2Block + exportTail;
     
         const blob = new Blob([exportHtml], { type: 'text/html;charset=utf-8' });
         const url = URL.createObjectURL(blob);

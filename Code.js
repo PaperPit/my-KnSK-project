@@ -108,6 +108,22 @@ function deleteBackupFromSheet(sheetName, backupId) {
 
 // ==================== РАБОТА С АРХИВОМ ====================
 
+function getNextArchiveId_(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 1;
+
+  const numRows = lastRow - 1;
+  const ids = sheet.getRange(2, 1, numRows, 1).getValues();
+  let maxId = 0;
+
+  ids.forEach(function (row) {
+    const n = Number(row[0]);
+    if (!isNaN(n) && n > maxId) maxId = n;
+  });
+
+  return maxId + 1;
+}
+
 // Сохранение отчёта в архив
 function saveReportToArchive(reportData) {
   try {
@@ -135,10 +151,7 @@ function saveReportToArchive(reportData) {
     
     const now = new Date();
     const json = JSON.stringify(reportData);
-    
-    // Получаем следующий ID
-    const dataRows = archiveSheet.getLastRow() - 1; // минус заголовок
-    const newId = dataRows + 1;
+    const newId = getNextArchiveId_(archiveSheet);
     
     archiveSheet.appendRow([newId, now, json, reportData.period || '']);
     
