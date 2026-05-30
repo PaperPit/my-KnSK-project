@@ -19,7 +19,7 @@ const CONFIG = {
     chunkSize: 1024 * 1024,           // 1 MB на чанк для worker
     defaultDelimiter: ',',
     encoding: 'UTF-8',
-    useWorker: true,                  // Использовать Web Worker (E4)
+    useWorker: false,                 // Web Worker (файл src/workers/csvParser.worker.js отсутствует)
   },
   
   // Настройки таблицы (виртуализация E1)

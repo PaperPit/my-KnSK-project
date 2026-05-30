@@ -215,14 +215,12 @@ const DashboardPhase1 = (function () {
     if (prev) {
       const prevYearPercent = PLAN_YEAR ? (prev.fact / PLAN_YEAR) * 100 : 0;
       setDeltaEl('totalPercentDelta', formatDeltaHtml(yearPercent, prevYearPercent, { isPercent: true }));
-      setDeltaEl('totalKskDelta', formatDeltaHtml(t.fact, prev.fact, { format: 'locale' }));
       setDeltaEl('totalGrowthDelta', formatDeltaHtml(t.growth, prev.growth, { format: 'locale', suffix: ' за неделю' }));
       setDeltaEl('totalColonDelta', formatDeltaHtml(t.colon, prev.colon, { format: 'locale' }));
       setDeltaEl('totalZnoDelta', formatDeltaHtml(t.zno, prev.zno, { format: 'locale' }));
     } else {
       [
         'totalPercentDelta',
-        'totalKskDelta',
         'totalGrowthDelta',
         'totalColonDelta',
         'totalZnoDelta',
@@ -473,7 +471,7 @@ const DashboardPhase1 = (function () {
         const bClass = badgeClass(m.percent);
         const growthCls = m.growth >= 0 ? 'growth-positive' : 'growth-negative';
 
-        return `<tr class="${match ? '' : 'table-row-hidden'}" data-mo-name="${escapeHtml(m.name)}">
+        return `<tr class="${match ? 'mo-row-clickable' : 'table-row-hidden'}" data-mo-idx="${i}" data-mo-name="${escapeHtml(m.name)}">
         <td>${i + 1}</td>
         <td style="text-align:left;font-weight:600;">${escapeHtml(m.name)}</td>
         <td>${m.plan.toLocaleString('ru-RU')}</td>
@@ -513,9 +511,10 @@ const DashboardPhase1 = (function () {
   }
 
   function renderTable(mos) {
-    lastMosForTable = mos;
+    const sorted = [...mos].sort((a, b) => b.percent - a.percent);
+    lastMosForTable = sorted;
     const input = document.getElementById('moTableSearch');
-    renderTableRows(mos, input ? input.value : '');
+    renderTableRows(sorted, input ? input.value : '');
     setupTableSearch();
   }
 

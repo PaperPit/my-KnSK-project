@@ -1,0 +1,444 @@
+/**
+ * Фаза 2: сравнение архивов, drawer МО, презентация
+ */
+const DashboardPhase2 = (function () {
+  const echartsInstances = {};
+  let tableClickBound = false;
+  let lastMos = [];
+  let lastPreviousMos = null;
+
+  function getPlanYear() {
+    return (window.DashboardPhase1 && DashboardPhase1.PLAN_YEAR) || 160000;
+  }
+
+  function truncateName(name, max) {
+    const n = name || 'МО';
+    return n.length > max ? `${n.slice(0, max - 1)}…` : n;
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function findMoByName(mos, name) {
+    const key = String(name || '').trim().toLowerCase();
+    return (mos || []).find((m) => String(m.name || '').trim().toLowerCase() === key) || null;
+  }
+
+  function sortMosByPlanPercent(mos) {
+    return [...(mos || [])].sort((a, b) => b.percent - a.percent);
+  }
+
+  function disposeChart(id) {
+    if (echartsInstances[id]) {
+      echartsInstances[id].dispose();
+      delete echartsInstances[id];
+    }
+  }
+
+  function initChart(domId) {
+    if (typeof echarts === 'undefined') return null;
+    const el = document.getElementById(domId);
+    if (!el) return null;
+    disposeChart(domId);
+    echartsInstances[domId] = echarts.init(el);
+    return echartsInstances[domId];
+  }
+
+  function renderMoDrawerChart(mo) {
+    const chart = initChart('moDrawerChart');
+    if (!chart || !mo) return;
+
+    const coverage = mo.hasDev > 0 ? (mo.colon / mo.hasDev) * 100 : 0;
+    chart.setOption({
+      tooltip: { trigger: 'axis' },
+      grid: { left: 40, right: 16, top: 16, bottom: 28 },
+      xAxis: {
+        type: 'category',
+        data: ['План %', 'Факт', 'Динам.', 'Колоноск.', 'ЗНО'],
+        axisLabel: { fontSize: 9 },
+      },
+      yAxis: { type: 'value', axisLabel: { fontSize: 9 } },
+      series: [
+        {
+          type: 'bar',
+          data: [
+            parseFloat(mo.percent.toFixed(1)),
+            mo.fact,
+            mo.growth,
+            mo.colon,
+            mo.zno,
+          ],
+          itemStyle: {
+            color(params) {
+              const colors = ['#2c7da0', '#1e4663', '#1f8a4c', '#e67e22', '#c0392b'];
+              return colors[params.dataIndex] || '#2c7da0';
+            },
+            borderRadius: [4, 4, 0, 0],
+          },
+          label: { show: true, position: 'top', fontSize: 9 },
+        },
+      ],
+    });
+  }
+
+  function formatDeltaSmall(cur, prev, isPercent) {
+    if (prev == null || prev === undefined) return '';
+    const diff = cur - prev;
+    if (diff === 0) return '<span class="m-delta">без изм.</span>';
+    const cls = diff > 0 ? 'color:#1f8a4c' : 'color:#c0392b';
+    const sign = diff > 0 ? '+' : '';
+    const text = isPercent ? `${sign}${diff.toFixed(1)} п.п.` : `${sign}${Math.round(diff).toLocaleString('ru-RU')}`;
+    return `<span class="m-delta" style="${cls}">${text} к прошл. отчёту</span>`;
+  }
+
+  function openMoDrawer(mo, previousMo) {
+    const overlay = document.getElementById('moDrawerOverlay');
+    const body = document.getElementById('moDrawerBody');
+    const title = document.getElementById('moDrawerTitle');
+    if (!overlay || !body || !mo) return;
+
+    if (title) title.textContent = mo.name || 'МО';
+    const coverage = mo.hasDev > 0 ? ((mo.colon / mo.hasDev) * 100).toFixed(1) : '0';
+
+    body.innerHTML = `
+      <div class="mo-drawer-metrics">
+        <div class="mo-drawer-metric">
+          <div class="m-label">% плана</div>
+          <div class="m-value">${mo.percent.toFixed(1)}%</div>
+          ${formatDeltaSmall(mo.percent, previousMo && previousMo.percent, true)}
+        </div>
+        <div class="mo-drawer-metric">
+          <div class="m-label">Факт / план</div>
+          <div class="m-value" style="font-size:0.95rem">${mo.fact.toLocaleString('ru-RU')} / ${mo.plan.toLocaleString('ru-RU')}</div>
+          ${formatDeltaSmall(mo.fact, previousMo && previousMo.fact, false)}
+        </div>
+        <div class="mo-drawer-metric">
+          <div class="m-label">Динамика</div>
+          <div class="m-value">${mo.growth >= 0 ? '+' : ''}${mo.growth}</div>
+          ${formatDeltaSmall(mo.growth, previousMo && previousMo.growth, false)}
+        </div>
+        <div class="mo-drawer-metric">
+          <div class="m-label">Колоноскопия</div>
+          <div class="m-value">${mo.colon}</div>
+          <div class="m-delta">${coverage}% от ${mo.hasDev} КнСК+</div>
+        </div>
+        <div class="mo-drawer-metric">
+          <div class="m-label">Нет откл.</div>
+          <div class="m-value">${mo.noDev}</div>
+        </div>
+        <div class="mo-drawer-metric">
+          <div class="m-label">ЗНО</div>
+          <div class="m-value">${mo.zno}</div>
+          ${formatDeltaSmall(mo.zno, previousMo && previousMo.zno, false)}
+        </div>
+      </div>
+      <div id="moDrawerChart" class="mo-drawer-chart"></div>
+    `;
+
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => renderMoDrawerChart(mo), 50);
+  }
+
+  function closeMoDrawer() {
+    const overlay = document.getElementById('moDrawerOverlay');
+    if (overlay) overlay.classList.remove('open');
+    document.body.style.overflow = '';
+    disposeChart('moDrawerChart');
+  }
+
+  function setupTableRowClicks() {
+    const tbody = document.getElementById('tableBody');
+    if (!tbody || tableClickBound) return;
+    tableClickBound = true;
+
+    tbody.addEventListener('click', function (e) {
+      const row = e.target.closest('tr.mo-row-clickable');
+      if (!row) return;
+      const idx = parseInt(row.getAttribute('data-mo-idx'), 10);
+      if (isNaN(idx) || !lastMos[idx]) return;
+      const mo = lastMos[idx];
+      const prevMo = lastPreviousMos ? findMoByName(lastPreviousMos, mo.name) : null;
+      openMoDrawer(mo, prevMo);
+    });
+  }
+
+  function setupDrawerClose() {
+    const overlay = document.getElementById('moDrawerOverlay');
+    const closeBtn = document.getElementById('moDrawerClose');
+    if (closeBtn) closeBtn.addEventListener('click', closeMoDrawer);
+    if (overlay) {
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) closeMoDrawer();
+      });
+    }
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        closeMoDrawer();
+        if (document.body.classList.contains('presentation-mode')) togglePresentationMode(false);
+      }
+    });
+  }
+
+  function togglePresentationMode(force) {
+    const on = force !== undefined ? force : !document.body.classList.contains('presentation-mode');
+    document.body.classList.toggle('presentation-mode', on);
+    Object.keys(echartsInstances).forEach((id) => {
+      if (echartsInstances[id]) echartsInstances[id].resize();
+    });
+    if (window.Chart && Chart.instances) {
+      Object.values(Chart.instances).forEach((c) => c.resize());
+    }
+  }
+
+  function closeComparePanel() {
+    const panel = document.getElementById('comparePanel');
+    if (panel) panel.style.display = 'none';
+  }
+
+  let compareCloseBound = false;
+
+  function setupComparePanelClose() {
+    if (compareCloseBound) return;
+    compareCloseBound = true;
+    document.addEventListener('click', function (e) {
+      if (e.target.closest('#comparePanelClose')) closeComparePanel();
+    });
+  }
+
+  function setupPresentationToggle() {
+    const presBtn = document.getElementById('presentationModeBtn');
+    const exitBtn = document.getElementById('presentationExitBtn');
+
+    if (presBtn) presBtn.addEventListener('click', () => togglePresentationMode());
+    if (exitBtn) exitBtn.addEventListener('click', () => togglePresentationMode(false));
+  }
+
+  function populateCompareSelects(list, currentId) {
+    const selA = document.getElementById('compareSelectA');
+    const selB = document.getElementById('compareSelectB');
+    if (!selA || !selB) return;
+
+    const opts = (list || [])
+      .map((item) => `<option value="${item.id}">${escapeHtml(item.dateStr || 'Отчёт #' + item.id)}</option>`)
+      .join('');
+
+    selA.innerHTML = '<option value="">— Ранний период —</option>' + opts;
+    selB.innerHTML = '<option value="">— Поздний период —</option>' + opts;
+
+    if (list && list.length >= 2) {
+      const sorted = [...list].sort((a, b) => a.id - b.id);
+      selA.value = String(sorted[sorted.length - 2].id);
+      selB.value = String(sorted[sorted.length - 1].id);
+    } else if (currentId) {
+      selB.value = String(currentId);
+    }
+  }
+
+  function renderComparisonPanel(reportA, reportB, metaA, metaB) {
+    const panel = document.getElementById('comparePanel');
+    const content = document.getElementById('comparePanelContent');
+    if (!panel || !content || !window.DashboardPhase1) return;
+
+    const mosA = DashboardPhase1.buildMosFromData(reportA.mosData || reportA);
+    const mosB = DashboardPhase1.buildMosFromData(reportB.mosData || reportB);
+    const tA = DashboardPhase1.computeTotals(mosA);
+    const tB = DashboardPhase1.computeTotals(mosB);
+    const planYear = getPlanYear();
+    const pctA = planYear ? (tA.fact / planYear) * 100 : 0;
+    const pctB = planYear ? (tB.fact / planYear) * 100 : 0;
+
+    const labelA = metaA || 'Отчёт A';
+    const labelB = metaB || 'Отчёт B';
+
+    function deltaCell(earlier, later, isPct) {
+      const d = later - earlier;
+      let cls = 'neutral';
+      if (d > 0) cls = 'up';
+      else if (d < 0) cls = 'down';
+      const sign = d > 0 ? '+' : '';
+      const text = isPct ? `${sign}${d.toFixed(1)} п.п.` : `${sign}${Math.round(d).toLocaleString('ru-RU')}`;
+      return `<span class="delta ${cls}">${text}</span>`;
+    }
+
+    const mapLater = {};
+    mosB.forEach((m) => {
+      mapLater[String(m.name).trim().toLowerCase()] = m;
+    });
+
+    function buildMoChanges(field) {
+      return mosA
+        .map((m) => {
+          const laterMo = mapLater[String(m.name).trim().toLowerCase()];
+          return { name: m.name, delta: laterMo ? laterMo[field] - m[field] : 0 };
+        })
+        .filter((m) => m.delta !== 0)
+        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+        .slice(0, 5);
+    }
+
+    function renderMoChangeList(items) {
+      if (!items.length) {
+        return '<li class="compare-mo-empty">Нет изменений за период</li>';
+      }
+      return items
+        .map(
+          (m) =>
+            `<li><span>${escapeHtml(truncateName(m.name, 36))}</span><strong class="compare-mo-delta ${m.delta > 0 ? 'up' : m.delta < 0 ? 'down' : 'neutral'}">${m.delta > 0 ? '+' : ''}${m.delta.toLocaleString('ru-RU')}</strong></li>`
+        )
+        .join('');
+    }
+
+    const factChanges = buildMoChanges('fact');
+    const colonChanges = buildMoChanges('colon');
+
+    content.innerHTML = `
+      <p style="font-size:0.82rem;color:#5b6e8c;margin-bottom:12px;">
+        Динамика: <strong>${escapeHtml(labelA)}</strong> → <strong>${escapeHtml(labelB)}</strong>
+        <span style="display:block;font-size:0.75rem;margin-top:4px;">Слева — ранний период, справа — поздний. Изменение = поздний − ранний.</span>
+      </p>
+      <div class="compare-kpi-grid">
+        <div class="compare-kpi">
+          <div class="label">КнСК (факт)</div>
+          <div class="vals">${tA.fact.toLocaleString('ru-RU')} → ${tB.fact.toLocaleString('ru-RU')}</div>
+          ${deltaCell(tA.fact, tB.fact, false)}
+        </div>
+        <div class="compare-kpi">
+          <div class="label">% год. плана</div>
+          <div class="vals">${pctA.toFixed(1)}% → ${pctB.toFixed(1)}%</div>
+          ${deltaCell(pctA, pctB, true)}
+        </div>
+        <div class="compare-kpi">
+          <div class="label">Прирост за нед.</div>
+          <div class="vals">${tA.growth.toLocaleString('ru-RU')} → ${tB.growth.toLocaleString('ru-RU')}</div>
+          ${deltaCell(tA.growth, tB.growth, false)}
+        </div>
+        <div class="compare-kpi">
+          <div class="label">Колоноскопия</div>
+          <div class="vals">${tA.colon.toLocaleString('ru-RU')} → ${tB.colon.toLocaleString('ru-RU')}</div>
+          ${deltaCell(tA.colon, tB.colon, false)}
+        </div>
+        <div class="compare-kpi">
+          <div class="label">ЗНО</div>
+          <div class="vals">${tA.zno} → ${tB.zno}</div>
+          ${deltaCell(tA.zno, tB.zno, false)}
+        </div>
+      </div>
+      <div class="compare-mo-lists-grid">
+        <div class="compare-mo-block">
+          <h4>Топ-5 МО по приросту КнСК — изменение факта (поздний − ранний)</h4>
+          <ul class="compare-mo-list">
+            ${renderMoChangeList(factChanges)}
+          </ul>
+        </div>
+        <div class="compare-mo-block">
+          <h4>Топ-5 МО по приросту колоноскопий — изменение факта (поздний − ранний)</h4>
+          <ul class="compare-mo-list">
+            ${renderMoChangeList(colonChanges)}
+          </ul>
+        </div>
+      </div>
+    `;
+    panel.style.display = 'block';
+  }
+
+  function runArchiveComparison(onStatus) {
+    const idA = parseInt(document.getElementById('compareSelectA')?.value, 10);
+    const idB = parseInt(document.getElementById('compareSelectB')?.value, 10);
+
+    if (!idA || !idB) {
+      if (onStatus) onStatus('Выберите оба отчёта для сравнения', false);
+      return;
+    }
+    if (idA === idB) {
+      if (onStatus) onStatus('Выберите разные отчёты', false);
+      return;
+    }
+    if (typeof google === 'undefined' || !google.script?.run) {
+      if (onStatus) onStatus('Сравнение доступно только в веб-приложении GAS', false);
+      return;
+    }
+
+    if (onStatus) onStatus('Загрузка отчётов для сравнения…', true);
+
+    google.script.run
+      .withSuccessHandler(function (reportA) {
+        google.script.run
+          .withSuccessHandler(function (reportB) {
+            const metaA =
+              (window.archiveReportsList || []).find((r) => r.id === idA)?.dateStr || `ID ${idA}`;
+            const metaB =
+              (window.archiveReportsList || []).find((r) => r.id === idB)?.dateStr || `ID ${idB}`;
+            renderComparisonPanel(reportA, reportB, metaA, metaB);
+            if (onStatus) onStatus('Сравнение построено', true);
+            const panel = document.getElementById('comparePanel');
+            if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          })
+          .withFailureHandler(function (err) {
+            if (onStatus) onStatus('Ошибка загрузки отчёта B: ' + err.message, false);
+          })
+          .getArchivedReportById(idB);
+      })
+      .withFailureHandler(function (err) {
+        if (onStatus) onStatus('Ошибка загрузки отчёта A: ' + err.message, false);
+      })
+      .getArchivedReportById(idA);
+  }
+
+  function setupCompareUI(onStatus) {
+    const btn = document.getElementById('compareReportsBtn');
+    if (btn) btn.addEventListener('click', () => runArchiveComparison(onStatus));
+  }
+
+  function onResize() {
+    Object.keys(echartsInstances).forEach((id) => {
+      if (echartsInstances[id]) echartsInstances[id].resize();
+    });
+  }
+
+  function init(options) {
+    setupDrawerClose();
+    setupPresentationToggle();
+    setupComparePanelClose();
+    setupCompareUI(options && options.onStatus);
+    setupTableRowClicks();
+    window.addEventListener('resize', onResize);
+  }
+
+  /**
+   * @param {Array} mos
+   * @param {{ totals?: object, previousMos?: Array }} options
+   */
+  function renderAll(mos, options) {
+    const opts = options || {};
+    lastMos = sortMosByPlanPercent(mos);
+    lastPreviousMos = opts.previousMos || null;
+    setupTableRowClicks();
+  }
+
+  function resetTableClickBinding() {
+    tableClickBound = false;
+  }
+
+  return {
+    init,
+    renderAll,
+    populateCompareSelects,
+    renderComparisonPanel,
+    runArchiveComparison,
+    openMoDrawer,
+    closeMoDrawer,
+    closeComparePanel,
+    togglePresentationMode,
+    resetTableClickBinding,
+  };
+})();
+
+if (typeof window !== 'undefined') {
+  window.DashboardPhase2 = DashboardPhase2;
+}

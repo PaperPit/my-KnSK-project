@@ -6,8 +6,11 @@
     <title>Онкоскрининг — дашборд (Apps Script)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
     <?!= include('UiTokens'); ?>
+    <?!= include('UiPhase2'); ?>
     <?!= include('DashboardPhase1'); ?>
+    <?!= include('DashboardPhase2'); ?>
     <script src="config.js"></script>
     <script src="src/core/Logger.js"></script>
     <script src="src/core/EventBus.js"></script>
@@ -136,6 +139,7 @@
             <div class="upload-btn" id="saveToArchiveBtn"><i class="fas fa-archive"></i> Сохранить в архив</div>
             <div class="save-html-btn" id="saveHtmlBtn"><i class="fas fa-download"></i> Сохранить как HTML</div>
             <div class="upload-btn" id="webVersionBtn"><i class="fas fa-globe"></i> Веб-версия</div>
+            <button type="button" class="toolbar-btn" id="presentationModeBtn"><i class="fas fa-expand"></i> Презентация</button>
         </div>
         <div class="info-text">
             <i class="fas fa-info-circle"></i> 
@@ -147,6 +151,13 @@
                 <option value="">— Загрузка списка... —</option>
             </select>
             <button class="refresh-btn" id="refreshArchiveBtn" style="background:#2c7da0;color:white;border:none;padding:8px 16px;border-radius:30px;cursor:pointer;"><i class="fas fa-sync-alt"></i></button>
+        </div>
+        <div class="compare-controls" style="width:100%;margin-top:4px;">
+            <label style="color:white;font-size:0.85rem;"><i class="fas fa-code-compare"></i> Сравнить:</label>
+            <select id="compareSelectA" title="Ранний период"></select>
+            <span style="color:white;font-size:0.85rem;">→</span>
+            <select id="compareSelectB" title="Поздний период"></select>
+            <button type="button" id="compareReportsBtn">Сравнить отчёты</button>
         </div>
         <input type="file" id="csvFile" accept=".csv">
     </div>
@@ -212,7 +223,6 @@
                 <div class="kpi-title"><i class="fas fa-vial"></i> КНСК с начала года</div>
                 <div class="kpi-value" id="totalKsk">--</div>
                 <div class="kpi-sub" id="weeklyGrowth">--</div>
-                <div id="totalKskDelta"></div>
                 <div id="totalGrowthDelta"></div>
             </div>
             <div class="kpi-card">
@@ -227,6 +237,12 @@
                 <div class="kpi-sub">1-2 стадия</div>
                 <div id="totalZnoDelta"></div>
             </div>
+        </div>
+
+        <div class="compare-panel" id="comparePanel" style="display:none;">
+            <button type="button" class="compare-panel-close" id="comparePanelClose" aria-label="Закрыть">&times;</button>
+            <h3><i class="fas fa-code-compare"></i> Сравнение двух архивных отчётов</h3>
+            <div id="comparePanelContent"></div>
         </div>
 
         <div class="charts-row">
@@ -279,7 +295,7 @@
         </div>
 
         <div class="table-container">
-            <h3><i class="fas fa-table-list"></i> Сводная таблица по МО (скрининг КнСК)</h3>
+            <h3><i class="fas fa-table-list"></i> Сводная таблица по МО (скрининг КнСК) <span style="font-size:0.72rem;font-weight:500;color:#5b6e8c;">— клик по строке для деталей</span></h3>
             <div class="table-toolbar">
                 <input type="search" id="moTableSearch" placeholder="Поиск по названию МО…" autocomplete="off">
                 <span class="table-filter-hint" id="tableFilterHint"></span>
@@ -290,6 +306,16 @@
             <div style="margin-top: 12px; font-size: 0.7rem; text-align: right;" id="updateTime"></div>
         </div>
         <footer>Отчёт сформирован: <span id="reportDate"></span></footer>
+    </div>
+</div>
+
+<button type="button" class="presentation-exit" id="presentationExitBtn">Закрыть</button>
+
+<div id="moDrawerOverlay" class="mo-drawer-overlay">
+    <div class="mo-drawer" id="moDrawer">
+        <button type="button" class="mo-drawer-close" id="moDrawerClose" aria-label="Закрыть">&times;</button>
+        <h3 id="moDrawerTitle">МО</h3>
+        <div id="moDrawerBody"></div>
     </div>
 </div>
 
@@ -532,6 +558,7 @@
 
         currentMOSData = mos;
         const opts = options || {};
+        if (window.DashboardPhase2) DashboardPhase2.resetTableClickBinding();
         const result = DashboardPhase1.renderAll(data, {
             mos: mos,
             previousTotals: opts.previousTotals || null,
@@ -540,6 +567,13 @@
 
         updatePlanFactChart(result.totals ? result.totals.growth : 0);
         updateTrendGraph();
+
+        if (window.DashboardPhase2) {
+            DashboardPhase2.renderAll(mos, {
+                totals: result.totals,
+                previousMos: opts.previousMos || null,
+            });
+        }
     }
 
     function applyArchiveReport(report, previousTotals, previousMos) {
@@ -670,6 +704,7 @@
             google.script.run
                 .withSuccessHandler(function(list) {
                     archiveReportsList = list && Array.isArray(list) ? list : [];
+                    window.archiveReportsList = archiveReportsList;
                     select.innerHTML = '<option value="">— Выберите отчёт —</option>';
                     if (archiveReportsList.length > 0) {
                         archiveReportsList.sort((a, b) => b.id - a.id);
@@ -679,6 +714,9 @@
                             option.textContent = item.dateStr || 'Без даты';
                             select.appendChild(option);
                         });
+                        if (window.DashboardPhase2) {
+                            DashboardPhase2.populateCompareSelects(archiveReportsList, null);
+                        }
                         setStatus(`✅ Загружено ${archiveReportsList.length} архивных отчётов`, true);
                     } else {
                         const option = document.createElement('option');
@@ -719,19 +757,21 @@
         styleNodes.forEach(style => { allStyles += style.innerHTML; });
 
         const assetsPromise = Promise.all([
+            fetch('UiPhase2.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
             fetch('UiTokens.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
             fetch('DashboardPhase1.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
+            fetch('DashboardPhase2.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
         ]);
 
-        assetsPromise.then(([tokensCss, phase1Js]) => {
-            const cssOnly = (tokensCss || '').replace(/<\/?style[^>]*>/gi, '').trim();
-            buildExportHtml(dashboardContent, allStyles + '\n' + cssOnly, phase1Js);
+        assetsPromise.then(([phase2Css, tokensCss, phase1Js, phase2Js]) => {
+            const cssOnly = (tokensCss + '\n' + phase2Css).replace(/<\/?style[^>]*>/gi, '').trim();
+            buildExportHtml(dashboardContent, allStyles + '\n' + cssOnly, phase1Js, phase2Js);
         }).catch(() => {
-            buildExportHtml(dashboardContent, allStyles, '');
+            buildExportHtml(dashboardContent, allStyles, '', '');
         });
     }
 
-    function buildExportHtml(dashboardContent, allStyles, phase1Js) {
+    function buildExportHtml(dashboardContent, allStyles, phase1Js, phase2Js) {
     
         const weeksDataForExport = weeksData.map(w => ({ start: w.start, end: w.end, value: w.value }));
         const mosDataForExport = currentMOSData;
@@ -761,6 +801,7 @@
         <title>Отчёт по онкоскринингу ${new Date().toLocaleDateString()}</title>
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>
         <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"><\/script>
+        <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\/script>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
         <style>
             ${allStyles}
@@ -864,9 +905,10 @@
         `;
 
         const phase1Block = phase1Js
-            ? phase1Js
-                .replace(/<\/?script[^>]*>/gi, '')
-                .replace(/<\/script>/gi, '<\\/script>') + '\n'
+            ? phase1Js.replace(/<\/?script[^>]*>/gi, '').replace(/<\/script>/gi, '<\\/script>') + '\n'
+            : '';
+        const phase2Block = phase2Js
+            ? phase2Js.replace(/<\/?script[^>]*>/gi, '').replace(/<\/script>/gi, '<\\/script>') + '\n'
             : '';
 
         const exportTail = `
@@ -874,6 +916,10 @@
             const mos = EXPORTED_MOS;
             if (window.DashboardPhase1) {
                 DashboardPhase1.renderAll(mos, { mos: mos });
+            }
+            if (window.DashboardPhase2) {
+                const totals = DashboardPhase1.computeTotals(mos);
+                DashboardPhase2.renderAll(mos, { totals: totals });
             }
             let tGrowth = 0;
             mos.forEach(m => { tGrowth += m.growth || 0; });
@@ -884,7 +930,7 @@
     </body>
     </html>`;
 
-        const exportHtml = exportHtmlHead + phase1Block + exportTail;
+        const exportHtml = exportHtmlHead + phase1Block + phase2Block + exportTail;
     
         const blob = new Blob([exportHtml], { type: 'text/html;charset=utf-8' });
         const url = URL.createObjectURL(blob);
@@ -900,17 +946,6 @@
     
     // ==================== ИНИЦИАЛИЗАЦИЯ ====================
     window.addEventListener('load', function() {
-        function initDemo() {
-            const demoCSV = `№,Наименование МО,План на год,Общий итог,Динамика с прошлой недели,Нет отклонений,Есть отклонения,Прошли колоноскопию,Выявлено ЗНО C18-C21
-    1,Одинцовская ОБ,6227,6052 (97%),+266,5720 (95%),332 (5%),42,9
-    2,Дубненская Б,2068,1515 (73%),+163,1459 (96%),56 (4%),5,13
-    3,Наро-Фоминская Б,2691,1818 (68%),+115,1728 (95%),90 (5%),4,3
-    4,Жуковская ОКБ,2220,1457 (66%),+73,1360 (93%),97 (7%),31,1
-    5,Павлово-Посадская Б,2365,1405 (59%),+1,1326 (94%),79 (6%),19,17`;
-            currentMOSData = parseCSV(demoCSV);
-            renderMOSDashboard(currentMOSData);
-        }
-        
         function initWeeksWithLast5() {
             const today = new Date();
             let lastSunday = new Date(today);
@@ -936,12 +971,15 @@
             updateTrendGraph();
         }
         
-        initDemo();
         initWeeksWithLast5();
         updateNextWeekPeriodDisplay();
         syncTextsToDashboard();
         syncPeriodToDashboard();
         loadArchiveList();
+
+        if (window.DashboardPhase2) {
+            DashboardPhase2.init({ onStatus: setStatus });
+        }
         
         document.getElementById('csvFile').addEventListener('change', e => {
             const file = e.target.files[0];
@@ -975,69 +1013,6 @@
             if (this.value) loadArchiveReportById(parseInt(this.value, 10));
         });
     });
-</script>
-<script src="config.js"></script>
-<!-- D2: Логирование -->
-<script src="src/core/Logger.js"></script>
-
-<!-- A2: Шина событий -->
-<script src="src/core/EventBus.js"></script>
-
-<!-- A3: Менеджер состояния -->
-<script src="src/core/StateManager.js"></script>
-
-<!-- A1: Адаптер для google.script.run -->
-<script src="src/core/GoogleAppsScriptAdapter.js"></script>
-
-<!-- C3: Адаптивный CSS -->
-<link rel="stylesheet" href="src/ui/ResponsiveLayout.css">
-
-<!-- C4: Скелетоны загрузки -->
-<script src="src/ui/SkeletonLoader.js"></script>
-
-<!-- E1: Виртуальная таблица -->
-<script src="src/ui/VirtualTable.js"></script>
-
-<!-- D4: Резервное копирование -->
-<script src="src/backup/BackupManager.js"></script>
-
-<!-- F1: Генератор документации -->
-<script src="src/docs/DocGenerator.js"></script>
-
-<!-- E4: Регистрация Web Worker для CSV -->
-<script>
-if (window.Worker && window.CONFIG?.csv?.useWorker) {
-    const csvWorker = new Worker('src/workers/csvParser.worker.js');
-    csvWorker.onmessage = function(e) {
-        const data = e.data;
-        if (data.type === 'complete') {
-            console.log(`Парсинг завершён: ${data.totalRows} строк`);
-            // Используйте данные
-            window.processCSVData(data.data);
-        } else if (data.type === 'progress') {
-            console.log(`Прогресс: ${data.percentage.toFixed(1)}% (${data.rows} строк)`);
-        } else if (data.type === 'error') {
-            console.error('Ошибка парсинга CSV:', data.error);
-        }
-    };
-    window.csvWorker = csvWorker;
-}
-</script>
-
-<!-- Инициализация бэкапов -->
-<script>
-if (window.BackupManager && window.BackupManager.config.autoBackup) {
-    // Автоматическое создание бэкапа перед важными операциями
-    const originalDeleteRow = window.deleteRow;
-    if (originalDeleteRow) {
-        window.deleteRow = async function(rowId) {
-            await window.BackupManager.withBackup(
-                () => originalDeleteRow(rowId),
-                'delete'
-            );
-        };
-    }
-}
 </script>
 </body>
 </html>

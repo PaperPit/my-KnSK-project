@@ -6,8 +6,11 @@
     <title>Просмотр отчёта Онкоскрининг</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
     <?!= include('UiTokens'); ?>
+    <?!= include('UiPhase2'); ?>
     <?!= include('DashboardPhase1'); ?>
+    <?!= include('DashboardPhase2'); ?>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -232,7 +235,14 @@
             <select id="archiveSelect">
                 <option value="">— Загрузка списка... —</option>
             </select>
-            <button class="refresh-btn secondary" id="refreshListBtn"><i class="fas fa-sync-alt"></i> Обновить список</button>
+            <button type="button" class="refresh-btn secondary" id="presentationModeBtn"><i class="fas fa-expand"></i> Презентация</button>
+        </div>
+        <div class="compare-controls">
+            <label><i class="fas fa-code-compare"></i> Сравнить:</label>
+            <select id="compareSelectA" title="Ранний период"></select>
+            <span>→</span>
+            <select id="compareSelectB" title="Поздний период"></select>
+            <button type="button" id="compareReportsBtn">Сравнить отчёты</button>
         </div>
     </div>
 
@@ -240,6 +250,16 @@
         <div class="loading-message">
             <i class="fas fa-spinner fa-pulse"></i> Загрузка последнего отчёта...
         </div>
+    </div>
+</div>
+
+<button type="button" class="presentation-exit" id="presentationExitBtn">Закрыть</button>
+
+<div id="moDrawerOverlay" class="mo-drawer-overlay">
+    <div class="mo-drawer" id="moDrawer">
+        <button type="button" class="mo-drawer-close" id="moDrawerClose" aria-label="Закрыть">&times;</button>
+        <h3 id="moDrawerTitle">МО</h3>
+        <div id="moDrawerBody"></div>
     </div>
 </div>
 
@@ -433,7 +453,6 @@
                     <div class="kpi-title"><i class="fas fa-vial"></i> КНСК с начала года</div>
                     <div class="kpi-value" id="totalKsk">--</div>
                     <div class="kpi-sub" id="weeklyGrowth">--</div>
-                    <div id="totalKskDelta"></div>
                     <div id="totalGrowthDelta"></div>
                 </div>
                 <div class="kpi-card">
@@ -448,6 +467,12 @@
                     <div class="kpi-sub">1-2 стадия</div>
                     <div id="totalZnoDelta"></div>
                 </div>
+            </div>
+
+            <div class="compare-panel" id="comparePanel" style="display:none;">
+                <button type="button" class="compare-panel-close" id="comparePanelClose" aria-label="Закрыть">&times;</button>
+                <h3><i class="fas fa-code-compare"></i> Сравнение двух архивных отчётов</h3>
+                <div id="comparePanelContent"></div>
             </div>
 
             <div class="charts-row">
@@ -536,6 +561,7 @@
         }
 
         DashboardPhase1.resetTableSearchBinding();
+        if (window.DashboardPhase2) DashboardPhase2.resetTableClickBinding();
         const result = DashboardPhase1.renderAll(mosData, {
             mos: mos,
             previousTotals: previousTotals || null,
@@ -544,6 +570,13 @@
 
         updatePlanFactChart(result.totals ? result.totals.growth : 0);
         updateTrendGraph(report.weeksData || []);
+
+        if (window.DashboardPhase2) {
+            DashboardPhase2.renderAll(mos, {
+                totals: result.totals,
+                previousMos: previousMos || null,
+            });
+        }
     }
     
     function escapeHtml(str) {
@@ -568,6 +601,7 @@
         google.script.run
             .withSuccessHandler(function(list) {
                 reportsList = list || [];
+                window.archiveReportsList = reportsList;
                 select.innerHTML = '<option value="">— Выберите отчёт (доступно ' + reportsList.length + ') —</option>';
                 
                 if (!reportsList || reportsList.length === 0) {
@@ -586,6 +620,10 @@
                     option.textContent = item.dateStr || `Отчёт #${item.id} от ${item.dateStr || 'неизвестно'}`;
                     select.appendChild(option);
                 });
+
+                if (window.DashboardPhase2) {
+                    DashboardPhase2.populateCompareSelects(reportsList, null);
+                }
                 
                 // Автоматически загружаем последний отчёт (первый в списке)
                 if (reportsList.length > 0) {
@@ -647,6 +685,11 @@
     }
     
     window.addEventListener('load', function() {
+        if (window.DashboardPhase2) {
+            DashboardPhase2.init({
+                onStatus: function(msg, ok) { console.log(msg); }
+            });
+        }
         loadArchiveList();
         
         // При изменении выбора в списке загружаем выбранный отчёт
@@ -655,11 +698,6 @@
             if (selectedId && selectedId !== '') {
                 loadReportById(selectedId);
             }
-        });
-        
-        // Кнопка обновления списка
-        document.getElementById('refreshListBtn').addEventListener('click', function() {
-            loadArchiveList();
         });
     });
 </script>
