@@ -4,7 +4,7 @@
  */
 const DashboardPhase1 = (function () {
   const PLAN_WEEKLY = 4583;
-  const PLAN_YEAR = 220000;
+  const PLAN_YEAR = 160000;
   const PLAN_THRESHOLD = 70;
   const rankCharts = {};
 
@@ -599,30 +599,115 @@ const DashboardPhase1 = (function () {
     });
   }
 
-  /**
-   * @param {Array} data — mosData или сырые строки CSV
-   * @param {{ previousTotals?: object, previousMos?: Array, mos?: Array }} options
-   * @returns {{ mos: Array, totals: object }}
-   */
-  function renderAll(data, options) {
-    const opts = options || {};
-    const mos = opts.mos || buildMosFromData(data);
-    if (!mos.length) return { mos: [], totals: null };
+  const KPI_SKELETON_IDS = [
+    'totalPercent',
+    'totalPlanFact',
+    'totalKsk',
+    'weeklyGrowth',
+    'totalColonPassed',
+    'colonPercent',
+    'totalZno',
+  ];
 
-    destroyRankCharts();
-    const totals = renderKpis(mos, opts.previousTotals);
-    renderSignals(mos, totals, opts.previousMos || null);
-    renderRankCharts(mos);
-    renderTable(mos);
-    buildCoverageChart(mos);
+  function showLoadingState() {
+    const content = document.getElementById('dashboardContent');
+    if (content) content.classList.add('dashboard-loading');
 
+    KPI_SKELETON_IDS.forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('skeleton-pulse');
+    });
+
+    const list = document.getElementById('signalsList');
+    if (list) {
+      list.innerHTML = Array(3)
+        .fill(
+          '<li class="skeleton-signal-row"><span class="skeleton-cell"><span class="skeleton-shimmer"></span></span></li>'
+        )
+        .join('');
+    }
+
+    const tbody = document.getElementById('tableBody');
+    if (tbody) {
+      const cols = 10;
+      tbody.innerHTML = Array(8)
+        .fill(0)
+        .map(function () {
+          return (
+            '<tr class="skeleton-row">' +
+            Array(cols)
+              .fill('<td><div class="skeleton-cell"><div class="skeleton-shimmer"></div></div></td>')
+              .join('') +
+            '</tr>'
+          );
+        })
+        .join('');
+    }
+  }
+
+  function hideLoadingState() {
+    const content = document.getElementById('dashboardContent');
+    if (content) content.classList.remove('dashboard-loading');
+    KPI_SKELETON_IDS.forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.remove('skeleton-pulse');
+    });
+  }
+
+  function scheduleIdle(fn) {
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(fn, { timeout: 150 });
+    } else {
+      setTimeout(fn, 0);
+    }
+  }
+
+  function renderChartsDeferred(mos) {
+    scheduleIdle(function () {
+      renderRankCharts(mos);
+      buildCoverageChart(mos);
+    });
+  }
+
+  function finishRender(mos, totals) {
     const now = new Date().toLocaleString('ru-RU');
     const updateEl = document.getElementById('updateTime');
     const reportEl = document.getElementById('reportDate');
     if (updateEl) updateEl.innerHTML = `<i class="far fa-clock"></i> Обновлено: ${now}`;
     if (reportEl) reportEl.innerHTML = now;
+    return { mos: mos, totals: totals };
+  }
 
-    return { mos, totals };
+  /**
+   * @param {Array} data — mosData или сырые строки CSV
+   * @param {{ previousTotals?: object, previousMos?: Array, mos?: Array, progressive?: boolean }} options
+   * @returns {Promise<{ mos: Array, totals: object }>}
+   */
+  function renderAll(data, options) {
+    const opts = options || {};
+    const mos = opts.mos || buildMosFromData(data);
+    if (!mos.length) return Promise.resolve({ mos: [], totals: null });
+
+    hideLoadingState();
+    destroyRankCharts();
+
+    const totals = renderKpis(mos, opts.previousTotals);
+    renderSignals(mos, totals, opts.previousMos || null);
+
+    if (opts.progressive === false) {
+      renderTable(mos);
+      renderRankCharts(mos);
+      buildCoverageChart(mos);
+      return Promise.resolve(finishRender(mos, totals));
+    }
+
+    return new Promise(function (resolve) {
+      requestAnimationFrame(function () {
+        renderTable(mos);
+        resolve(finishRender(mos, totals));
+        renderChartsDeferred(mos);
+      });
+    });
   }
 
   function resetTableSearchBinding() {
@@ -639,6 +724,8 @@ const DashboardPhase1 = (function () {
     computeTotalsFromMosData,
     getPreviousArchiveId,
     renderAll,
+    showLoadingState,
+    hideLoadingState,
     renderKpis,
     renderSignals,
     renderRankCharts,
