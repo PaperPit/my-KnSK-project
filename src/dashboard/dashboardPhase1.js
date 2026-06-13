@@ -1,144 +1,38 @@
 /**
- * Фаза 1: сигналы, KPI с дельтой, bar-рейтинги, таблица с heatmap и поиском
+ * =============================================================================
+ * DashboardPhase1 — основной дашборд (KPI, сигналы, таблица, рейтинги)
+ * =============================================================================
+ *
+ * ПОДКЛЮЧЕНИЕ: Index.html и Viewer.html → include('DashboardPhase1')
+ * API: window.DashboardPhase1.renderAll(data, options)
+ *
+ * РАЗДЕЛЫ ВНУТРИ:
+ *   renderKpis          — 4 карточки KPI (+ дельты к прошлому отчёту)
+ *   buildSignals        — блок «Ключевые сигналы» (порог 70%, лидеры)
+ *   renderTable         — сводная таблица МО с поиском и heatmap
+ *   renderRankCharts    — топ/антитоп Chart.js
+ *   buildCoverageChart  — охват колоноскопией (все МО)
+ *
+ * Планы: PLAN_YEAR (220000), PLAN_WEEKLY (4583), PLAN_THRESHOLD (70) из CONFIG
+ * Расчёты МО: KnSKLib.buildMosFromData / computeTotals
+ *
+ * ПОСЛЕ ПРАВОК: npm run build → clasp push
+ * =============================================================================
  */
 const DashboardPhase1 = (function () {
-  const plans = (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.plans)
-    ? CONFIG.plans
-    : { year: 220000, weekly: 4583, threshold: 70 };
+  const L = typeof KnSKLib !== 'undefined' ? KnSKLib : {};
+  const plans = L.getPlans ? L.getPlans(CONFIG) : { year: 220000, weekly: 4583, threshold: 70 };
   const PLAN_YEAR = plans.year;
   const PLAN_WEEKLY = plans.weekly;
   const PLAN_THRESHOLD = plans.threshold;
+  const toNum = L.toNum || function () { return 0; };
+  const escapeHtml = L.escapeHtml || function (s) { return String(s || ''); };
+  const normalizeArchiveReport = L.normalizeArchiveReport || function (r) { return r; };
+  const buildMosFromData = L.buildMosFromData || function () { return []; };
+  const computeTotals = L.computeTotals || function () { return null; };
+  const computeTotalsFromMosData = L.computeTotalsFromMosData || function () { return null; };
   const rankCharts = {};
   const MIN_POSITIVE_KNSK_FOR_COVERAGE_ANTITOP = 10;
-
-  function extractNumber(v) {
-    if (!v) return 0;
-    let s = String(v).trim();
-    if (s === '-' || s === '') return 0;
-    let sign = 1;
-    if (s.startsWith('+')) s = s.substring(1);
-    else if (s.startsWith('-')) {
-      sign = -1;
-      s = s.substring(1);
-    }
-    const m = s.match(/^(\d+[\d\s]*?)(?:\s*\(|$)/);
-    if (m) return sign * (parseInt(m[1].replace(/\s/g, ''), 10) || 0);
-    return sign * (parseInt(s, 10) || 0);
-  }
-
-  function extractFact(v) {
-    if (!v) return 0;
-    const m = String(v).match(/(\d[\d\s]*)/);
-    return m ? parseInt(m[1].replace(/\s/g, ''), 10) : 0;
-  }
-
-  /** Приведение чисел из JSON архива (строки, пробелы, «6052 (97%)») */
-  function toNum(v) {
-    if (v == null || v === '') return 0;
-    if (typeof v === 'number' && !isNaN(v)) return v;
-    const n = extractNumber(v);
-    if (n !== 0) return n;
-    return extractFact(v);
-  }
-
-  function normalizeArchiveReport(report) {
-    if (!report || typeof report !== 'object') return null;
-    const normalized = Object.assign({}, report);
-    let mos = normalized.mosData || normalized.MOSData || normalized.data;
-    if (typeof mos === 'string') {
-      try {
-        mos = JSON.parse(mos);
-      } catch (e) {
-        mos = [];
-      }
-    }
-    if (!Array.isArray(mos)) mos = [];
-    normalized.mosData = mos;
-    return normalized;
-  }
-
-  function buildMosFromData(data) {
-    if (!data || !data.length) return [];
-
-    const firstRow = data[0];
-    if (!firstRow || typeof firstRow !== 'object') return [];
-
-    const hasProcessedShape =
-      (firstRow.name != null || firstRow['Наименование МО']) &&
-      (firstRow.plan != null ||
-        firstRow.fact != null ||
-        firstRow['План на год'] != null ||
-        firstRow['Общий итог'] != null);
-
-    const mos = [];
-
-    if (hasProcessedShape) {
-      data.forEach((r) => {
-        const plan = toNum(r.plan != null ? r.plan : r['План на год']);
-        const fact = toNum(r.fact != null ? r.fact : r['Общий итог']);
-        const percentRaw = r.percent != null ? toNum(r.percent) : plan ? (fact / plan) * 100 : 0;
-        mos.push({
-          name: r.name || r['Наименование МО'] || 'МО',
-          plan,
-          fact,
-          percent: percentRaw,
-          growth: toNum(r.growth != null ? r.growth : r['Динамика с прошлой недели']),
-          colon: toNum(r.colon != null ? r.colon : r['Прошли колоноскопию']),
-          zno: toNum(r.zno != null ? r.zno : r['Выявлено ЗНО C18-C21']),
-          noDev: toNum(r.noDev != null ? r.noDev : r['Нет отклонений']),
-          hasDev: toNum(r.hasDev != null ? r.hasDev : r['Есть отклонения']),
-        });
-      });
-    } else {
-      data.forEach((r) => {
-        const plan = extractNumber(r['План на год']);
-        const fact = extractFact(r['Общий итог']);
-        mos.push({
-          name: r['Наименование МО'] || r.name || 'МО',
-          plan,
-          fact,
-          percent: plan ? (fact / plan) * 100 : 0,
-          growth: extractNumber(r['Динамика с прошлой недели']),
-          colon: extractNumber(r['Прошли колоноскопию']),
-          zno: extractNumber(r['Выявлено ЗНО C18-C21']),
-          noDev: extractNumber(r['Нет отклонений']),
-          hasDev: extractNumber(r['Есть отклонения']),
-        });
-      });
-    }
-
-    return mos;
-  }
-
-  function computeTotals(mos) {
-    const t = {
-      plan: 0,
-      fact: 0,
-      colon: 0,
-      zno: 0,
-      noDev: 0,
-      hasDev: 0,
-      growth: 0,
-      percent: 0,
-      colonPercent: 0,
-    };
-    mos.forEach((m) => {
-      t.plan += m.plan;
-      t.fact += m.fact;
-      t.colon += m.colon;
-      t.zno += m.zno;
-      t.noDev += m.noDev;
-      t.hasDev += m.hasDev;
-      t.growth += m.growth;
-    });
-    t.percent = t.plan ? (t.fact / t.plan) * 100 : 0;
-    t.colonPercent = t.hasDev ? (t.colon / t.hasDev) * 100 : 0;
-    return t;
-  }
-
-  function computeTotalsFromMosData(mosData) {
-    return computeTotals(buildMosFromData(mosData));
-  }
 
   function getPreviousArchiveId(reportsList, currentId) {
     if (!reportsList || !reportsList.length || currentId == null) return null;
@@ -186,6 +80,7 @@ const DashboardPhase1 = (function () {
     if (el) el.innerHTML = html;
   }
 
+  // --- KPI: 4 карточки вверху дашборда ---
   function renderKpis(mos, previousTotals) {
     const t = computeTotals(mos);
     const prev = previousTotals || null;
@@ -258,6 +153,7 @@ const DashboardPhase1 = (function () {
       .slice(0, 3);
   }
 
+  // --- Автоматические заметки: МО ниже порога, недельный план, лидеры колоноскопии ---
   function buildSignals(mos, totals, previousMos) {
     const signals = [];
     const below = mos.filter((m) => m.percent < PLAN_THRESHOLD);
@@ -327,14 +223,6 @@ const DashboardPhase1 = (function () {
   function truncateName(name, max) {
     const n = name || 'МО';
     return n.length > max ? `${n.slice(0, max - 1)}…` : n;
-  }
-
-  function escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
   }
 
   function destroyRankCharts() {
@@ -699,6 +587,12 @@ const DashboardPhase1 = (function () {
    * @param {Array} data — mosData или сырые строки CSV
    * @param {{ previousTotals?: object, previousMos?: Array, mos?: Array, progressive?: boolean }} options
    * @returns {Promise<{ mos: Array, totals: object }>}
+   */
+  /**
+   * Главная точка входа: отрисовать весь дашборд фазы 1.
+   * @param data — сырой CSV или mosData из архива
+   * @param options.mos — уже разобранный массив МО (опционально)
+   * @param options.previousTotals / previousMos — для дельт и сигналов
    */
   function renderAll(data, options) {
     const opts = options || {};

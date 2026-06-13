@@ -87,7 +87,7 @@
 
 ## Backend (`Code.js`)
 
-Привязка к **активной Google Таблице** проекта Apps Script.
+Серверная часть собирается из `src/server/` в `Code.js` (`npm run build`). Привязка к **активной Google Таблице** проекта Apps Script.
 
 | Функция | Назначение |
 |---------|------------|
@@ -107,65 +107,58 @@
 
 ```
 my-KnSK-project/
-├── Code.js                 # Сервер: doGet, архив, include
+├── Code.js                 # AUTO-GENERATED: src/server/* (npm run build)
 ├── config.js               # Единый источник PLAN_YEAR / PLAN_WEEKLY / CONFIG
 ├── appsscript.json         # Манифест GAS (webapp, timezone)
-├── Index.html              # Редактор (~1100 строк: UI + оркестрация)
+├── Index.html              # Редактор (разметка + include)
 ├── Viewer.html             # Просмотр архива
 │
-├── UiTokens.html           # Стили фазы 1 (для include)
-├── UiPhase2.html           # Стили фазы 2
-├── DashboardPhase1.html    # JS: KPI, сигналы, таблица, рейтинги
-├── DashboardPhase2.html    # JS: сравнение, drawer, презентация
+├── LibBundle.html          # AUTO-GENERATED: src/lib/* → KnSKLib
+├── DashboardPhase1.html    # AUTO-GENERATED: src/dashboard/dashboardPhase1.js
+├── DashboardPhase2.html    # AUTO-GENERATED: src/dashboard/dashboardPhase2.js
+├── EditorPage.html         # AUTO-GENERATED: src/pages/editor.js
+├── ViewerPage.html         # AUTO-GENERATED: src/pages/viewer.js
+├── UiTokens.html           # AUTO-GENERATED: src/ui/tokens.css
+├── UiPhase2.html           # AUTO-GENERATED: src/ui/phase2.css
 │
 ├── src/
-│   ├── dashboard/
-│   │   ├── dashboardPhase1.js   # Исходник → копируется в DashboardPhase1.html
-│   │   └── dashboardPhase2.js   # Исходник → DashboardPhase2.html
-│   ├── ui/
-│   │   ├── tokens.css           # Исходник → UiTokens.html
-│   │   └── phase2.css           # Исходник → UiPhase2.html
-│   ├── core/                    # EventBus, StateManager, GASAdapter, Logger
-│   ├── backup/BackupManager.js
-│   └── ui/VirtualTable.js, SkeletonLoader.js, ResponsiveLayout.css
+│   ├── lib/                # CSV, KPI, sanitize, archive normalizer
+│   ├── server/             # doGet, архив, миграции → Code.js
+│   ├── pages/              # editor.js, viewer.js
+│   ├── dashboard/          # dashboardPhase1.js, dashboardPhase2.js
+│   └── ui/                 # tokens.css, phase2.css, editor.css, viewer.css
 │
-├── Выгрузка cvs.js         # Отдельный скрипт выгрузки диапазона в CSV (не web app)
-├── .clasp.json             # Настройки clasp
-└── git.txt                 # Шпаргалка git / clasp
+├── scripts/
+│   ├── build-gas.mjs       # Сборка GAS-артефактов
+│   ├── check-artifacts.mjs # Проверка синхронизации артефактов
+│   └── build-plan-mapping.py
+├── tests/                  # Vitest
+├── data/plans/             # Excel-планы МО (для build:plans)
+├── package.json
+├── Выгрузка cvs.js         # Отдельный скрипт выгрузки диапазона в CSV
+├── .clasp.json
+└── git.txt
 ```
 
-### Как подключаются модули в GAS
+### Сборка и деплой
 
-В `Index.html` и `Viewer.html`:
-
-```html
-<?!= include('UiTokens'); ?>
-<?!= include('UiPhase2'); ?>
-<script>
-(function () {
-  var _cfg = <?!= clientConfigJson ?>;
-  window.CONFIG = _cfg;
-})();
-</script>
-<?!= include('DashboardPhase1'); ?>
-<?!= include('DashboardPhase2'); ?>
-```
-
-**Важно:** плановые константы меняются только в `config.js`. В продакшене выполняются файлы `*.html` в корне, а не `src/`. После правок в `src/dashboard/` или `src/ui/` нужно синхронизировать:
+Исходники — в `src/`. В GAS попадают сгенерированные файлы в корне. После правок:
 
 ```bash
-# Стили
-(printf '%s\n' '<style>'; cat src/ui/tokens.css; printf '%s\n' '</style>') > UiTokens.html
-(printf '%s\n' '<style>'; cat src/ui/phase2.css; printf '%s\n' '</style>') > UiPhase2.html
-
-# Скрипты дашборда
-(printf '%s\n' '<script>'; cat src/dashboard/dashboardPhase1.js; printf '%s\n' '</script>') > DashboardPhase1.html
-(printf '%s\n' '<script>'; cat src/dashboard/dashboardPhase2.js; printf '%s\n' '</script>') > DashboardPhase2.html
-
+npm install
+npm run build      # src/ → Code.js, *Page.html, LibBundle.html, …
 clasp push
 ```
 
+Полная проверка перед коммитом:
+
+```bash
+npm run check      # lint + test + build + verify artifacts
+```
+
 Затем в Google Apps Script: **Развёртывание → Управление развёртываниями → Новая версия** (или обновить существующее).
+
+Подробнее: [CONTRIBUTING.md](CONTRIBUTING.md), [docs/deploy-checklist.md](docs/deploy-checklist.md).
 
 ---
 
@@ -194,6 +187,7 @@ var PLAN_THRESHOLD = 70;
 ## Требования
 
 - Google-аккаунт с доступом к таблице и проекту Apps Script
+- Node.js 20+ (`npm install`, `npm run build`, `npm test`)
 - [clasp](https://github.com/google/clasp) для локальной разработки (опционально)
 - Браузер с поддержкой ES6+
 - CDN при открытии: Chart.js 4, chartjs-plugin-datalabels, ECharts 5, Font Awesome 6
@@ -203,8 +197,8 @@ var PLAN_THRESHOLD = 70;
 ## Установка и первый запуск
 
 1. Создайте или откройте Google Таблицу, привязанную к проекту Apps Script.
-2. Склонируйте репозиторий и выполните `clasp login` / `clasp clone` (если проект уже в облаке — настройте `scriptId` в `.clasp.json`).
-3. Синхронизируйте `src/` → `*.html` (команды выше) и выполните `clasp push`.
+2. Склонируйте репозиторий, выполните `npm install`, затем `clasp login` / `clasp clone` (если проект уже в облаке — настройте `scriptId` в `.clasp.json`).
+3. Выполните `npm run build` и `clasp push`.
 4. В редакторе Apps Script: **Развернуть → Новое развёртывание → Веб-приложение**.
    - Выполнять от имени: **владелец**
    - Доступ: по вашей политике (сейчас в манифесте: `ANYONE_ANONYMOUS` — см. раздел «Безопасность»)
@@ -235,10 +229,11 @@ var PLAN_THRESHOLD = 70;
 
 | Компонент | Статус |
 |-----------|--------|
-| `src/core/*` (EventBus, StateManager, GASAdapter) | Подключены в `Index.html`, в основном потоке **не используются** |
-| `src/ui/VirtualTable.js`, `SkeletonLoader.js` | Подключены в конце `Index.html`, таблица Phase1 — обычный DOM |
-| `src/workers/csvParser.worker.js` | **Отсутствует**; блок worker в Index не активен |
+| `src/lib/*` | Общая логика: CSV, KPI, sanitize → `LibBundle.html` / `KnSKLib` |
+| `src/server/*` | Сервер GAS → `Code.js` |
 | `config.js` | **Единый источник** `PLAN_YEAR`, `PLAN_WEEKLY`, `PLAN_THRESHOLD` и объекта `CONFIG` |
+| `tests/` | Unit-тесты Vitest |
+| `docs/archive-schema.json` | Схема JSON архивного отчёта |
 | `migration-guide.md` | Устаревшая инструкция по внедрению модулей A1–F1 |
 
 ---
@@ -260,17 +255,18 @@ var PLAN_THRESHOLD = 70;
 ## Git и деплой (кратко)
 
 ```bash
+npm run check    # lint + test + build + verify artifacts
 git add .
 git commit -m "описание изменений"
 git push
 
-clasp push   # отправить файлы в проект Apps Script
+clasp push       # отправить файлы в проект Apps Script
 ```
 
-Подробнее — в `git.txt`.
+Подробнее — в `git.txt` и [docs/deploy-checklist.md](docs/deploy-checklist.md).
 
 ---
 
 ## Лицензия и контакты
 
-Внутренний проект отчётности. При доработках сохраняйте синхронизацию `src/` → `DashboardPhase*.html` / `Ui*.html` перед `clasp push`.
+Внутренний проект отчётности. При доработках выполняйте `npm run build` перед `clasp push`.

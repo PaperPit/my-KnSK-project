@@ -1,0 +1,24 @@
+# Dev-инструменты (не для GAS runtime)
+node_modules/**
+eslint.config.js
+vitest.config.js
+package.json
+package-lock.json
+.prettierrc
+.gitignore
+
+# Исходники и тесты — в GAS только собранные артефакты в корне
+src/**
+tests/**
+scripts/**
+.github/**
+docs/**
+data/**
+
+# Документация и прочее
+README.md
+CONTRIBUTING.md
+CHANGELOG.md
+git.txt
+my-KnSK-project.code-workspace
+plan2026-mapping.json

@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/knsk/onko-screening/archive-report.schema.json",
+  "title": "KnSK Archive Report",
+  "description": "JSON-снимок отчёта, сохраняемый в лист «Архив» (колонка «Данные (JSON)»)",
+  "type": "object",
+  "required": ["mosData"],
+  "properties": {
+    "mosData": {
+      "description": "Массив медицинских организаций с метриками",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/moRecord"
+      }
+    },
+    "MOSData": {
+      "description": "Устаревший alias для mosData (нормализуется при чтении)",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/moRecord"
+      }
+    },
+    "weeksData": {
+      "description": "Недельная динамика КнСК",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["start", "end", "value"],
+        "properties": {
+          "start": { "type": "string", "description": "Дата начала недели (ISO или YYYY-MM-DD)" },
+          "end": { "type": "string", "description": "Дата окончания недели" },
+          "value": { "type": "number", "description": "Факт КнСК за неделю" }
+        }
+      }
+    },
+    "doneText": {
+      "type": "string",
+      "description": "HTML/текст блока «Сделано»"
+    },
+    "plansText": {
+      "type": "string",
+      "description": "HTML/текст блока «Планы»"
+    },
+    "period": {
+      "type": "string",
+      "description": "Отображаемый период отчёта"
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "Дата сохранения (добавляется сервером при чтении)"
+    }
+  },
+  "$defs": {
+    "moRecord": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "plan": { "type": ["number", "string"] },
+        "fact": { "type": ["number", "string"] },
+        "percent": { "type": ["number", "string"] },
+        "growth": { "type": ["number", "string"] },
+        "colon": { "type": ["number", "string"] },
+        "zno": { "type": ["number", "string"] },
+        "noDev": { "type": ["number", "string"] },
+        "hasDev": { "type": ["number", "string"] },
+        "Наименование МО": { "type": "string" },
+        "План на год": { "type": ["number", "string"] },
+        "Общий итог": { "type": ["number", "string"] },
+        "Динамика с прошлой недели": { "type": ["number", "string"] },
+        "Прошли колоноскопию": { "type": ["number", "string"] },
+        "Выявлено ЗНО C18-C21": { "type": ["number", "string"] },
+        "Нет отклонений": { "type": ["number", "string"] },
+        "Есть отклонения": { "type": ["number", "string"] }
+      }
+    }
+  }
+}

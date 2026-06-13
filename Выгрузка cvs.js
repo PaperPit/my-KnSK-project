@@ -1,3 +1,8 @@
+/**
+ * Отдельный скрипт Google Таблицы (не веб-приложение).
+ * Меню «Экспорт в CSV» — выгрузка диапазона A1:I48 активного листа.
+ * Привязан к той же таблице, что и веб-приложение; clasp push отправляет этот файл.
+ */
 function exportRangeA1I48toCSV() {
   // Получаем активную таблицу
   var sheet = SpreadsheetApp.getActiveSheet();
@@ -82,6 +87,6 @@ function onOpen() {
   var ui = SpreadsheetApp.getUi();
   ui.createMenu('📊 Экспорт в CSV')
     .addItem('Экспорт диапазона A1:I48', 'exportRangeA1I48toCSV')
-    .addItem('Экспорт только видимых строк (с фильтрами)', 'exportVisibleRangeA1I50toCSV')
+    .addItem('Экспорт только видимых строк (с фильтрами)', 'exportVisibleRangeA1I48toCSV')
     .addToUi();
 }

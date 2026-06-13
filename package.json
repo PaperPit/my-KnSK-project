@@ -1,0 +1,24 @@
+{
+  "name": "my-knsk-project",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Онкоскрининг — дашборд отчётности по КнСК (Google Apps Script)",
+  "scripts": {
+    "build": "node scripts/build-gas.mjs",
+    "build:plans": "python3 scripts/build-plan-mapping.py",
+    "sync": "npm run build",
+    "lint": "eslint src scripts --ext .js,.mjs",
+    "format": "prettier --write \"src/**/*.{js,css}\" \"scripts/**/*.{js,mjs,py}\" \"*.js\"",
+    "format:check": "prettier --check \"src/**/*.{js,css}\" \"scripts/**/*.{js,mjs,py}\" \"*.js\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run lint && npm run test && npm run build && node scripts/check-artifacts.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "vitest": "^2.1.8"
+  }
+}

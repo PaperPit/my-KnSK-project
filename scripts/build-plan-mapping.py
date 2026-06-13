@@ -8,8 +8,9 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
-OLD_XLSX = Path('/Users/lustinaleksej/Downloads/Годовой План КнСК старый .xlsx')
-NEW_XLSX = Path('/Users/lustinaleksej/Downloads/План КнСк 2026 2.0.xlsx')
+PLANS_DIR = ROOT / 'data' / 'plans'
+OLD_XLSX = PLANS_DIR / 'Годовой План КнСК старый .xlsx'
+NEW_XLSX = PLANS_DIR / 'План КнСк 2026 2.0.xlsx'
 OUT_JSON = ROOT / 'plan2026-mapping.json'
 OUT_JS = ROOT / 'PlanMapping2026.js'
 

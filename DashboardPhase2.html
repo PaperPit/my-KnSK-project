@@ -1,11 +1,28 @@
 <script>
 /**
- * Фаза 2: сравнение архивов, drawer МО, презентация
+ * =============================================================================
+ * DashboardPhase2 — сравнение отчётов, drawer МО, режим презентации
+ * =============================================================================
+ *
+ * ПОДКЛЮЧЕНИЕ: после DashboardPhase1
+ * Инициализация: DashboardPhase2.init({ onStatus }) — в editor.js / viewer.js
+ *
+ * РАЗДЕЛЫ:
+ *   populateCompareSelects / runCompare — два архивных отчёта, дельты KPI
+ *   openMoDrawer — боковая панель по клику на строку таблицы (ECharts)
+ *   togglePresentationMode — полноэкран без панелей управления
+ *
+ * ECharts подгружается динамически (CONFIG.ui.cdn.echarts).
+ *
+ * ПОСЛЕ ПРАВОК: npm run build → clasp push
+ * =============================================================================
  */
 const DashboardPhase2 = (function () {
   const echartsInstances = {};
   let echartsLoadPromise = null;
-  const ECHARTS_URL = 'https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js';
+  const ECHARTS_URL =
+    (typeof CONFIG !== 'undefined' && CONFIG.ui && CONFIG.ui.cdn && CONFIG.ui.cdn.echarts) ||
+    'https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js';
   let tableClickBound = false;
   let lastMos = [];
   let lastPreviousMos = null;
@@ -42,13 +59,12 @@ const DashboardPhase2 = (function () {
     return n.length > max ? `${n.slice(0, max - 1)}…` : n;
   }
 
-  function escapeHtml(str) {
-    if (!str) return '';
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-  }
+  const escapeHtml =
+    (typeof KnSKLib !== 'undefined' && KnSKLib.escapeHtml) ||
+    function (str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    };
 
   function findMoByName(mos, name) {
     const key = String(name || '').trim().toLowerCase();

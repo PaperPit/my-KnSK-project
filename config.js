@@ -1,9 +1,20 @@
 /**
- * Конфигурационный файл проекта
- * A4: Централизованное хранение всех настроек
+ * =============================================================================
+ * config.js — ЕДИНЫЙ источник настроек проекта (сервер Google Apps Script)
+ * =============================================================================
  *
- * Плановые константы расчётов — меняйте только PLAN_YEAR и PLAN_WEEKLY ниже.
- * Их подхватывают Code.js (сервер), DashboardPhase1/2, Index.html и Viewer.html.
+ * ГЛАВНЫЕ КОНСТАНТЫ РАСЧЁТОВ (меняйте здесь):
+ *   PLAN_YEAR      — годовой план КнСК (220 000)
+ *   PLAN_WEEKLY    — недельный ориентир (4 583)
+ *   PLAN_THRESHOLD — порог сигнала «низкий % плана» (70)
+ *
+ * Как попадают в браузер:
+ *   config.js → getClientConfigJson() в webapp.js → window.CONFIG в Index/Viewer
+ *
+ * ВАЖНО: тег <script src="config.js"> в HTML НЕ работает в GAS — файл серверный.
+ *
+ * ПОСЛЕ ПРАВОК: clasp push (config.js не проходит через npm run build)
+ * =============================================================================
  */
 var PLAN_YEAR = 220000;
 var PLAN_WEEKLY = 4583;
@@ -27,19 +38,18 @@ const CONFIG = {
   
   // Настройки CSV
   csv: {
-    maxFileSize: 100 * 1024 * 1024,  // 100 MB
-    chunkSize: 1024 * 1024,           // 1 MB на чанк для worker
+    maxFileSize: 100 * 1024 * 1024,
+    chunkSize: 1024 * 1024,
     defaultDelimiter: ',',
     encoding: 'UTF-8',
-    useWorker: false,                 // Web Worker (файл src/workers/csvParser.worker.js отсутствует)
+    useWorker: false,
   },
-  
-  // Настройки таблицы (виртуализация E1)
+
   table: {
-    virtualScroll: true,              // Включить виртуализацию
-    rowHeight: 35,                    // Высота строки в пикселях
-    overscan: 5,                      // Дополнительные строки за границами экрана
-    threshold: 500,                   // Включать виртуализацию при > строк
+    virtualScroll: false,
+    rowHeight: 35,
+    overscan: 5,
+    threshold: 500,
   },
   
   // Настройки резервного копирования (D4)
@@ -60,10 +70,17 @@ const CONFIG = {
   
   // UI настройки (C3, C4)
   ui: {
-    skeletonEnabled: true,            // Показывать скелетоны
-    skeletonCount: 15,                // Количество строк-скелетонов
-    mobileBreakpoint: 768,            // Ширина экрана для мобильной версии (px)
-    animationsEnabled: true,          // Анимации интерфейса
+    skeletonEnabled: false,
+    skeletonCount: 15,
+    mobileBreakpoint: 768,
+    animationsEnabled: true,
+    cdn: {
+      chartJs: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
+      chartDataLabels:
+        'https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js',
+      echarts: 'https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js',
+      fontAwesome: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css',
+    },
   },
   
   // Режим разработки
