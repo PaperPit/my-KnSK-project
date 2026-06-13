@@ -12,7 +12,7 @@ function doGet(e) {
   } else {
     // Режим РЕДАКТОРА (Index.html) – по умолчанию
     const template = HtmlService.createTemplateFromFile('Index');
-    template.planWeekly = 3333;
+    template.planWeekly = 4583;
     return template.evaluate()
       .setTitle('Онкоскрининг — Редактор')
       .addMetaTag('viewport', 'width=device-width, initial-scale=1')
