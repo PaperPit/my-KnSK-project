@@ -4,12 +4,35 @@
  */
 const DashboardPhase2 = (function () {
   const echartsInstances = {};
+  let echartsLoadPromise = null;
+  const ECHARTS_URL = 'https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js';
   let tableClickBound = false;
   let lastMos = [];
   let lastPreviousMos = null;
 
+  function loadEcharts() {
+    if (typeof echarts !== 'undefined') return Promise.resolve(window.echarts);
+    if (echartsLoadPromise) return echartsLoadPromise;
+
+    echartsLoadPromise = new Promise(function (resolve, reject) {
+      const script = document.createElement('script');
+      script.src = ECHARTS_URL;
+      script.async = true;
+      script.onload = function () {
+        resolve(window.echarts);
+      };
+      script.onerror = function () {
+        echartsLoadPromise = null;
+        reject(new Error('Не удалось загрузить ECharts'));
+      };
+      document.head.appendChild(script);
+    });
+
+    return echartsLoadPromise;
+  }
+
   function getPlanYear() {
-    return (window.DashboardPhase1 && DashboardPhase1.PLAN_YEAR) || 220000;
+    return (window.DashboardPhase1 && DashboardPhase1.PLAN_YEAR) || 160000;
   }
 
   function truncateName(name, max) {
@@ -42,20 +65,21 @@ const DashboardPhase2 = (function () {
   }
 
   function initChart(domId) {
-    if (typeof echarts === 'undefined') return null;
     const el = document.getElementById(domId);
-    if (!el) return null;
-    disposeChart(domId);
-    echartsInstances[domId] = echarts.init(el);
-    return echartsInstances[domId];
+    if (!el) return Promise.resolve(null);
+
+    return loadEcharts().then(function () {
+      disposeChart(domId);
+      echartsInstances[domId] = echarts.init(el);
+      return echartsInstances[domId];
+    });
   }
 
   function renderMoDrawerChart(mo) {
-    const chart = initChart('moDrawerChart');
-    if (!chart || !mo) return;
+    initChart('moDrawerChart').then(function (chart) {
+      if (!chart || !mo) return;
 
-    const coverage = mo.hasDev > 0 ? (mo.colon / mo.hasDev) * 100 : 0;
-    chart.setOption({
+      chart.setOption({
       tooltip: { trigger: 'axis' },
       grid: { left: 40, right: 16, top: 16, bottom: 28 },
       xAxis: {
@@ -84,6 +108,7 @@ const DashboardPhase2 = (function () {
           label: { show: true, position: 'top', fontSize: 9 },
         },
       ],
+      });
     });
   }
 
@@ -143,7 +168,7 @@ const DashboardPhase2 = (function () {
 
     overlay.classList.add('open');
     document.body.style.overflow = 'hidden';
-    setTimeout(() => renderMoDrawerChart(mo), 50);
+    renderMoDrawerChart(mo);
   }
 
   function closeMoDrawer() {

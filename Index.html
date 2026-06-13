@@ -6,16 +6,12 @@
     <title>Онкоскрининг — дашборд (Apps Script)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
     <?!= include('UiTokens'); ?>
     <?!= include('UiPhase2'); ?>
     <?!= include('DashboardPhase1'); ?>
     <?!= include('DashboardPhase2'); ?>
     <script src="config.js"></script>
-    <script src="src/core/Logger.js"></script>
-    <script src="src/core/EventBus.js"></script>
-    <script src="src/core/StateManager.js"></script>
-    <script src="src/core/GoogleAppsScriptAdapter.js"></script>
+    <script src="src/ui/SkeletonLoader.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -172,7 +168,7 @@
         <div class="weeks-input" id="weeksContainer"></div>
         <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
             <button class="btn-update-chart" id="updateDynamicChart"><i class="fas fa-sync-alt"></i> Обновить график</button>
-            <div class="plan-note">Плановый ориентир: <strong id="planValue">3 333</strong> исследований/неделю</div>
+            <div class="plan-note">Плановый ориентир: <strong id="planValue">4 583</strong> исследований/неделю</div>
         </div>
     </div>
     
@@ -541,39 +537,42 @@
         if (!data || !data.length) {
             console.warn('renderMOSDashboard: данные пусты');
             setStatus('Нет данных МО для отображения', false);
-            return;
+            return Promise.resolve(null);
         }
         if (!window.DashboardPhase1) {
             console.error('DashboardPhase1 не загружен');
             setStatus('Ошибка: модуль отчёта не загрузился. Обновите страницу или выполните clasp push.', false);
-            return;
+            return Promise.resolve(null);
         }
 
         const mos = DashboardPhase1.buildMosFromData(data);
         if (!mos.length) {
             console.warn('renderMOSDashboard: не удалось разобрать строки МО', data);
             setStatus('Данные архива не распознаны. Проверьте формат mosData в листе «Архив».', false);
-            return;
+            return Promise.resolve(null);
         }
 
         currentMOSData = mos;
         const opts = options || {};
         if (window.DashboardPhase2) DashboardPhase2.resetTableClickBinding();
-        const result = DashboardPhase1.renderAll(data, {
+
+        return DashboardPhase1.renderAll(data, {
             mos: mos,
             previousTotals: opts.previousTotals || null,
             previousMos: opts.previousMos || null,
+            progressive: opts.progressive !== false,
+        }).then(function (result) {
+            updatePlanFactChart(result.totals ? result.totals.growth : 0);
+            updateTrendGraph();
+
+            if (window.DashboardPhase2) {
+                DashboardPhase2.renderAll(mos, {
+                    totals: result.totals,
+                    previousMos: opts.previousMos || null,
+                });
+            }
+            return result;
         });
-
-        updatePlanFactChart(result.totals ? result.totals.growth : 0);
-        updateTrendGraph();
-
-        if (window.DashboardPhase2) {
-            DashboardPhase2.renderAll(mos, {
-                totals: result.totals,
-                previousMos: opts.previousMos || null,
-            });
-        }
     }
 
     function applyArchiveReport(report, previousTotals, previousMos) {
@@ -630,40 +629,31 @@
             return;
         }
 
-        const prevId = window.DashboardPhase1
-            ? DashboardPhase1.getPreviousArchiveId(archiveReportsList, reportId)
-            : null;
-
-        function onReportLoaded(report, previousTotals, previousMos) {
-            if (!report) {
-                setStatus('Пустой ответ сервера при загрузке архива', false);
-                return;
-            }
-            applyArchiveReport(report, previousTotals, previousMos);
-            setStatus(`✅ Загружен архивный отчёт от ${report.timestamp || '—'}`, true);
-        }
+        if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
 
         google.script.run
-            .withSuccessHandler(function (report) {
-                if (!prevId) {
-                    onReportLoaded(report, null, null);
+            .withSuccessHandler(function (payload) {
+                const report = payload && payload.report;
+                if (!report) {
+                    setStatus('Пустой ответ сервера при загрузке архива', false);
                     return;
                 }
-                google.script.run
-                    .withSuccessHandler(function (prevReport) {
-                        const prevTotals = DashboardPhase1.computeTotalsFromMosData(prevReport.mosData);
-                        const prevMos = DashboardPhase1.buildMosFromData(prevReport.mosData);
-                        onReportLoaded(report, prevTotals, prevMos);
-                    })
-                    .withFailureHandler(function () {
-                        onReportLoaded(report, null, null);
-                    })
-                    .getArchivedReportById(prevId);
+
+                let previousTotals = null;
+                let previousMos = null;
+                if (payload.previous && window.DashboardPhase1) {
+                    previousTotals = DashboardPhase1.computeTotalsFromMosData(payload.previous.mosData);
+                    previousMos = DashboardPhase1.buildMosFromData(payload.previous.mosData);
+                }
+
+                applyArchiveReport(report, previousTotals, previousMos);
+                setStatus(`✅ Загружен архивный отчёт от ${report.timestamp || '—'}`, true);
             })
             .withFailureHandler(function (err) {
+                if (window.DashboardPhase1) DashboardPhase1.hideLoadingState();
                 setStatus('Ошибка загрузки: ' + err.message, false);
             })
-            .getArchivedReportById(reportId);
+            .getArchivedReportWithPrevious(reportId);
     }
     
     function saveCurrentReportToArchive() {
@@ -801,7 +791,6 @@
         <title>Отчёт по онкоскринингу ${new Date().toLocaleDateString()}</title>
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>
         <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"><\/script>
-        <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"><\/script>
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
         <style>
             ${allStyles}
@@ -915,16 +904,17 @@
         (function render() {
             const mos = EXPORTED_MOS;
             if (window.DashboardPhase1) {
-                DashboardPhase1.renderAll(mos, { mos: mos });
+                DashboardPhase1.renderAll(mos, { mos: mos, progressive: false }).then(function () {
+                    let tGrowth = 0;
+                    mos.forEach(function (m) { tGrowth += m.growth || 0; });
+                    updatePlanFactChart(tGrowth);
+                    updateTrendGraph();
+                    if (window.DashboardPhase2) {
+                        const totals = DashboardPhase1.computeTotals(mos);
+                        DashboardPhase2.renderAll(mos, { totals: totals });
+                    }
+                });
             }
-            if (window.DashboardPhase2) {
-                const totals = DashboardPhase1.computeTotals(mos);
-                DashboardPhase2.renderAll(mos, { totals: totals });
-            }
-            let tGrowth = 0;
-            mos.forEach(m => { tGrowth += m.growth || 0; });
-            updatePlanFactChart(tGrowth);
-            updateTrendGraph();
         })();
     <\/script>
     </body>
@@ -986,9 +976,11 @@
             if (!file) return;
             const reader = new FileReader();
             reader.onload = ev => {
+                if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
                 currentMOSData = parseCSV(ev.target.result);
-                renderMOSDashboard(currentMOSData);
-                setStatus(`Загружен CSV: ${file.name}`, true);
+                renderMOSDashboard(currentMOSData).then(function () {
+                    setStatus(`Загружен CSV: ${file.name}`, true);
+                });
             };
             reader.readAsText(file);
         });

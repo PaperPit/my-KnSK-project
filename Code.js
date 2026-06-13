@@ -142,6 +142,8 @@ function saveReportToArchive(reportData) {
     
     archiveSheet.appendRow([newId, now, json, reportData.period || '']);
     
+    invalidateArchiveListCache_();
+    
     return {
       message: `✅ Отчёт сохранён в архив с ID ${newId}`,
       id: newId,
@@ -153,54 +155,165 @@ function saveReportToArchive(reportData) {
   }
 }
 
+// ==================== РАБОТА С АРХИВОМ (оптимизированное чтение) ====================
+
+var ARCHIVE_LIST_CACHE_KEY = 'knsk_archive_list_v1';
+var ARCHIVE_LIST_CACHE_TTL = 300;
+
+function getArchiveSheet_() {
+  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Архив');
+}
+
+function formatArchiveDate_(dateValue) {
+  if (dateValue instanceof Date) {
+    return dateValue.getDate().toString().padStart(2, '0') + '.' +
+      (dateValue.getMonth() + 1).toString().padStart(2, '0') + '.' +
+      dateValue.getFullYear();
+  }
+  if (typeof dateValue === 'string') return dateValue.split('T')[0];
+  return String(dateValue);
+}
+
+function parseArchiveReportRow_(row) {
+  var report;
+  try {
+    report = typeof row[2] === 'string' ? JSON.parse(row[2]) : row[2];
+  } catch (parseErr) {
+    throw new Error('Повреждённые данные отчёта в архиве');
+  }
+  if (!report.mosData && report.MOSData) report.mosData = report.MOSData;
+  if (typeof report.mosData === 'string') {
+    try { report.mosData = JSON.parse(report.mosData); } catch (e) { report.mosData = []; }
+  }
+  if (!Array.isArray(report.mosData)) report.mosData = [];
+  report.timestamp = formatArchiveDate_(row[1]);
+  return report;
+}
+
+function buildArchiveIndex_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { list: [], idToRow: {} };
+
+  var values = sheet.getRange(2, 1, lastRow, 2).getValues();
+  var list = [];
+  var idToRow = {};
+
+  for (var i = 0; i < values.length; i++) {
+    var id = Number(values[i][0]);
+    if (!id || isNaN(id)) continue;
+    list.push({ id: id, dateStr: formatArchiveDate_(values[i][1]) });
+    idToRow[id] = i + 2;
+  }
+  list.sort(function (a, b) { return b.id - a.id; });
+  return { list: list, idToRow: idToRow };
+}
+
+function getCachedArchiveList_() {
+  try {
+    var cached = CacheService.getScriptCache().get(ARCHIVE_LIST_CACHE_KEY);
+    if (cached) return JSON.parse(cached);
+  } catch (e) {}
+  return null;
+}
+
+function putCachedArchiveList_(list) {
+  try {
+    if (list && list.length) {
+      CacheService.getScriptCache().put(
+        ARCHIVE_LIST_CACHE_KEY,
+        JSON.stringify(list),
+        ARCHIVE_LIST_CACHE_TTL
+      );
+    }
+  } catch (e) {}
+}
+
+function invalidateArchiveListCache_() {
+  try {
+    CacheService.getScriptCache().remove(ARCHIVE_LIST_CACHE_KEY);
+  } catch (e) {}
+}
+
+function getArchiveList_(sheet) {
+  var cached = getCachedArchiveList_();
+  if (cached) return cached;
+  var index = buildArchiveIndex_(sheet);
+  putCachedArchiveList_(index.list);
+  return index.list;
+}
+
+function getPreviousArchiveIdFromList_(list, currentId) {
+  var numId = Number(currentId);
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].id === numId) {
+      if (i >= list.length - 1) return null;
+      return list[i + 1].id;
+    }
+  }
+  return null;
+}
+
+function readArchiveReportAtRow_(sheet, rowNum) {
+  var row = sheet.getRange(rowNum, 1, 1, 4).getValues()[0];
+  return parseArchiveReportRow_(row);
+}
+
+function getArchivedReportWithPreviousFromIndex_(sheet, index, id) {
+  var numId = Number(id);
+  var rowNum = index.idToRow[numId];
+  if (!rowNum) throw new Error('Отчёт не найден (ID ' + numId + ')');
+
+  var report = readArchiveReportAtRow_(sheet, rowNum);
+  var previous = null;
+  var prevId = getPreviousArchiveIdFromList_(index.list, numId);
+  if (prevId != null && index.idToRow[prevId]) {
+    try {
+      previous = readArchiveReportAtRow_(sheet, index.idToRow[prevId]);
+    } catch (e) {
+      previous = null;
+    }
+  }
+  return { report: report, previous: previous };
+}
+
+// Список + последний (или указанный) отчёт — один вызов с клиента
+function getArchiveBootstrap(requestedId) {
+  var sheet = getArchiveSheet_();
+  if (!sheet) {
+    return { list: [], report: null, previous: null, reportId: null };
+  }
+
+  var index = buildArchiveIndex_(sheet);
+  putCachedArchiveList_(index.list);
+
+  if (!index.list.length) {
+    return { list: [], report: null, previous: null, reportId: null };
+  }
+
+  var targetId = requestedId ? Number(requestedId) : index.list[0].id;
+  if (isNaN(targetId) || !index.idToRow[targetId]) {
+    targetId = index.list[0].id;
+  }
+
+  var payload = getArchivedReportWithPreviousFromIndex_(sheet, index, targetId);
+  return {
+    list: index.list,
+    report: payload.report,
+    previous: payload.previous,
+    reportId: targetId
+  };
+}
+
 // Получение списка архивных отчётов
 function getArchivedReportsList() {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName('Архив');
-    
+    var sheet = getArchiveSheet_();
     if (!sheet) {
       console.log('Лист "Архив" не найден');
       return [];
     }
-    
-    const lastRow = sheet.getLastRow();
-    if (lastRow < 2) {
-      console.log('В листе "Архив" нет данных');
-      return [];
-    }
-    
-    // Получаем данные со 2-й строки (после заголовков)
-    const range = sheet.getRange(2, 1, lastRow, 2); // Колонки A и B (все строки данных)
-    const values = range.getValues();
-    
-    const list = [];
-    for (let i = 0; i < values.length; i++) {
-      const id = values[i][0];
-      const dateValue = values[i][1];
-      
-      // Пропускаем строки с некорректным ID
-      if (!id || isNaN(parseInt(id))) continue;
-      
-      let dateStr = '';
-      if (dateValue instanceof Date) {
-        dateStr = `${dateValue.getDate().toString().padStart(2, '0')}.${(dateValue.getMonth() + 1).toString().padStart(2, '0')}.${dateValue.getFullYear()}`;
-      } else if (typeof dateValue === 'string') {
-        dateStr = dateValue.split('T')[0];
-      } else {
-        dateStr = String(dateValue);
-      }
-      
-      list.push({
-        id: parseInt(id),
-        dateStr: dateStr
-      });
-    }
-    
-    // Сортируем по ID (новые сверху)
-    list.sort((a, b) => b.id - a.id);
-    
-    console.log(`Найдено ${list.length} отчётов в архиве`);
+    var list = getArchiveList_(sheet);
+    console.log('Найдено ' + list.length + ' отчётов в архиве');
     return list;
   } catch (error) {
     console.error('Ошибка получения списка архива:', error);
@@ -208,46 +321,28 @@ function getArchivedReportsList() {
   }
 }
 
+// Отчёт + предыдущий отчёт одним вызовом (для дельт KPI)
+function getArchivedReportWithPrevious(id) {
+  var sheet = getArchiveSheet_();
+  if (!sheet) throw new Error('Лист Архив не найден');
+  var index = buildArchiveIndex_(sheet);
+  return getArchivedReportWithPreviousFromIndex_(sheet, index, id);
+}
+
 // Получение конкретного архивного отчёта по ID
 function getArchivedReportById(id) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName('Архив');
-    
+    var sheet = getArchiveSheet_();
     if (!sheet) throw new Error('Лист Архив не найден');
-    
-    const numId = Number(id);
+
+    var numId = Number(id);
     if (isNaN(numId)) throw new Error('Некорректный ID отчёта');
-    
-    const data = sheet.getDataRange().getValues();
-    const rowIndex = data.findIndex(function(row) {
-      return Number(row[0]) === numId;
-    });
-    
-    if (rowIndex === -1) throw new Error('Отчёт не найден (ID ' + numId + ')');
-    
-    const row = data[rowIndex];
-    let report;
-    try {
-      report = typeof row[2] === 'string' ? JSON.parse(row[2]) : row[2];
-    } catch (parseErr) {
-      throw new Error('Повреждённые данные отчёта в архиве');
-    }
-    
-    if (!report.mosData && report.MOSData) report.mosData = report.MOSData;
-    if (typeof report.mosData === 'string') {
-      try { report.mosData = JSON.parse(report.mosData); } catch (e) { report.mosData = []; }
-    }
-    if (!Array.isArray(report.mosData)) report.mosData = [];
-    
-    const dateValue = row[1];
-    if (dateValue instanceof Date) {
-      report.timestamp = `${dateValue.getDate().toString().padStart(2, '0')}.${(dateValue.getMonth() + 1).toString().padStart(2, '0')}.${dateValue.getFullYear()}`;
-    } else {
-      report.timestamp = String(dateValue).split(' ')[0];
-    }
-    
-    return report;
+
+    var index = buildArchiveIndex_(sheet);
+    var rowNum = index.idToRow[numId];
+    if (!rowNum) throw new Error('Отчёт не найден (ID ' + numId + ')');
+
+    return readArchiveReportAtRow_(sheet, rowNum);
   } catch (error) {
     console.error('Ошибка получения отчёта по ID:', error);
     throw new Error('Не удалось загрузить отчёт: ' + error.message);
