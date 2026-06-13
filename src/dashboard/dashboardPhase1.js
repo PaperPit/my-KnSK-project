@@ -2,9 +2,12 @@
  * Фаза 1: сигналы, KPI с дельтой, bar-рейтинги, таблица с heatmap и поиском
  */
 const DashboardPhase1 = (function () {
-  const PLAN_WEEKLY = 4583;
-  const PLAN_YEAR = 160000;
-  const PLAN_THRESHOLD = 70;
+  const plans = (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.plans)
+    ? CONFIG.plans
+    : { year: 220000, weekly: 4583, threshold: 70 };
+  const PLAN_YEAR = plans.year;
+  const PLAN_WEEKLY = plans.weekly;
+  const PLAN_THRESHOLD = plans.threshold;
   const rankCharts = {};
 
   function extractNumber(v) {

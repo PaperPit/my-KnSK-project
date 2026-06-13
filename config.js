@@ -1,9 +1,21 @@
 /**
  * Конфигурационный файл проекта
  * A4: Централизованное хранение всех настроек
+ *
+ * Плановые константы расчётов — меняйте только PLAN_YEAR и PLAN_WEEKLY ниже.
+ * Их подхватывают Code.js (сервер), DashboardPhase1/2, Index.html и Viewer.html.
  */
+var PLAN_YEAR = 220000;
+var PLAN_WEEKLY = 4583;
+var PLAN_THRESHOLD = 70;
 
 const CONFIG = {
+  plans: {
+    year: PLAN_YEAR,
+    weekly: PLAN_WEEKLY,
+    threshold: PLAN_THRESHOLD,
+  },
+
   // Настройки API
   api: {
     maxRetries: 3,              // Максимум попыток при ошибке

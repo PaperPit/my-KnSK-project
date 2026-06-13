@@ -32,7 +32,9 @@ const DashboardPhase2 = (function () {
   }
 
   function getPlanYear() {
-    return (window.DashboardPhase1 && DashboardPhase1.PLAN_YEAR) || 160000;
+    if (window.DashboardPhase1 && DashboardPhase1.PLAN_YEAR) return DashboardPhase1.PLAN_YEAR;
+    if (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.plans) return CONFIG.plans.year;
+    return 220000;
   }
 
   function truncateName(name, max) {

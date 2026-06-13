@@ -8,9 +8,17 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
     <?!= include('UiTokens'); ?>
     <?!= include('UiPhase2'); ?>
+    <script>
+    (function () {
+      var _cfg = <?!= clientConfigJson ?>;
+      window.PLAN_YEAR = _cfg.plans.year;
+      window.PLAN_WEEKLY = _cfg.plans.weekly;
+      window.PLAN_THRESHOLD = _cfg.plans.threshold;
+      window.CONFIG = _cfg;
+    })();
+    </script>
     <?!= include('DashboardPhase1'); ?>
     <?!= include('DashboardPhase2'); ?>
-    <script src="config.js"></script>
     <script src="src/ui/SkeletonLoader.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
@@ -323,7 +331,8 @@
     let archiveReportsList = [];
     let weeksData = [];
     let nextId = 1;
-    const PLAN_WEEKLY = 4583;
+    const PLAN_WEEKLY = CONFIG.plans.weekly;
+    const PLAN_YEAR = CONFIG.plans.year;
     let dynamicChart = null;
     let planFactChart = null;
     
