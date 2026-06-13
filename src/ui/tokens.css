@@ -144,7 +144,16 @@ body.dashboard-phase1.viewer-mode #archiveSelect {
 }
 
 .rank-chart-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
   max-height: 220px !important;
+}
+
+.rank-chart-note {
+  margin-top: 10px;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--color-muted);
 }
 
 /* Таблица */

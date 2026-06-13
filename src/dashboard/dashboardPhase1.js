@@ -9,6 +9,7 @@ const DashboardPhase1 = (function () {
   const PLAN_WEEKLY = plans.weekly;
   const PLAN_THRESHOLD = plans.threshold;
   const rankCharts = {};
+  const MIN_POSITIVE_KNSK_FOR_COVERAGE_ANTITOP = 10;
 
   function extractNumber(v) {
     if (!v) return 0;
@@ -358,7 +359,9 @@ const DashboardPhase1 = (function () {
 
     const defaultXScale = {
       beginAtZero: true,
+      min: valueKey === 'percent' || valueKey === 'coverage' ? 0 : undefined,
       max: valueKey === 'percent' || valueKey === 'coverage' ? 100 : undefined,
+      grace: valueKey === 'coverage' ? 0 : undefined,
       ticks: {
         callback: (v) => (valueKey === 'percent' || valueKey === 'coverage' ? `${v}%` : v),
       },
@@ -383,13 +386,14 @@ const DashboardPhase1 = (function () {
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
-        layout: { padding: { right: valueKey === 'coverage' ? 88 : 24 } },
+        layout: { padding: { right: 24 } },
         plugins: {
           legend: { display: false },
           datalabels: {
             display: true,
             anchor: 'end',
             align: 'end',
+            clip: valueKey !== 'coverage',
             color: '#1e293b',
             font: { weight: '700', size: valueKey === 'coverage' ? 9 : 10 },
             formatter: (v, ctx) => {
@@ -422,27 +426,38 @@ const DashboardPhase1 = (function () {
         },
       },
     });
+
+    requestAnimationFrame(function () {
+      if (rankCharts[canvasId]) rankCharts[canvasId].resize();
+    });
   }
 
   function renderRankCharts(mos) {
     const sortedByPlan = [...mos].sort((a, b) => b.percent - a.percent);
     const top5 = sortedByPlan.slice(0, 5);
-    const bottom5 = sortedByPlan.slice(-5).reverse();
+
+    const mosWithKnsk = mos.filter((m) => m.fact > 0);
+    const sortedByPlanActive = [...mosWithKnsk].sort((a, b) => b.percent - a.percent);
+    const bottom5 = sortedByPlanActive.slice(-5).reverse();
 
     renderHorizontalRankChart('top5PlanChart', top5, 'percent', '#1f8a4c', '% плана', {
-      min: 70,
-      max: 170,
-      beginAtZero: false,
+      min: 0,
+      max: 150,
+      beginAtZero: true,
     });
     renderHorizontalRankChart('bottom5PlanChart', bottom5, 'percent', '#e67e22', '% плана');
 
-    const withCoverage = mos.map((mo) => ({
-      ...mo,
-      coverage: mo.hasDev > 0 ? (mo.colon / mo.hasDev) * 100 : 0,
-    }));
+    const withCoverage = mos
+      .filter((m) => m.fact > 0)
+      .map((mo) => ({
+        ...mo,
+        coverage: mo.hasDev > 0 ? (mo.colon / mo.hasDev) * 100 : 0,
+      }));
     const sortedCov = [...withCoverage].sort((a, b) => b.coverage - a.coverage);
-    renderHorizontalRankChart('top5CoverageChart', sortedCov.slice(0, 5), 'coverage', '#2c7da0', '% охвата');
-    renderHorizontalRankChart('bottom5CoverageChart', sortedCov.slice(-5).reverse(), 'coverage', '#c0392b', '% охвата');
+    const coverageXScale = { min: 0, max: 100, grace: 0, beginAtZero: true };
+    const bottomCovPool = sortedCov.filter((m) => m.hasDev >= MIN_POSITIVE_KNSK_FOR_COVERAGE_ANTITOP);
+    renderHorizontalRankChart('top5CoverageChart', sortedCov.slice(0, 5), 'coverage', '#2c7da0', '% охвата', coverageXScale);
+    renderHorizontalRankChart('bottom5CoverageChart', bottomCovPool.slice(-5).reverse(), 'coverage', '#c0392b', '% охвата', coverageXScale);
   }
 
   function heatClass(percent) {
