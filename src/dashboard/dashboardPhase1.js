@@ -180,6 +180,20 @@ const DashboardPhase1 = (function () {
       text: `Недельный прирост ${totals.growth.toLocaleString('ru-RU')} исследований — ${weekPct}% от плана ${PLAN_WEEKLY.toLocaleString('ru-RU')}/нед.`,
     });
 
+    const COLON_THRESHOLD = 50;
+    const belowColon = mos.filter((m) => {
+      const coverage = m.hasDev > 0 ? (m.colon / m.hasDev) * 100 : 0;
+      return coverage < COLON_THRESHOLD;
+    });
+    if (belowColon.length) {
+      const colonSeverity = belowColon.length >= mos.length * 0.3 ? 'signal-danger' : 'signal-warn';
+      signals.push({
+        className: colonSeverity,
+        icon: 'fa-hospital',
+        text: `${belowColon.length} из ${mos.length} МО ниже ${COLON_THRESHOLD}% колоноскопий у пациентов с положительным результатом КнСК`,
+      });
+    }
+
     signals.push({
       className: 'signal-warn',
       icon: 'fa-stethoscope',

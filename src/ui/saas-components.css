@@ -1,0 +1,331 @@
+/**
+ * saas-components.css — поверхности, empty states, skeleton, microinteractions
+ */
+
+/* Entrance (CSS fallback when Motion CDN unavailable) */
+@keyframes saas-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.saas-enter {
+  animation: saas-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dashboard-ready .saas-surface,
+.dashboard-ready .kpi-card,
+.dashboard-ready .chart-card,
+.dashboard-ready .rank-card {
+  opacity: 0;
+}
+
+.dashboard-ready.saas-animated .saas-surface,
+.dashboard-ready.saas-animated .kpi-card,
+.dashboard-ready.saas-animated .chart-card,
+.dashboard-ready.saas-animated .rank-card,
+body.saas-app .saas-enter {
+  opacity: 1;
+}
+
+/* Layered surfaces */
+.saas-surface,
+body.dashboard-phase1 .kpi-card,
+body.dashboard-phase1 .chart-card,
+body.dashboard-phase1 .rank-card,
+body.dashboard-phase1 .period-info-block,
+body.dashboard-phase1 .signals-panel,
+body.dashboard-phase1 .table-container,
+body.dashboard-phase1 .info-card,
+body.dashboard-phase1 .compare-panel,
+body.dashboard-phase1 .viewer-select-panel,
+.editor-surface {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.saas-surface:hover,
+body.dashboard-phase1 .kpi-card:hover,
+body.dashboard-phase1 .chart-card:hover,
+body.dashboard-phase1 .rank-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-hover);
+}
+
+body.dashboard-phase1 .kpi-card {
+  padding: var(--space-4) var(--space-5);
+}
+
+body.dashboard-phase1 .chart-card,
+body.dashboard-phase1 .rank-card {
+  padding: var(--space-4) var(--space-5);
+}
+
+/* Dense KPI typography */
+body.dashboard-phase1 .kpi-title {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+
+body.dashboard-phase1 .kpi-value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+body.dashboard-phase1 .kpi-sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: var(--space-1);
+}
+
+body.dashboard-phase1 .chart-title,
+body.dashboard-phase1 .rank-card h4 {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
+
+/* Signals — compact analytics strip */
+body.dashboard-phase1 .signals-panel {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  padding: var(--space-4) var(--space-5);
+}
+
+body.dashboard-phase1 .signals-panel h3.signals-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-3);
+}
+
+body.dashboard-phase1 .signals-list {
+  gap: var(--space-2);
+}
+
+body.dashboard-phase1 .signals-list li {
+  font-size: 0.8125rem;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  border-left: none;
+}
+
+body.dashboard-phase1 .signals-list li i {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+body.dashboard-phase1 .signals-list li.signal-success {
+  background: var(--success-soft);
+}
+body.dashboard-phase1 .signals-list li.signal-warn {
+  background: var(--warn-soft);
+}
+body.dashboard-phase1 .signals-list li.signal-danger {
+  background: var(--danger-soft);
+}
+
+/* Empty states */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  color: var(--text-muted);
+  gap: var(--space-2);
+}
+
+.empty-state-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+.empty-state-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.empty-state-desc {
+  font-size: 0.8125rem;
+  max-width: 28rem;
+  line-height: 1.5;
+}
+
+/* Skeleton loaders */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.dashboard-loading .skeleton-pulse,
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    var(--surface-3) 45%,
+    var(--surface-2) 90%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--radius-xs);
+  color: transparent !important;
+  user-select: none;
+  pointer-events: none;
+}
+
+.skeleton-cell {
+  height: 14px;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+}
+
+.skeleton-signal-row .skeleton-cell {
+  width: 100%;
+  height: 36px;
+}
+
+/* Chart canvas */
+.chart-canvas-wrap {
+  position: relative;
+  min-height: 200px;
+}
+
+canvas.chart-canvas-ready {
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+
+.chart-card canvas:not(.chart-canvas-ready) {
+  opacity: 0;
+}
+
+/* Table — dense readable */
+body.dashboard-phase1 .table-scroll-wrap {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+
+body.dashboard-phase1 .table-scroll-wrap thead th {
+  background: var(--surface-2);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  box-shadow: none;
+}
+
+body.dashboard-phase1 .table-toolbar input[type='search'] {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-xs);
+  font-size: 0.8125rem;
+}
+
+body.dashboard-phase1 .table-toolbar input[type='search']:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+body.dashboard-phase1 td {
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.75rem;
+}
+
+body.dashboard-phase1 tr.mo-row-clickable:hover {
+  background: var(--surface-2) !important;
+}
+
+/* Period header */
+body.dashboard-phase1 .period-info-block {
+  text-align: left;
+  padding: var(--space-4) var(--space-5);
+}
+
+body.dashboard-phase1 .period-info-text {
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+/* Heat bars — softer */
+body.dashboard-phase1 .cell-bar-wrap {
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+  height: 24px;
+}
+
+body.dashboard-phase1 .cell-bar-fill {
+  opacity: 0.28;
+}
+
+/* Chart footnotes */
+.chart-note {
+  margin-top: var(--space-3);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.45;
+}
+
+.chart-note--warn {
+  background: var(--warn-soft);
+  color: var(--text-secondary);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .saas-enter,
+  .skeleton-shimmer,
+  .skeleton-pulse {
+    animation: none !important;
+  }
+  .saas-surface,
+  .kpi-card,
+  .chart-card {
+    transition: none !important;
+  }
+}

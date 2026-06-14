@@ -1,0 +1,13 @@
+*.md
+*.mdx
+*.txt
+*.html
+docs/
+CONTRIBUTING.md
+README.md
+migration-guide.md
+git.txt
+node_modules/
+*.yml
+*.yaml
+.github/
