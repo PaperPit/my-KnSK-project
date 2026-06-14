@@ -19,6 +19,7 @@
     <?!= include('UiTokens'); ?>
     <?!= include('UiPhase2'); ?>
     <?!= include('EditorStyles'); ?>
+    <?!= include('UiKpiCards'); ?>
     <script>
     (function () {
       var _cfg = <?!= clientConfigJson ?>;
@@ -116,36 +117,30 @@
         </div>
 
         <div class="kpi-grid">
-            <div class="kpi-card">
+            <div class="kpi-card kpi-card--plan">
                 <div class="kpi-title"><i class="fas fa-chart-line"></i> План на год</div>
                 <div class="kpi-value" id="totalPercent">--</div>
                 <div class="kpi-sub" id="totalPlanFact">--</div>
                 <div id="totalPercentDelta"></div>
             </div>
-            <div class="kpi-card">
+            <div class="kpi-card kpi-card--ksk">
                 <div class="kpi-title"><i class="fas fa-vial"></i> КНСК с начала года</div>
                 <div class="kpi-value" id="totalKsk">--</div>
                 <div class="kpi-sub" id="weeklyGrowth">--</div>
                 <div id="totalGrowthDelta"></div>
             </div>
-            <div class="kpi-card">
+            <div class="kpi-card kpi-card--colon">
                 <div class="kpi-title"><i class="fas fa-stethoscope"></i> Прошли колоноскопию</div>
                 <div class="kpi-value" id="totalColonPassed">--</div>
                 <div class="kpi-sub" id="colonPercent">--</div>
                 <div id="totalColonDelta"></div>
             </div>
-            <div class="kpi-card">
+            <div class="kpi-card kpi-card--zno">
                 <div class="kpi-title"><i class="fas fa-biohazard"></i> Выявлено ЗНО</div>
                 <div class="kpi-value" id="totalZno">--</div>
                 <div class="kpi-sub">1-2 стадия</div>
                 <div id="totalZnoDelta"></div>
             </div>
-        </div>
-
-        <div class="compare-panel" id="comparePanel" style="display:none;">
-            <button type="button" class="compare-panel-close" id="comparePanelClose" aria-label="Закрыть">&times;</button>
-            <h3><i class="fas fa-code-compare"></i> Сравнение двух архивных отчётов</h3>
-            <div id="comparePanelContent"></div>
         </div>
 
         <div class="charts-row">
@@ -219,6 +214,14 @@
         <button type="button" class="mo-drawer-close" id="moDrawerClose" aria-label="Закрыть">&times;</button>
         <h3 id="moDrawerTitle">МО</h3>
         <div id="moDrawerBody"></div>
+    </div>
+</div>
+
+<div id="compareOverlay" class="compare-overlay" aria-hidden="true">
+    <div class="compare-panel" id="comparePanel" role="dialog" aria-modal="true" aria-labelledby="comparePanelTitle">
+        <button type="button" class="compare-panel-close" id="comparePanelClose" aria-label="Закрыть">&times;</button>
+        <h3 id="comparePanelTitle"><i class="fas fa-code-compare"></i> Сравнение двух архивных отчётов</h3>
+        <div id="comparePanelContent"></div>
     </div>
 </div>
 <?!= include('EditorPage'); ?>

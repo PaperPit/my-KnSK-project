@@ -1,0 +1,81 @@
+<style>
+/**
+ * kpi-cards.css — градиентные KPI-карточки (4 показателя)
+ */
+
+body.dashboard-phase1 .kpi-card.kpi-card--plan,
+body.dashboard-phase1 .kpi-card.kpi-card--ksk,
+body.dashboard-phase1 .kpi-card.kpi-card--colon,
+body.dashboard-phase1 .kpi-card.kpi-card--zno {
+  border: none;
+  border-radius: 20px;
+  padding: 18px 20px;
+  overflow: hidden;
+  position: relative;
+  min-height: 132px;
+}
+
+body.dashboard-phase1 .kpi-card.kpi-card--plan::after,
+body.dashboard-phase1 .kpi-card.kpi-card--ksk::after,
+body.dashboard-phase1 .kpi-card.kpi-card--colon::after,
+body.dashboard-phase1 .kpi-card.kpi-card--zno::after {
+  content: '';
+  position: absolute;
+  bottom: -20px;
+  right: -20px;
+  width: 120px;
+  height: 60px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+body.dashboard-phase1 .kpi-card.kpi-card--plan {
+  background: linear-gradient(145deg, #1e4663, #0c4a6e);
+  box-shadow: 0 8px 24px rgba(30, 70, 99, 0.35);
+}
+
+body.dashboard-phase1 .kpi-card.kpi-card--ksk {
+  background: linear-gradient(145deg, #0891b2, #0e7490);
+  box-shadow: 0 8px 24px rgba(8, 145, 178, 0.35);
+}
+
+body.dashboard-phase1 .kpi-card.kpi-card--colon {
+  background: linear-gradient(145deg, #0d9488, #047857);
+  box-shadow: 0 8px 24px rgba(13, 148, 136, 0.35);
+}
+
+body.dashboard-phase1 .kpi-card.kpi-card--zno {
+  background: linear-gradient(145deg, #be123c, #9f1239);
+  box-shadow: 0 8px 24px rgba(190, 18, 60, 0.35);
+}
+
+body.dashboard-phase1 .kpi-card.kpi-card--plan .kpi-title,
+body.dashboard-phase1 .kpi-card.kpi-card--ksk .kpi-title,
+body.dashboard-phase1 .kpi-card.kpi-card--colon .kpi-title,
+body.dashboard-phase1 .kpi-card.kpi-card--zno .kpi-title {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+body.dashboard-phase1 .kpi-card.kpi-card--plan .kpi-value,
+body.dashboard-phase1 .kpi-card.kpi-card--ksk .kpi-value,
+body.dashboard-phase1 .kpi-card.kpi-card--colon .kpi-value,
+body.dashboard-phase1 .kpi-card.kpi-card--zno .kpi-value {
+  color: #ffffff;
+}
+
+body.dashboard-phase1 .kpi-card.kpi-card--plan .kpi-sub,
+body.dashboard-phase1 .kpi-card.kpi-card--ksk .kpi-sub,
+body.dashboard-phase1 .kpi-card.kpi-card--colon .kpi-sub,
+body.dashboard-phase1 .kpi-card.kpi-card--zno .kpi-sub {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+body.dashboard-phase1 .kpi-card.kpi-card--plan .kpi-delta,
+body.dashboard-phase1 .kpi-card.kpi-card--ksk .kpi-delta,
+body.dashboard-phase1 .kpi-card.kpi-card--colon .kpi-delta,
+body.dashboard-phase1 .kpi-card.kpi-card--zno .kpi-delta {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+</style>

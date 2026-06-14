@@ -23,13 +23,48 @@
   min-height: 320px;
 }
 
-/* Сравнение отчётов */
-.compare-panel {
+/* Сравнение отчётов — полноэкранный оверлей */
+.compare-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  background: rgba(15, 43, 61, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(16px, 3vh, 32px) clamp(12px, 3vw, 24px);
+  overflow-y: auto;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.compare-overlay.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.compare-overlay .compare-panel {
   background: white;
-  border-radius: 20px;
-  padding: 20px 22px;
-  border: 2px solid #2c7da0;
-  margin-bottom: 20px;
+  border-radius: 24px;
+  padding: 22px 24px 26px;
+  border: none;
+  margin: auto 0;
+  position: relative;
+  width: min(100%, 980px);
+  max-height: none;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  transform: translateY(12px) scale(0.98);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.compare-overlay.open .compare-panel {
+  transform: translateY(0) scale(1);
+}
+
+.compare-panel {
   position: relative;
 }
 
@@ -99,18 +134,189 @@
 
 .compare-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
 }
 
 .compare-kpi {
-  background: #f8fafc;
-  border-radius: 12px;
-  padding: 12px;
-  text-align: center;
+  border-radius: 16px;
+  padding: 14px 16px;
+  text-align: left;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+  min-height: 118px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 6px 20px rgba(15, 43, 61, 0.12);
 }
 
+.compare-kpi::after {
+  content: '';
+  position: absolute;
+  bottom: -24px;
+  right: -24px;
+  width: 100px;
+  height: 50px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.compare-kpi--fact {
+  background: linear-gradient(145deg, #0891b2, #0e7490);
+}
+
+.compare-kpi--plan {
+  background: linear-gradient(145deg, #1e4663, #0c4a6e);
+}
+
+.compare-kpi--growth {
+  background: linear-gradient(145deg, #059669, #047857);
+}
+
+.compare-kpi--colon {
+  background: linear-gradient(145deg, #0d9488, #0f766e);
+}
+
+.compare-kpi--zno {
+  background: linear-gradient(145deg, #be123c, #9f1239);
+}
+
+.compare-kpi-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compare-kpi-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.compare-kpi-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.compare-kpi-vals {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-val--from {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.compare-val-arrow {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.compare-val--to {
+  color: #ffffff;
+  font-size: 1rem;
+}
+
+.compare-kpi .delta {
+  font-size: 0.72rem;
+  margin-top: auto;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.compare-kpi .delta.up {
+  color: #ecfdf5;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.compare-kpi .delta.down {
+  color: #fff1f2;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.compare-kpi .delta.neutral {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.compare-period-note {
+  font-size: 0.82rem;
+  color: #5b6e8c;
+  margin-bottom: 16px;
+  line-height: 1.45;
+}
+
+.compare-period-hint {
+  display: block;
+  font-size: 0.75rem;
+  margin-top: 4px;
+  color: #94a3b8;
+}
+
+.compare-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 40px 20px;
+  color: #5b6e8c;
+  font-size: 0.9rem;
+}
+
+.compare-loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #2c7da0;
+  border-radius: 50%;
+  animation: compare-spin 0.75s linear infinite;
+}
+
+@keyframes compare-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.compare-error {
+  color: #c0392b;
+  font-size: 0.88rem;
+  padding: 16px;
+  background: #fdecea;
+  border-radius: 12px;
+  margin: 0;
+}
+
+/* Legacy flat compare-kpi (fallback) */
 .compare-kpi .label {
   font-size: 0.7rem;
   color: #5b6e8c;
@@ -122,28 +328,11 @@
   font-weight: 700;
 }
 
-.compare-kpi .delta {
-  font-size: 0.72rem;
-  margin-top: 6px;
-  font-weight: 700;
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 8px;
-}
-
-.compare-kpi .delta.up {
-  color: #1f8a4c;
-  background: #e6f9ee;
-}
-
-.compare-kpi .delta.down {
-  color: #c0392b;
-  background: #fdecea;
-}
-
-.compare-kpi .delta.neutral {
-  color: #5b6e8c;
-  background: #f1f5f9;
+@media (prefers-reduced-motion: reduce) {
+  .compare-loading-spinner {
+    animation: none;
+    border-top-color: #2c7da0;
+  }
 }
 
 .compare-mo-list {
@@ -376,9 +565,12 @@ body.presentation-mode .chart-card,
 body.presentation-mode .rank-card,
 body.presentation-mode .signals-panel,
 body.presentation-mode .info-card,
-body.presentation-mode .table-container,
-body.presentation-mode .compare-panel {
+body.presentation-mode .table-container {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+body.presentation-mode .compare-overlay {
+  display: none !important;
 }
 
 body.presentation-mode .presentation-exit {

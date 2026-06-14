@@ -303,6 +303,16 @@
                 }
 
                 applyArchiveReport(report, previousTotals, previousMos);
+                if (window.DashboardPhase2 && DashboardPhase2.cacheArchiveReport) {
+                    DashboardPhase2.cacheArchiveReport(reportId, report);
+                    if (payload.previous && window.DashboardPhase1 && DashboardPhase1.getPreviousArchiveId) {
+                        var prevId = DashboardPhase1.getPreviousArchiveId(
+                            window.archiveReportsList || archiveReportsList,
+                            reportId
+                        );
+                        if (prevId) DashboardPhase2.cacheArchiveReport(prevId, payload.previous);
+                    }
+                }
                 setStatus(`✅ Загружен архивный отчёт от ${report.timestamp || '—'}`, true);
             })
             .catch(function (err) {

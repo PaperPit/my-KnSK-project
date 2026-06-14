@@ -25,6 +25,15 @@ const DashboardPhase2 = (function () {
   let tableClickBound = false;
   let lastMos = [];
   let lastPreviousMos = null;
+  const archiveReportCache = Object.create(null);
+
+  function cacheArchiveReport(id, report) {
+    if (id != null && report) archiveReportCache[Number(id)] = report;
+  }
+
+  function getCachedArchiveReport(id) {
+    return archiveReportCache[Number(id)] || null;
+  }
 
   function loadEcharts() {
     if (typeof echarts !== 'undefined') return Promise.resolve(window.echarts);
@@ -223,7 +232,11 @@ const DashboardPhase2 = (function () {
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         closeMoDrawer();
-        if (document.body.classList.contains('presentation-mode')) togglePresentationMode(false);
+        if (document.getElementById('compareOverlay')?.classList.contains('open')) {
+          closeComparePanel();
+        } else if (document.body.classList.contains('presentation-mode')) {
+          togglePresentationMode(false);
+        }
       }
     });
   }
@@ -239,9 +252,24 @@ const DashboardPhase2 = (function () {
     }
   }
 
+  function openComparePanel() {
+    const overlay = document.getElementById('compareOverlay');
+    if (overlay) {
+      overlay.classList.add('open');
+      overlay.setAttribute('aria-hidden', 'false');
+    }
+    document.body.style.overflow = 'hidden';
+  }
+
   function closeComparePanel() {
-    const panel = document.getElementById('comparePanel');
-    if (panel) panel.style.display = 'none';
+    const overlay = document.getElementById('compareOverlay');
+    if (overlay) {
+      overlay.classList.remove('open');
+      overlay.setAttribute('aria-hidden', 'true');
+    }
+    if (!document.getElementById('moDrawerOverlay')?.classList.contains('open')) {
+      document.body.style.overflow = '';
+    }
   }
 
   let compareCloseBound = false;
@@ -249,6 +277,12 @@ const DashboardPhase2 = (function () {
   function setupComparePanelClose() {
     if (compareCloseBound) return;
     compareCloseBound = true;
+    const overlay = document.getElementById('compareOverlay');
+    if (overlay) {
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) closeComparePanel();
+      });
+    }
     document.addEventListener('click', function (e) {
       if (e.target.closest('#comparePanelClose')) closeComparePanel();
     });
@@ -283,10 +317,20 @@ const DashboardPhase2 = (function () {
     }
   }
 
-  function renderComparisonPanel(reportA, reportB, metaA, metaB) {
-    const panel = document.getElementById('comparePanel');
+  function showCompareLoading() {
     const content = document.getElementById('comparePanelContent');
-    if (!panel || !content || !window.DashboardPhase1) return;
+    if (!content) return;
+    openComparePanel();
+    content.innerHTML = `
+      <div class="compare-loading" aria-live="polite">
+        <div class="compare-loading-spinner" aria-hidden="true"></div>
+        <p>Загрузка отчётов для сравнения…</p>
+      </div>`;
+  }
+
+  function renderComparisonPanel(reportA, reportB, metaA, metaB) {
+    const content = document.getElementById('comparePanelContent');
+    if (!content || !window.DashboardPhase1) return;
 
     const mosA = DashboardPhase1.buildMosFromData(reportA.mosData || reportA);
     const mosB = DashboardPhase1.buildMosFromData(reportB.mosData || reportB);
@@ -340,37 +384,78 @@ const DashboardPhase2 = (function () {
     const factChanges = buildMoChanges('fact');
     const colonChanges = buildMoChanges('colon');
 
+    function kpiCard(modifier, icon, label, valA, valB, earlier, later, isPct) {
+      return `
+        <div class="compare-kpi compare-kpi--${modifier}">
+          <div class="compare-kpi-head">
+            <span class="compare-kpi-icon"><i class="fas ${icon}"></i></span>
+            <span class="compare-kpi-label">${label}</span>
+          </div>
+          <div class="compare-kpi-vals">
+            <span class="compare-val compare-val--from">${valA}</span>
+            <span class="compare-val-arrow" aria-hidden="true">→</span>
+            <span class="compare-val compare-val--to">${valB}</span>
+          </div>
+          ${deltaCell(earlier, later, isPct)}
+        </div>`;
+    }
+
     content.innerHTML = `
-      <p style="font-size:0.82rem;color:#5b6e8c;margin-bottom:12px;">
+      <p class="compare-period-note">
         Динамика: <strong>${escapeHtml(labelA)}</strong> → <strong>${escapeHtml(labelB)}</strong>
-        <span style="display:block;font-size:0.75rem;margin-top:4px;">Слева — ранний период, справа — поздний. Изменение = поздний − ранний.</span>
+        <span class="compare-period-hint">Слева — ранний период, справа — поздний. Изменение = поздний − ранний.</span>
       </p>
       <div class="compare-kpi-grid">
-        <div class="compare-kpi">
-          <div class="label">КнСК (факт)</div>
-          <div class="vals">${tA.fact.toLocaleString('ru-RU')} → ${tB.fact.toLocaleString('ru-RU')}</div>
-          ${deltaCell(tA.fact, tB.fact, false)}
-        </div>
-        <div class="compare-kpi">
-          <div class="label">% год. плана</div>
-          <div class="vals">${pctA.toFixed(1)}% → ${pctB.toFixed(1)}%</div>
-          ${deltaCell(pctA, pctB, true)}
-        </div>
-        <div class="compare-kpi">
-          <div class="label">Прирост за нед.</div>
-          <div class="vals">${tA.growth.toLocaleString('ru-RU')} → ${tB.growth.toLocaleString('ru-RU')}</div>
-          ${deltaCell(tA.growth, tB.growth, false)}
-        </div>
-        <div class="compare-kpi">
-          <div class="label">Колоноскопия</div>
-          <div class="vals">${tA.colon.toLocaleString('ru-RU')} → ${tB.colon.toLocaleString('ru-RU')}</div>
-          ${deltaCell(tA.colon, tB.colon, false)}
-        </div>
-        <div class="compare-kpi">
-          <div class="label">ЗНО</div>
-          <div class="vals">${tA.zno} → ${tB.zno}</div>
-          ${deltaCell(tA.zno, tB.zno, false)}
-        </div>
+        ${kpiCard(
+          'plan',
+          'fa-chart-line',
+          '% год. плана',
+          `${pctA.toFixed(1)}%`,
+          `${pctB.toFixed(1)}%`,
+          pctA,
+          pctB,
+          true
+        )}
+        ${kpiCard(
+          'fact',
+          'fa-vial',
+          'КнСК (факт)',
+          tA.fact.toLocaleString('ru-RU'),
+          tB.fact.toLocaleString('ru-RU'),
+          tA.fact,
+          tB.fact,
+          false
+        )}
+        ${kpiCard(
+          'growth',
+          'fa-arrow-trend-up',
+          'Прирост за нед.',
+          tA.growth.toLocaleString('ru-RU'),
+          tB.growth.toLocaleString('ru-RU'),
+          tA.growth,
+          tB.growth,
+          false
+        )}
+        ${kpiCard(
+          'colon',
+          'fa-stethoscope',
+          'Колоноскопия',
+          tA.colon.toLocaleString('ru-RU'),
+          tB.colon.toLocaleString('ru-RU'),
+          tA.colon,
+          tB.colon,
+          false
+        )}
+        ${kpiCard(
+          'zno',
+          'fa-biohazard',
+          'ЗНО',
+          String(tA.zno),
+          String(tB.zno),
+          tA.zno,
+          tB.zno,
+          false
+        )}
       </div>
       <div class="compare-mo-lists-grid">
         <div class="compare-mo-block">
@@ -387,7 +472,30 @@ const DashboardPhase2 = (function () {
         </div>
       </div>
     `;
-    panel.style.display = 'block';
+    openComparePanel();
+  }
+
+  function fetchReportsForCompare(idA, idB) {
+    const cachedA = getCachedArchiveReport(idA);
+    const cachedB = getCachedArchiveReport(idB);
+    if (cachedA && cachedB) {
+      return Promise.resolve({ reportA: cachedA, reportB: cachedB });
+    }
+
+    if (typeof google === 'undefined' || !google.script?.run) {
+      return Promise.reject(new Error('Сравнение доступно только в веб-приложении GAS'));
+    }
+
+    return new Promise(function (resolve, reject) {
+      google.script.run
+        .withSuccessHandler(function (result) {
+          if (result && result.reportA) cacheArchiveReport(idA, result.reportA);
+          if (result && result.reportB) cacheArchiveReport(idB, result.reportB);
+          resolve(result);
+        })
+        .withFailureHandler(reject)
+        .getArchivedReportsForCompare(idA, idB);
+    });
   }
 
   function runArchiveComparison(onStatus) {
@@ -402,35 +510,27 @@ const DashboardPhase2 = (function () {
       if (onStatus) onStatus('Выберите разные отчёты', false);
       return;
     }
-    if (typeof google === 'undefined' || !google.script?.run) {
-      if (onStatus) onStatus('Сравнение доступно только в веб-приложении GAS', false);
-      return;
-    }
 
+    showCompareLoading();
     if (onStatus) onStatus('Загрузка отчётов для сравнения…', true);
 
-    google.script.run
-      .withSuccessHandler(function (reportA) {
-        google.script.run
-          .withSuccessHandler(function (reportB) {
-            const metaA =
-              (window.archiveReportsList || []).find((r) => r.id === idA)?.dateStr || `ID ${idA}`;
-            const metaB =
-              (window.archiveReportsList || []).find((r) => r.id === idB)?.dateStr || `ID ${idB}`;
-            renderComparisonPanel(reportA, reportB, metaA, metaB);
-            if (onStatus) onStatus('Сравнение построено', true);
-            const panel = document.getElementById('comparePanel');
-            if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          })
-          .withFailureHandler(function (err) {
-            if (onStatus) onStatus('Ошибка загрузки отчёта B: ' + err.message, false);
-          })
-          .getArchivedReportById(idB);
+    fetchReportsForCompare(idA, idB)
+      .then(function (result) {
+        const metaA =
+          (window.archiveReportsList || []).find((r) => r.id === idA)?.dateStr || `ID ${idA}`;
+        const metaB =
+          (window.archiveReportsList || []).find((r) => r.id === idB)?.dateStr || `ID ${idB}`;
+        renderComparisonPanel(result.reportA, result.reportB, metaA, metaB);
+        if (onStatus) onStatus('Сравнение построено', true);
       })
-      .withFailureHandler(function (err) {
-        if (onStatus) onStatus('Ошибка загрузки отчёта A: ' + err.message, false);
-      })
-      .getArchivedReportById(idA);
+      .catch(function (err) {
+        const content = document.getElementById('comparePanelContent');
+        if (content) {
+          content.innerHTML = `<p class="compare-error">${escapeHtml(err.message || String(err))}</p>`;
+        }
+        openComparePanel();
+        if (onStatus) onStatus('Ошибка сравнения: ' + err.message, false);
+      });
   }
 
   function setupCompareUI(onStatus) {
@@ -474,6 +574,7 @@ const DashboardPhase2 = (function () {
     populateCompareSelects,
     renderComparisonPanel,
     runArchiveComparison,
+    cacheArchiveReport,
     openMoDrawer,
     closeMoDrawer,
     closeComparePanel,

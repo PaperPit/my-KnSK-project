@@ -336,6 +336,16 @@
           const prevCtx = resolvePreviousContext(data.previous);
           applyReportToDashboard(data.report, prevCtx.previousTotals, prevCtx.previousMos);
           saveViewerCache(data.reportId, data.report, data.previous);
+          if (window.DashboardPhase2 && DashboardPhase2.cacheArchiveReport) {
+            DashboardPhase2.cacheArchiveReport(data.reportId, data.report);
+            if (data.previous && window.DashboardPhase1 && DashboardPhase1.getPreviousArchiveId) {
+              var bootstrapPrevId = DashboardPhase1.getPreviousArchiveId(
+                window.archiveReportsList || reportsList,
+                data.reportId
+              );
+              if (bootstrapPrevId) DashboardPhase2.cacheArchiveReport(bootstrapPrevId, data.previous);
+            }
+          }
         }
       })
       .catch(function (err) {
@@ -360,6 +370,13 @@
         const prevCtx = resolvePreviousContext(payload.previous);
         applyReportToDashboard(report, prevCtx.previousTotals, prevCtx.previousMos);
         saveViewerCache(parseInt(id, 10), report, payload.previous);
+        if (window.DashboardPhase2 && DashboardPhase2.cacheArchiveReport) {
+          DashboardPhase2.cacheArchiveReport(parseInt(id, 10), report);
+          if (payload.previous && window.DashboardPhase1 && DashboardPhase1.getPreviousArchiveId) {
+            var prevId = DashboardPhase1.getPreviousArchiveId(window.archiveReportsList, parseInt(id, 10));
+            if (prevId) DashboardPhase2.cacheArchiveReport(prevId, payload.previous);
+          }
+        }
       })
       .catch(function (err) {
         if (window.DashboardPhase1) DashboardPhase1.hideLoadingState();

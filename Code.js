@@ -222,6 +222,7 @@ function deleteBackupFromSheet(sheetName, backupId) {
  *   saveReportToArchive(reportData)     — сохранить снимок отчёта
  *   getArchivedReportsList()            — список {id, dateStr} для селектов
  *   getArchivedReportById(id)           — один отчёт
+ *   getArchivedReportsForCompare(a, b)  — два отчёта одним запросом (сравнение)
  *   getArchivedReportWithPrevious(id)   — отчёт + предыдущий (для дельт KPI)
  *   getArchiveBootstrap(requestedId)    — список + отчёт одним вызовом (viewer)
  *
@@ -475,6 +476,27 @@ function getArchivedReportById(id) {
     console.error('Ошибка получения отчёта по ID:', error);
     throw new Error('Не удалось загрузить отчёт: ' + error.message);
   }
+}
+
+/** Два отчёта за один round-trip (сравнение архивов) */
+function getArchivedReportsForCompare(idA, idB) {
+  var sheet = getArchiveSheet_();
+  if (!sheet) throw new Error('Лист Архив не найден');
+
+  var numA = Number(idA);
+  var numB = Number(idB);
+  if (isNaN(numA) || isNaN(numB)) throw new Error('Некорректный ID отчёта');
+
+  var index = buildArchiveIndex_(sheet);
+  var rowA = index.idToRow[numA];
+  var rowB = index.idToRow[numB];
+  if (!rowA) throw new Error('Отчёт не найден (ID ' + numA + ')');
+  if (!rowB) throw new Error('Отчёт не найден (ID ' + numB + ')');
+
+  return {
+    reportA: readArchiveReportAtRow_(sheet, rowA),
+    reportB: readArchiveReportAtRow_(sheet, rowB),
+  };
 }
 
 /**

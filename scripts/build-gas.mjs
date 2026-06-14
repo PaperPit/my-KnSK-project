@@ -87,6 +87,7 @@ wrapStyle('src/ui/tokens.css', 'UiTokens.html');
 wrapStyle('src/ui/phase2.css', 'UiPhase2.html');
 wrapStyle('src/ui/editor.css', 'EditorStyles.html');
 wrapStyle('src/ui/viewer.css', 'ViewerStyles.html');
+wrapStyle('src/ui/kpi-cards.css', 'UiKpiCards.html');
 
 console.log('build-gas: lib bundle');
 concatScripts(
