@@ -492,11 +492,38 @@
         
         function renderHtmlContent(text) {
             if (!text || text.trim() === '') return '—';
-            let safe = text;
-            if (!safe.includes('<br') && !safe.includes('<p') && !safe.includes('<div') && !safe.includes('<li')) {
-                safe = safe.replace(/\\n/g, '<br>');
+            const ALLOWED = /^(b|strong|a|ul|li|br)$/i;
+            const SAFE_HREF = /^(https?:\\/\\/|mailto:)/i;
+            function esc(s) {
+                return String(s)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
             }
-            return safe;
+            function sanitize(html) {
+                return String(html).replace(/<\\/?([a-z][a-z0-9]*)\\b[^>]*>/gi, function (match, tag) {
+                    const t = tag.toLowerCase();
+                    if (!ALLOWED.test(t)) return '';
+                    if (match.startsWith('</')) return '</' + t + '>';
+                    if (t === 'br') return '<br>';
+                    if (t === 'a') {
+                        const hrefMatch = match.match(/href\\s*=\\s*(?:"([^"]*)"|'([^']*)')/i);
+                        const href = hrefMatch ? (hrefMatch[1] || hrefMatch[2]) : '';
+                        if (!SAFE_HREF.test(href)) return '';
+                        return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">';
+                    }
+                    return '<' + t + '>';
+                });
+            }
+            const safe = sanitize(text);
+            if (/<(b|strong|a|ul|li|br)\\b/i.test(safe)) {
+                if (!/<br\\b/i.test(safe) && !/<li\\b/i.test(safe)) {
+                    return safe.replace(/\\n/g, '<br>');
+                }
+                return safe;
+            }
+            return esc(text).replace(/\\n/g, '<br>');
         }
         
         document.getElementById('doneTextDisplay').innerHTML = renderHtmlContent(DONE_TEXT);

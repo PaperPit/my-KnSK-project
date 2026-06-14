@@ -275,7 +275,7 @@ const DashboardPhase1 = (function () {
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
-        layout: { padding: { right: 24 } },
+        layout: { padding: { left: 8, right: 16 } },
         plugins: {
           legend: { display: false },
           datalabels: {
@@ -426,11 +426,36 @@ const DashboardPhase1 = (function () {
   }
 
   let coverageChartInstance = null;
+  let lastCoverageMos = null;
+  let coverageResizeBound = false;
+
+  function getCoverageChartWidth(moCount) {
+    const scroll = document.getElementById('coverageChartScroll');
+    const containerWidth = scroll && scroll.clientWidth > 0 ? scroll.clientWidth : 480;
+    const barWidth = 56;
+    return Math.max(moCount * barWidth, containerWidth);
+  }
+
+  function bindCoverageResize() {
+    if (coverageResizeBound || typeof window === 'undefined') return;
+    coverageResizeBound = true;
+    let resizeTimer = null;
+    window.addEventListener('resize', function () {
+      if (!lastCoverageMos || !lastCoverageMos.length) return;
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () {
+        buildCoverageChart(lastCoverageMos);
+      }, 150);
+    });
+  }
 
   function buildCoverageChart(mosData) {
     const canvas = document.getElementById('coverageChart');
     const inner = document.getElementById('coverageChartInner');
     if (!canvas || !mosData || !mosData.length) return;
+
+    lastCoverageMos = mosData;
+    bindCoverageResize();
 
     const withCoverage = mosData.map((mo) => {
       const coverage = mo.hasDev > 0 ? (mo.colon / mo.hasDev) * 100 : 0;
@@ -442,8 +467,7 @@ const DashboardPhase1 = (function () {
       };
     });
     const sorted = [...withCoverage].sort((a, b) => b.coverage - a.coverage);
-    const barWidth = 56;
-    const chartWidth = Math.max(sorted.length * barWidth, 480);
+    const chartWidth = getCoverageChartWidth(sorted.length);
     if (inner) inner.style.width = `${chartWidth}px`;
     canvas.width = chartWidth;
     canvas.height = 280;

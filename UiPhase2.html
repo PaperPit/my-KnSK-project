@@ -352,7 +352,8 @@ body.presentation-mode .mo-drawer-overlay {
 }
 
 body.presentation-mode .dashboard {
-  max-width: 1400px;
+  width: min(100%, 1400px);
+  max-width: calc(100vw - 2 * var(--dashboard-gutter, 24px));
   padding-top: 12px;
 }
 
@@ -390,7 +391,7 @@ body.presentation-mode .presentation-exit {
   display: none;
   position: fixed;
   top: 16px;
-  left: calc(16px + max(0px, (100vw - 32px - 1400px) / 2));
+  left: calc(16px + max(0px, (100vw - 2 * var(--dashboard-gutter, 24px) - min(1400px, 100vw - 2 * var(--dashboard-gutter, 24px))) / 2));
   right: auto;
   z-index: 8000;
   background: rgba(255, 255, 255, 0.95);

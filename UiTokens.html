@@ -19,12 +19,126 @@
   --radius-card: 20px;
   --shadow-card: 0 1px 3px rgba(15, 43, 61, 0.06), 0 4px 12px rgba(15, 43, 61, 0.04);
   --font-sans: 'Manrope', 'Inter', system-ui, sans-serif;
+  --dashboard-max: 1600px;
+  --dashboard-gutter: clamp(12px, 2.5vw, 28px);
+  --dashboard-gap: clamp(14px, 1.8vw, 24px);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body.dashboard-phase1 {
   background: var(--color-bg);
   font-family: var(--font-sans);
   color: #1e293b;
+  margin: 0;
+  min-height: 100vh;
+  overflow-x: clip;
+}
+
+/* Оболочка: ширина от viewport, контент по центру */
+body.dashboard-phase1 .dashboard {
+  width: min(100%, var(--dashboard-max));
+  max-width: 100%;
+  margin-inline: auto;
+  padding-inline: var(--dashboard-gutter);
+  padding-block: clamp(16px, 2vw, 24px);
+  box-sizing: border-box;
+}
+
+body.dashboard-phase1 #dashboardContent {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+body.dashboard-phase1 .kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: var(--dashboard-gap);
+  margin-bottom: var(--dashboard-gap);
+  width: 100%;
+}
+
+body.dashboard-phase1 .charts-row,
+body.dashboard-phase1 .rank-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dashboard-gap);
+  margin-bottom: var(--dashboard-gap);
+  width: 100%;
+}
+
+body.dashboard-phase1 .charts-row--full {
+  grid-template-columns: 1fr;
+}
+
+body.dashboard-phase1 .coverage-chart-card {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+}
+
+body.dashboard-phase1 .info-blocks-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dashboard-gap);
+  width: 100%;
+  margin-bottom: var(--dashboard-gap);
+}
+
+body.dashboard-phase1 .chart-card,
+body.dashboard-phase1 .rank-card,
+body.dashboard-phase1 .period-info-block,
+body.dashboard-phase1 .signals-panel,
+body.dashboard-phase1 .table-container,
+body.dashboard-phase1 .info-card,
+body.dashboard-phase1 .compare-panel,
+body.dashboard-phase1 .control-panel,
+body.dashboard-phase1 .dynamic-panel,
+body.dashboard-phase1 .text-fields-panel,
+body.dashboard-phase1 .period-input-panel,
+body.dashboard-phase1 .viewer-select-panel {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+body.dashboard-phase1 .chart-title {
+  padding-inline: 0;
+}
+
+body.dashboard-phase1 canvas:not(#coverageChart) {
+  max-height: 280px;
+  width: 100% !important;
+  display: block;
+}
+
+@media (max-width: 900px) {
+  body.dashboard-phase1 .charts-row,
+  body.dashboard-phase1 .rank-row,
+  body.dashboard-phase1 .info-blocks-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  body.dashboard-phase1 .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  body.dashboard-phase1 .kpi-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 body.dashboard-phase1 .kpi-value,
@@ -48,6 +162,41 @@ body.dashboard-phase1.viewer-mode .prepared-by span {
 body.dashboard-phase1.viewer-mode #archiveSelect {
   border: 1px solid var(--color-border);
   color: var(--color-primary);
+}
+
+/* Блоки «Сделано» и «Планы» — жирный текст и ссылки */
+body.dashboard-phase1 .info-card-content {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #2c3e50;
+  word-break: break-word;
+}
+
+body.dashboard-phase1 .info-card-content strong,
+body.dashboard-phase1 .info-card-content b {
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+body.dashboard-phase1 .info-card-content a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+body.dashboard-phase1 .info-card-content a:hover {
+  color: var(--color-warning);
+}
+
+body.dashboard-phase1 .info-card-content ul {
+  margin: 0.4em 0 0.4em 1.2em;
+  padding: 0;
+}
+
+body.dashboard-phase1 .info-card-content li {
+  margin-bottom: 0.35em;
 }
 
 /* Сигналы */
@@ -269,7 +418,7 @@ td.heat-percent {
 
 .coverage-chart-inner {
   height: 300px;
-  min-width: 480px;
+  min-width: 100%;
 }
 
 .coverage-chart-card .chart-title span {

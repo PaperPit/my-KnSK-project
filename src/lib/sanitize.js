@@ -28,22 +28,41 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+/** Есть ли в строке разрешённая разметка после санитизации */
+function hasAllowedMarkup(html) {
+  return /<(b|strong|a|ul|li|br)\b/i.test(html);
+}
+
 /** Оставляет только разрешённые теги, остальное вырезает */
 function sanitizeHtmlFragment(html) {
   if (!html) return '';
-  return String(html).replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, function (match, tag) {
+  let out = String(html);
+
+  out = out.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+
+  out = out.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, function (match, tag) {
     const t = tag.toLowerCase();
+    if (t === 'a') return match;
     if (!ALLOWED_TAGS.test(t)) return '';
     if (match.startsWith('</')) return '</' + t + '>';
     if (t === 'br') return '<br>';
-    if (t === 'a') {
-      const hrefMatch = match.match(/href\s*=\s*["']([^"']+)["']/i);
-      const href = hrefMatch ? hrefMatch[1] : '';
-      if (!SAFE_HREF.test(href)) return '';
-      return '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">';
-    }
     return '<' + t + '>';
   });
+
+  out = out.replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, function (_match, attrs, inner) {
+    const hrefMatch = attrs.match(/href\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    const href = hrefMatch ? hrefMatch[1] || hrefMatch[2] : '';
+    if (!SAFE_HREF.test(href)) return sanitizeHtmlFragment(inner);
+    return (
+      '<a href="' +
+      escapeHtml(href) +
+      '" target="_blank" rel="noopener noreferrer">' +
+      sanitizeHtmlFragment(inner) +
+      '</a>'
+    );
+  });
+
+  return out;
 }
 
 /**
@@ -52,11 +71,17 @@ function sanitizeHtmlFragment(html) {
  */
 function renderHtmlContent(text) {
   if (!text || String(text).trim() === '') return '—';
-  let safe = sanitizeHtmlFragment(String(text));
-  if (!safe.includes('<br') && !safe.includes('<li')) {
-    safe = escapeHtml(safe).replace(/\n/g, '<br>');
+  const raw = String(text);
+  const safe = sanitizeHtmlFragment(raw);
+
+  if (hasAllowedMarkup(safe)) {
+    if (!/<br\b/i.test(safe) && !/<li\b/i.test(safe)) {
+      return safe.replace(/\n/g, '<br>');
+    }
+    return safe;
   }
-  return safe;
+
+  return escapeHtml(raw).replace(/\n/g, '<br>');
 }
 
 if (typeof module !== 'undefined' && module.exports) {
