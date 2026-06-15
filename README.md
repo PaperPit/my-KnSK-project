@@ -126,7 +126,8 @@ my-KnSK-project/
 │   ├── server/             # doGet, архив, миграции → Code.js
 │   ├── pages/              # editor.js, viewer.js
 │   ├── dashboard/          # dashboardPhase1.js, dashboardPhase2.js
-│   └── ui/                 # tokens.css, phase2.css, editor.css, viewer.css
+│   ├── core/               # GoogleAppsScriptAdapter.js (RPC браузер↔сервер)
+│   └── ui/                 # tokens.css, phase2.css, editor.css, viewer.css, kpi-cards.css
 │
 ├── scripts/
 │   ├── build-gas.mjs       # Сборка GAS-артефактов

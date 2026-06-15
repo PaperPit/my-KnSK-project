@@ -1,1 +1,7 @@
 node_modules/
+
+# Python (сторонние окружения и кэши — не проектный код)
+.venv-graphify/
+graphify-out/
+__pycache__/
+*.pyc

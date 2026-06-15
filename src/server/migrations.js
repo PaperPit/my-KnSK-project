@@ -248,3 +248,13 @@ function migrateArchivePlansTo2026(dryRun) {
   console.log(message);
   return message;
 }
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    normalizeMoName_,
+    extractFactFromMo_,
+    lookupNewPlan2026_,
+    updateMoPlanFields_,
+    updateReportPlans2026_,
+  };
+}

@@ -420,13 +420,24 @@ const DashboardPhase1 = (function () {
 
   let tableSearchBound = false;
   let lastMosForTable = [];
+  let lastTableQuery = null;
+  let searchTimer = null;
 
   function setupTableSearch() {
     const input = document.getElementById('moTableSearch');
     if (!input || tableSearchBound) return;
     tableSearchBound = true;
+    // Debounce (150мс): полный innerHTML-рендер строк таблицы на каждое нажатие
+    // лагал при большом числе МО. __KNSK_DEBUG включает мгновенный отклик.
+    const DEBOUNCE_MS = window.__KNSK_DEBUG ? 0 : 150;
     input.addEventListener('input', function () {
-      renderTableRows(lastMosForTable, input.value);
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () {
+        const q = input.value;
+        if (q === lastTableQuery) return;
+        lastTableQuery = q;
+        renderTableRows(lastMosForTable, q);
+      }, DEBOUNCE_MS);
     });
   }
 
@@ -615,9 +626,7 @@ const DashboardPhase1 = (function () {
   function finishRender(mos, totals) {
     const now = new Date().toLocaleString('ru-RU');
     const updateEl = document.getElementById('updateTime');
-    const reportEl = document.getElementById('reportDate');
     if (updateEl) updateEl.innerHTML = `<i class="far fa-clock"></i> Обновлено: ${now}`;
-    if (reportEl) reportEl.innerHTML = now;
     return { mos: mos, totals: totals };
   }
 

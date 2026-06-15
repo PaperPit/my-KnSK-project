@@ -263,9 +263,6 @@
         if (plansDate) plansDate.innerHTML = '<i class="far fa-calendar-alt"></i> ' + escapeHtml(timestamp);
         const nextWeekEl = document.getElementById('nextWeekPeriodDisplay');
         if (nextWeekEl) nextWeekEl.textContent = nextWeek.display;
-        const reportDateEl = document.getElementById('reportDate');
-        if (reportDateEl) reportDateEl.textContent = timestamp;
-
         const normalized = DashboardPhase1.normalizeArchiveReport(report);
         const mosData = normalized ? normalized.mosData : report.mosData;
 
@@ -390,7 +387,7 @@
         whenChartsReady(function () {
             if (window.DashboardPhase2) {
                 DashboardPhase2.init({
-                    onStatus: function (msg) { console.log(msg); }
+                    onStatus: function (msg) { if (window.__KNSK_DEBUG) console.log(msg); }
                 });
             }
             initViewer();

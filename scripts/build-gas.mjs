@@ -73,7 +73,6 @@ window.KnSKLib = {
 function buildCodeJs() {
   const modules = [
     'src/server/webapp.js',
-    'src/server/backup.js',
     'src/server/archive.js',
     'src/server/migrations.js',
   ];

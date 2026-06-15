@@ -15,6 +15,7 @@
 | Загрузка CSV, архив, экспорт HTML | [`src/pages/editor.js`](../src/pages/editor.js) |
 | Режим просмотра ?viewer=1 | [`src/pages/viewer.js`](../src/pages/viewer.js) |
 | Сохранение в лист «Архив» | [`src/server/archive.js`](../src/server/archive.js) |
+| Миграции архива (даты, планы 2026) | [`src/server/migrations.js`](../src/server/migrations.js) |
 | URL входа, viewer/editor | [`src/server/webapp.js`](../src/server/webapp.js) |
 | Разметка редактора | [`Index.html`](../Index.html) |
 | Разметка viewer | [`Viewer.html`](../Viewer.html) |
@@ -45,5 +46,25 @@ clasp push
 ```
 
 Новая версия развёртывания в Apps Script — обязательно.
+
+## Тесты
+
+```bash
+npm test            # прогнать все тесты Vitest
+npm run check       # lint + test + build + проверка синхронности артефактов
+```
+
+Покрытие:
+- `src/lib/*` (numbers, csvParser, sanitize, archiveNormalizer, kpiCalculator) — полностью.
+- `src/server/archive.js` и `migrations.js` — чистые `_`-хелперы экспортируются через
+  `module.exports` и тестируются (`tests/archiveHelpers.test.js`, `tests/migrationHelpers.test.js`).
+  Публичные точки входа требуют GAS-окружения (`SpreadsheetApp`, `CacheService`) и не покрываются unit-тестами.
+
+## Узкие места / известные ограничения
+
+- `src/dashboard/dashboardPhase1.js` (~700 строк) — единый IIFE; разбиение потребует
+  рефакторинга общей области видимости. Поиск по таблице МО дебаунсится (150 мс).
+- `dashboardPhase2.js` считает дельты периодов инлайн; кандидат на использование
+  `KnSKLib.computePeriodDeltas` в следующей итерации.
 
 Подробнее: [CONTRIBUTING.md](../CONTRIBUTING.md), [deploy-checklist.md](deploy-checklist.md).

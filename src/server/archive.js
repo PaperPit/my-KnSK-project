@@ -129,7 +129,9 @@ function getCachedArchiveList_() {
   try {
     var cached = CacheService.getScriptCache().get(ARCHIVE_LIST_CACHE_KEY);
     if (cached) return JSON.parse(cached);
-  } catch (e) {}
+  } catch (e) {
+    console.warn('archive: чтение кэша списка не удалось', e && e.message);
+  }
   return null;
 }
 
@@ -142,13 +144,17 @@ function putCachedArchiveList_(list) {
         ARCHIVE_LIST_CACHE_TTL
       );
     }
-  } catch (e) {}
+  } catch (e) {
+    console.warn('archive: запись кэша списка не удалась', e && e.message);
+  }
 }
 
 function invalidateArchiveListCache_() {
   try {
     CacheService.getScriptCache().remove(ARCHIVE_LIST_CACHE_KEY);
-  } catch (e) {}
+  } catch (e) {
+    console.warn('archive: сброс кэша списка не удался', e && e.message);
+  }
 }
 
 function getArchiveList_(sheet) {
@@ -284,5 +290,14 @@ function getArchivedReportsForCompare(idA, idB) {
   return {
     reportA: readArchiveReportAtRow_(sheet, rowA),
     reportB: readArchiveReportAtRow_(sheet, rowB),
+  };
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    parseArchiveReportRow_,
+    buildArchiveIndex_,
+    getPreviousArchiveIdFromList_,
+    formatArchiveDate_,
   };
 }

@@ -190,13 +190,23 @@ body.dashboard-phase1 .info-card-content a:hover {
   color: var(--color-warning);
 }
 
-body.dashboard-phase1 .info-card-content ul {
-  margin: 0.4em 0 0.4em 1.2em;
-  padding: 0;
+/* Период отчёта — как остальные карточки */
+body.dashboard-phase1 .period-info-block {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: 18px 22px;
+  margin-bottom: var(--dashboard-gap);
+  box-shadow: var(--shadow-card);
+  text-align: center;
 }
 
-body.dashboard-phase1 .info-card-content li {
-  margin-bottom: 0.35em;
+body.dashboard-phase1 .period-info-text {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  line-height: 1.45;
+  letter-spacing: -0.01em;
 }
 
 /* Сигналы */
@@ -205,7 +215,7 @@ body.dashboard-phase1 .info-card-content li {
   border: 1px solid #c5dce8;
   border-radius: var(--radius-card);
   padding: 18px 22px;
-  margin-bottom: 20px;
+  margin-bottom: var(--dashboard-gap);
 }
 
 .signals-panel h3.signals-title {
@@ -252,6 +262,15 @@ body.dashboard-phase1 .info-card-content li {
 .signals-list li.signal-warn i { color: var(--color-warning); }
 .signals-list li.signal-danger i { color: var(--color-danger); }
 .signals-list li.signal-success i { color: var(--color-success); }
+
+body.dashboard-phase1 .info-card-content ul {
+  margin: 0.4em 0 0.4em 1.2em;
+  padding: 0;
+}
+
+body.dashboard-phase1 .info-card-content li {
+  margin-bottom: 0.35em;
+}
 
 /* KPI дельта */
 .kpi-card {
@@ -388,6 +407,11 @@ td.heat-percent {
 .cell-bar-fill.heat-high { background: #2e7d32; }
 .cell-bar-fill.heat-mid { background: #e67e22; }
 .cell-bar-fill.heat-low { background: #c0392b; }
+
+.growth-positive {
+  color: #1f8a4c;
+  font-weight: 600;
+}
 
 .cell-bar-label {
   position: relative;

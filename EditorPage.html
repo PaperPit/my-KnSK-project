@@ -191,7 +191,7 @@
   // ==================== ПАРСИНГ CSV И ОТРИСОВКА ====================
   function renderMOSDashboard(data, options) {
         if (!data || !data.length) {
-            console.warn('renderMOSDashboard: данные пусты');
+            if (window.__KNSK_DEBUG) console.warn('renderMOSDashboard: данные пусты');
             setStatus('Нет данных МО для отображения', false);
             return Promise.resolve(null);
         }
@@ -203,7 +203,7 @@
 
         const mos = DashboardPhase1.buildMosFromData(data);
         if (!mos.length) {
-            console.warn('renderMOSDashboard: не удалось разобрать строки МО', data);
+            if (window.__KNSK_DEBUG) console.warn('renderMOSDashboard: не удалось разобрать строки МО', data);
             setStatus('Данные архива не распознаны. Проверьте формат mosData в листе «Архив».', false);
             return Promise.resolve(null);
         }
