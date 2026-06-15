@@ -114,10 +114,10 @@ function buildCodeJs() {
 
 /** Вырезать хвостовой CommonJS-блок `if (typeof module !== 'undefined' …)` — он нужен только для тестов в Node. */
 function stripCjsExports(src) {
-  return src.replace(
-    /\n*if\s*\(\s*typeof\s+module\s*!==?\s*['"]undefined['"]\s*&&\s*module\.exports\s*\)\s*\{[\s\S]*?\}\n?/g,
-    '\n'
-  );
+  const marker = "if (typeof module !== 'undefined' && module.exports)";
+  const idx = src.lastIndexOf(marker);
+  if (idx === -1) return src;
+  return src.slice(0, idx).trimEnd() + '\n';
 }
 
 // ───────────────────────── СБОРКА ─────────────────────────
@@ -140,6 +140,7 @@ console.log('build-gas: client modules (esbuild)');
 await buildClient('src/core/GoogleAppsScriptAdapter.js', 'GASAdapter.html');
 await buildClient('src/dashboard/dashboardPhase1.js', 'DashboardPhase1.html');
 await buildClient('src/dashboard/dashboardPhase2.js', 'DashboardPhase2.html');
+await buildClient('src/dashboard/moProfile.js', 'MoProfile.html');
 await buildClient('src/pages/editor.js', 'EditorPage.html');
 await buildClient('src/pages/viewer.js', 'ViewerPage.html');
 

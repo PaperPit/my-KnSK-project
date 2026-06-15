@@ -187,33 +187,68 @@
     function renderMoDrawerChart(mo) {
       initChart("moDrawerChart").then(function(chart) {
         if (!chart || !mo) return;
+        const fact = mo.fact || 0;
+        const noDev = mo.noDev || 0;
+        const hasDev = mo.hasDev || 0;
+        const colon = mo.colon || 0;
+        const positiveNoColon = Math.max(0, hasDev - colon);
+        const accounted = noDev + positiveNoColon + colon;
+        const other = Math.max(0, fact - accounted);
+        const slices = [
+          { name: "\u041A\u043E\u043B-\u0432\u043E \u0438\u0441\u0441\u043B. \u041A\u043D\u0421\u041A \u0431\u0435\u0437 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0438\u0439", value: noDev, color: "#2c7da0" },
+          { name: "\u041A\u043D\u0421\u041A+, \u0431\u0435\u0437 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0438", value: positiveNoColon, color: "#e67e22" },
+          { name: "\u041A\u043E\u043B-\u0432\u043E \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0439 \u043F\u0430\u0446. \u0441 \u041A\u043D\u0421\u041A+", value: colon, color: "#1f8a4c" }
+        ];
+        if (other > 0) {
+          slices.push({ name: "\u041F\u0440\u043E\u0447\u0438\u0435", value: other, color: "#94a3b8" });
+        }
+        const data = slices.filter(function(s) {
+          return s.value > 0;
+        });
         chart.setOption({
-          tooltip: { trigger: "axis" },
-          grid: { left: 40, right: 16, top: 16, bottom: 28 },
-          xAxis: {
-            type: "category",
-            data: ["\u041F\u043B\u0430\u043D %", "\u0424\u0430\u043A\u0442", "\u0414\u0438\u043D\u0430\u043C.", "\u041A\u043E\u043B\u043E\u043D\u043E\u0441\u043A.", "\u0417\u041D\u041E"],
-            axisLabel: { fontSize: 9 }
+          tooltip: {
+            trigger: "item",
+            confine: true,
+            position: function(point, _params, _dom, rect, size) {
+              const pad = 12;
+              const x = rect.x + rect.width - size.contentSize[0] - pad;
+              let y = point[1] - size.contentSize[1] / 2;
+              y = Math.max(
+                rect.y + pad,
+                Math.min(y, rect.y + rect.height - size.contentSize[1] - pad)
+              );
+              return [x, y];
+            },
+            formatter: "{b}: {c} ({d}% \u043E\u0442 " + fact.toLocaleString("ru-RU") + " \u041A\u043D\u0421\u041A)"
           },
-          yAxis: { type: "value", axisLabel: { fontSize: 9 } },
+          graphic: [
+            {
+              type: "text",
+              left: "center",
+              top: "center",
+              style: {
+                text: fact.toLocaleString("ru-RU") + "\n\u041A\u043D\u0421\u041A",
+                textAlign: "center",
+                fill: "#1e4663",
+                fontSize: 14,
+                fontWeight: 700,
+                lineHeight: 18
+              }
+            }
+          ],
           series: [
             {
-              type: "bar",
-              data: [
-                parseFloat(mo.percent.toFixed(1)),
-                mo.fact,
-                mo.growth,
-                mo.colon,
-                mo.zno
-              ],
-              itemStyle: {
-                color(params) {
-                  const colors = ["#2c7da0", "#1e4663", "#1f8a4c", "#e67e22", "#c0392b"];
-                  return colors[params.dataIndex] || "#2c7da0";
-                },
-                borderRadius: [4, 4, 0, 0]
+              type: "pie",
+              radius: ["42%", "68%"],
+              center: ["50%", "50%"],
+              avoidLabelOverlap: true,
+              label: {
+                fontSize: 10,
+                formatter: "{b}\n{c}"
               },
-              label: { show: true, position: "top", fontSize: 9 }
+              data: data.map(function(s) {
+                return { name: s.name, value: s.value, itemStyle: { color: s.color } };
+              })
             }
           ]
         });
@@ -268,7 +303,19 @@
         </div>
       </div>
       <div id="moDrawerChart" class="mo-drawer-chart"></div>
+      <button type="button" class="mo-drawer-profile-link" id="moDrawerProfileBtn">
+        <i class="fas fa-microscope"></i> \u0413\u043B\u0443\u0431\u043E\u043A\u0438\u0439 \u0430\u043D\u0430\u043B\u0438\u0437 \u041C\u041E
+      </button>
     `;
+      const profileBtn = document.getElementById("moDrawerProfileBtn");
+      if (profileBtn) {
+        profileBtn.addEventListener("click", function() {
+          closeMoDrawer();
+          if (window.MoProfile && mo.name) {
+            window.MoProfile.open(mo.name);
+          }
+        });
+      }
       overlay.classList.add("open");
       document.body.style.overflow = "hidden";
       renderMoDrawerChart(mo);
@@ -304,8 +351,11 @@
       }
       document.addEventListener("keydown", function(e) {
         if (e.key === "Escape") {
-          closeMoDrawer();
-          if (document.getElementById("compareOverlay")?.classList.contains("open")) {
+          if (document.getElementById("moProfileOverlay")?.classList.contains("open")) {
+            window.MoProfile && window.MoProfile.close();
+          } else if (document.getElementById("moDrawerOverlay")?.classList.contains("open")) {
+            closeMoDrawer();
+          } else if (document.getElementById("compareOverlay")?.classList.contains("open")) {
             closeComparePanel();
           } else if (document.body.classList.contains("presentation-mode")) {
             togglePresentationMode(false);

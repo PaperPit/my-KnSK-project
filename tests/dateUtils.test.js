@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatShortDate, getNextWeekPeriod } from '../src/lib/dateUtils.js';
+import { formatShortDate, getNextWeekPeriod, formatPeriodLabel } from '../src/lib/dateUtils.js';
 
 describe('formatShortDate', () => {
   it('formats ISO date as dd.mm', () => {
@@ -30,5 +30,30 @@ describe('getNextWeekPeriod', () => {
     expect(p.end).toBeInstanceOf(Date);
     const diffDays = Math.round((p.end - p.start) / (1000 * 60 * 60 * 24));
     expect(diffDays).toBe(4);
+  });
+});
+
+describe('formatPeriodLabel', () => {
+  it('strips quoted prefix and returns end date only', () => {
+    expect(
+      formatPeriodLabel('«Масштабирование онкоскрининговых исследований» 01.01.2026 - 17.04.2026')
+    ).toBe('17.04.2026');
+    expect(
+      formatPeriodLabel('Масштабирование онкоскрининговых исследований 01.01.2026 - 10.01.2026')
+    ).toBe('10.01.2026');
+    expect(formatPeriodLabel('01.01.2026 - 17.01.2026')).toBe('17.01.2026');
+  });
+
+  it('returns single date when no range', () => {
+    expect(formatPeriodLabel('17.04.2026')).toBe('17.04.2026');
+  });
+
+  it('returns trimmed original when no date found', () => {
+    expect(formatPeriodLabel('  Текущий отчёт  ')).toBe('Текущий отчёт');
+  });
+
+  it('returns empty string for falsy input', () => {
+    expect(formatPeriodLabel('')).toBe('');
+    expect(formatPeriodLabel(null)).toBe('');
   });
 });

@@ -20,6 +20,7 @@ const ARTIFACTS = [
   'GASAdapter.html',
   'DashboardPhase1.html',
   'DashboardPhase2.html',
+  'MoProfile.html',
   'EditorPage.html',
   'ViewerPage.html',
   'Code.js',

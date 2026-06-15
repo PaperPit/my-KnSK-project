@@ -1,0 +1,472 @@
+<script>
+(() => {
+  // src/lib/sanitize.js
+  function escapeHtml(str) {
+    if (str == null) return "";
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  // src/lib/dateUtils.js
+  function formatPeriodLabel(period) {
+    if (!period) return "";
+    let s = String(period).trim();
+    s = s.replace(
+      /^[\s«"'„]*Масштабирование\s+онкоскрининговых\s+исследований[\s»"'"]*/i,
+      ""
+    );
+    s = s.trim();
+    const rangeMatch = s.match(/(\d{2}\.\d{2}\.\d{4})\s*[-–—]\s*(\d{2}\.\d{2}\.\d{4})/);
+    if (rangeMatch) return rangeMatch[2];
+    const singleMatch = s.match(/(\d{2}\.\d{2}\.\d{4})/);
+    if (singleMatch) return singleMatch[1];
+    return s || String(period).trim();
+  }
+
+  // src/lib/moUtils.js
+  function truncateName(name, max) {
+    const n = String(name || "");
+    return n.length > max ? n.slice(0, max - 1) + "\u2026" : n;
+  }
+
+  // src/lib/moAnalytics.js
+  function normalizeMoKey(name) {
+    return String(name || "").trim().toLowerCase();
+  }
+  function rankPosition(sorted, moKey, valueKey, higherIsBetter) {
+    const idx = sorted.findIndex((m) => normalizeMoKey(m.name) === moKey);
+    if (idx === -1) return null;
+    return higherIsBetter ? idx + 1 : sorted.length - idx;
+  }
+  function coverageOf(mo) {
+    return mo.hasDev > 0 ? mo.colon / mo.hasDev * 100 : 0;
+  }
+  function computeMoRankings(moName, allMos) {
+    const key = normalizeMoKey(moName);
+    const total = allMos.length;
+    const mo = allMos.find((m) => normalizeMoKey(m.name) === key);
+    if (!mo || !total) {
+      return {
+        total: 0,
+        mo: null,
+        byPercent: null,
+        byCoverage: null,
+        byGrowth: null,
+        byFact: null,
+        avgPercent: 0,
+        avgCoverage: 0,
+        topPercent: 0
+      };
+    }
+    const byPercent = [...allMos].sort((a, b) => b.percent - a.percent);
+    const byCoverage = [...allMos].sort((a, b) => coverageOf(b) - coverageOf(a));
+    const byGrowth = [...allMos].sort((a, b) => (b.growth || 0) - (a.growth || 0));
+    const byFact = [...allMos].sort((a, b) => b.fact - a.fact);
+    const avgPercent = allMos.reduce((s, m) => s + m.percent, 0) / total;
+    const avgCoverage = allMos.reduce((s, m) => s + coverageOf(m), 0) / total;
+    return {
+      total,
+      mo,
+      byPercent: rankPosition(byPercent, key, "percent", true),
+      byCoverage: rankPosition(byCoverage, key, "coverage", true),
+      byGrowth: rankPosition(byGrowth, key, "growth", true),
+      byFact: rankPosition(byFact, key, "fact", true),
+      avgPercent,
+      avgCoverage,
+      topPercent: byPercent[0] ? byPercent[0].percent : 0,
+      coverage: coverageOf(mo)
+    };
+  }
+  function rankBadgeClass(position, total) {
+    if (!position || !total) return "mo-profile-rank-badge--mid";
+    const ratio = position / total;
+    if (ratio <= 0.2) return "mo-profile-rank-badge--top";
+    if (ratio <= 0.5) return "mo-profile-rank-badge--mid";
+    return "mo-profile-rank-badge--low";
+  }
+
+  // src/lib/moHistory.js
+  function sortMoHistoryPoints(points) {
+    return [...points || []].sort(function(a, b) {
+      const idA = Number(a.reportId);
+      const idB = Number(b.reportId);
+      if (!isNaN(idA) && !isNaN(idB) && idA !== idB) return idA - idB;
+      return String(a.dateStr || "").localeCompare(String(b.dateStr || ""), "ru");
+    });
+  }
+  function buildMoHistoryPoint(mo, reportId, period, dateStr) {
+    const hasDev = mo.hasDev || 0;
+    const colon = mo.colon || 0;
+    return {
+      reportId,
+      dateStr: dateStr || "",
+      period: period || "",
+      fact: mo.fact,
+      plan: mo.plan,
+      percent: mo.percent,
+      growth: mo.growth,
+      colon,
+      hasDev,
+      noDev: mo.noDev,
+      zno: mo.zno,
+      coverage: hasDev > 0 ? colon / hasDev * 100 : 0
+    };
+  }
+  function mergeDisplayedMoPoint(history, mo, options) {
+    const list = history || [];
+    if (!mo) return sortMoHistoryPoints(list);
+    const opts = options || {};
+    const archiveReportId = opts.archiveReportId;
+    const hasArchiveId = archiveReportId != null && archiveReportId !== "" && !isNaN(Number(archiveReportId));
+    const reportId = hasArchiveId ? Number(archiveReportId) : 999999;
+    const point = buildMoHistoryPoint(mo, reportId, opts.period, opts.dateStr);
+    if (hasArchiveId) {
+      const idx = list.findIndex(function(p) {
+        return Number(p.reportId) === Number(archiveReportId);
+      });
+      if (idx >= 0) {
+        const next = list.slice();
+        next[idx] = Object.assign({}, next[idx], point, { reportId: Number(archiveReportId) });
+        return sortMoHistoryPoints(next);
+      }
+      return sortMoHistoryPoints(list.concat([point]));
+    }
+    const last = list[list.length - 1];
+    if (last && Math.abs(last.percent - point.percent) < 0.01 && last.fact === point.fact) {
+      return sortMoHistoryPoints(list);
+    }
+    return sortMoHistoryPoints(list.concat([point]));
+  }
+
+  // src/dashboard/moProfile.js
+  var MoProfile = /* @__PURE__ */ (function() {
+    let gasAdapter = null;
+    let currentMos = [];
+    let currentReportId = null;
+    let chartInstances = {};
+    let initialized = false;
+    function destroyCharts() {
+      Object.keys(chartInstances).forEach(function(id) {
+        if (chartInstances[id]) {
+          chartInstances[id].destroy();
+          delete chartInstances[id];
+        }
+      });
+    }
+    function setCurrentMos(mos) {
+      currentMos = mos || [];
+    }
+    function setCurrentReportId(reportId) {
+      if (reportId == null || reportId === "") {
+        currentReportId = null;
+        return;
+      }
+      const id = Number(reportId);
+      currentReportId = !isNaN(id) ? id : null;
+    }
+    function mergeCurrentPoint(history, mo) {
+      const periodEl = document.getElementById("periodDisplayText");
+      const periodInput = document.getElementById("periodInput");
+      const period = periodEl ? periodEl.textContent.trim() : periodInput ? periodInput.value.trim() : "\u0422\u0435\u043A\u0443\u0449\u0438\u0439 \u043E\u0442\u0447\u0451\u0442";
+      return mergeDisplayedMoPoint(history, mo, {
+        archiveReportId: currentReportId,
+        period
+      });
+    }
+    function showOverlay() {
+      const overlay = document.getElementById("moProfileOverlay");
+      if (!overlay) return;
+      overlay.classList.add("open");
+      overlay.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+      if (document.body.classList.contains("presentation-mode")) {
+        window.DashboardPhase2 && DashboardPhase2.togglePresentationMode(false);
+      }
+    }
+    function close() {
+      const overlay = document.getElementById("moProfileOverlay");
+      if (overlay) {
+        overlay.classList.remove("open");
+        overlay.setAttribute("aria-hidden", "true");
+      }
+      document.body.style.overflow = "";
+      destroyCharts();
+    }
+    function showLoading() {
+      const content = document.getElementById("moProfileContent");
+      if (!content) return;
+      content.innerHTML = '<div class="compare-loading"><div class="compare-loading-spinner"></div><span>\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0438\u0441\u0442\u043E\u0440\u0438\u0438 \u041C\u041E\u2026</span></div>';
+    }
+    function showError(msg) {
+      const content = document.getElementById("moProfileContent");
+      if (!content) return;
+      content.innerHTML = `<p class="compare-error">${escapeHtml(msg)}</p>`;
+    }
+    function formatDelta(cur, prev, isPct) {
+      if (prev == null || prev === void 0) return "\u2014";
+      const d = cur - prev;
+      if (d === 0) return "0";
+      const sign = d > 0 ? "+" : "";
+      return isPct ? `${sign}${d.toFixed(1)}` : `${sign}${Math.round(d).toLocaleString("ru-RU")}`;
+    }
+    function renderHistoryTable(history) {
+      if (!history.length) {
+        return '<p class="compare-period-note">\u041D\u0435\u0442 \u0430\u0440\u0445\u0438\u0432\u043D\u044B\u0445 \u0442\u043E\u0447\u0435\u043A \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u041C\u041E.</p>';
+      }
+      let rows = "";
+      history.forEach(function(p, i) {
+        const prev = i > 0 ? history[i - 1] : null;
+        rows += `<tr>
+        <td>${escapeHtml(formatPeriodLabel(p.period || p.dateStr || ""))}</td>
+        <td>${p.percent.toFixed(1)}%</td>
+        <td>${formatDelta(p.percent, prev && prev.percent, true)}</td>
+        <td>${p.fact.toLocaleString("ru-RU")}</td>
+        <td>${formatDelta(p.fact, prev && prev.fact, false)}</td>
+        <td>${p.growth >= 0 ? "+" : ""}${p.growth}</td>
+        <td>${p.coverage.toFixed(1)}%</td>
+        <td>${p.colon}</td>
+        <td>${p.zno}</td>
+      </tr>`;
+      });
+      return `<div class="mo-profile-history">
+      <h3><i class="fas fa-table"></i> \u0418\u0441\u0442\u043E\u0440\u0438\u044F \u043F\u043E \u043E\u0442\u0447\u0451\u0442\u0430\u043C (${history.length})</h3>
+      <div class="mo-profile-history-scroll">
+        <table>
+          <thead><tr>
+            <th>\u041F\u0435\u0440\u0438\u043E\u0434</th><th>% \u043F\u043B\u0430\u043D\u0430</th><th>\u0394 %</th><th>\u0424\u0430\u043A\u0442</th><th>\u0394 \u0444\u0430\u043A\u0442</th>
+            <th>\u041F\u0440\u0438\u0440\u043E\u0441\u0442</th><th>\u041E\u0445\u0432\u0430\u0442</th><th>\u041A\u043E\u043B\u043E\u043D\u043E\u0441\u043A.</th><th>\u0417\u041D\u041E</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+    }
+    function renderRankBadges(rankings) {
+      if (!rankings.total) return "";
+      const badges = [];
+      if (rankings.byPercent) {
+        badges.push(
+          `<span class="mo-profile-rank-badge ${rankBadgeClass(rankings.byPercent, rankings.total)}"><i class="fas fa-trophy"></i> ${rankings.byPercent} \u043C\u0435\u0441\u0442\u043E \u0438\u0437 ${rankings.total} \u043F\u043E % \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F \u043F\u043B\u0430\u043D\u0430 \u0438\u0441\u0441\u043B. \u041A\u043D\u0421\u041A</span>`
+        );
+      }
+      if (rankings.byCoverage) {
+        badges.push(
+          `<span class="mo-profile-rank-badge ${rankBadgeClass(rankings.byCoverage, rankings.total)}"><i class="fas fa-stethoscope"></i> ${rankings.byCoverage} \u043C\u0435\u0441\u0442\u043E \u0438\u0437 ${rankings.total} \u043F\u043E \u043E\u0445\u0432\u0430\u0442\u0443 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439 \u043F\u0430\u0446\u0438\u0435\u043D\u0442\u043E\u0432 \u0441 \u041A\u043D\u0421\u041A+</span>`
+        );
+      }
+      return `<div class="mo-profile-rank-badges">${badges.join("")}</div>`;
+    }
+    function renderKpiStrip(mo, rankings) {
+      const cov = rankings.coverage ?? (mo.hasDev > 0 ? mo.colon / mo.hasDev * 100 : 0);
+      return `<div class="mo-profile-kpi-grid">
+      <div class="mo-profile-kpi mo-profile-kpi--plan">
+        <div class="mo-profile-kpi-label">% \u0433\u043E\u0434\u043E\u0432\u043E\u0433\u043E \u043F\u043B\u0430\u043D\u0430</div>
+        <div class="mo-profile-kpi-value">${mo.percent.toFixed(1)}%</div>
+      </div>
+      <div class="mo-profile-kpi mo-profile-kpi--fact">
+        <div class="mo-profile-kpi-label">\u0424\u0430\u043A\u0442 / \u043F\u043B\u0430\u043D \u041A\u043D\u0421\u041A</div>
+        <div class="mo-profile-kpi-value">${mo.fact.toLocaleString("ru-RU")} <span style="font-size:0.75rem;opacity:0.85">/ ${mo.plan.toLocaleString("ru-RU")}</span></div>
+      </div>
+      <div class="mo-profile-kpi mo-profile-kpi--colon">
+        <div class="mo-profile-kpi-label">\u041E\u0445\u0432\u0430\u0442 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439</div>
+        <div class="mo-profile-kpi-value">${cov.toFixed(1)}%</div>
+      </div>
+      <div class="mo-profile-kpi mo-profile-kpi--growth">
+        <div class="mo-profile-kpi-label">\u041D\u0435\u0434\u0435\u043B\u044C\u043D\u044B\u0439 \u043F\u0440\u0438\u0440\u043E\u0441\u0442</div>
+        <div class="mo-profile-kpi-value">${mo.growth >= 0 ? "+" : ""}${mo.growth}</div>
+      </div>
+    </div>`;
+    }
+    function renderChartCards() {
+      return `<div class="mo-profile-charts-grid">
+      <div class="mo-profile-chart-card"><h4>\u041A\u043D\u0421\u041A \u0434\u0438\u043D\u0430\u043C\u0438\u043A\u0430 % \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F \u0433\u043E\u0434\u043E\u0432\u043E\u0433\u043E \u043F\u043B\u0430\u043D\u0430</h4><div class="mo-profile-chart-wrap"><canvas id="moProfChartPercent"></canvas></div></div>
+      <div class="mo-profile-chart-card"><h4>\u041A\u043D\u0421\u041A \u043D\u0430\u043A\u043E\u043F\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0438\u0442\u043E\u0433</h4><div class="mo-profile-chart-wrap"><canvas id="moProfChartFact"></canvas></div></div>
+      <div class="mo-profile-chart-card"><h4>\u0414\u0438\u043D\u0430\u043C\u0438\u043A\u0430 % \u043E\u0445\u0432\u0430\u0442 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439</h4><div class="mo-profile-chart-wrap"><canvas id="moProfChartCoverage"></canvas></div></div>
+      <div class="mo-profile-chart-card"><h4>\u041D\u0435\u0434\u0435\u043B\u044C\u043D\u044B\u0439 \u043F\u0440\u0438\u0440\u043E\u0441\u0442</h4><div class="mo-profile-chart-wrap"><canvas id="moProfChartGrowth"></canvas></div></div>
+    </div>`;
+    }
+    function historyLabels(history) {
+      return history.map(function(p) {
+        const label = formatPeriodLabel(p.period || p.dateStr || "");
+        return truncateName(label || `#${p.reportId}`, 18);
+      });
+    }
+    function renderLineChart(canvasId, history, field, color, ySuffix) {
+      if (typeof Chart === "undefined") return;
+      const canvas = document.getElementById(canvasId);
+      if (!canvas || !history.length) return;
+      if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+      chartInstances[canvasId] = new Chart(canvas.getContext("2d"), {
+        type: "line",
+        data: {
+          labels: historyLabels(history),
+          datasets: [
+            {
+              label: field,
+              data: history.map((p) => p[field]),
+              borderColor: color,
+              backgroundColor: color + "22",
+              borderWidth: 2.5,
+              tension: 0.25,
+              fill: true,
+              pointRadius: 4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            datalabels: { display: false }
+          },
+          scales: {
+            y: {
+              beginAtZero: field === "growth" ? true : void 0,
+              ticks: {
+                callback: function(v) {
+                  return ySuffix ? `${v}${ySuffix}` : v;
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+    function renderGrowthBar(canvasId, history) {
+      if (typeof Chart === "undefined") return;
+      const canvas = document.getElementById(canvasId);
+      if (!canvas || !history.length) return;
+      if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+      chartInstances[canvasId] = new Chart(canvas.getContext("2d"), {
+        type: "bar",
+        data: {
+          labels: historyLabels(history),
+          datasets: [
+            {
+              data: history.map((p) => p.growth),
+              backgroundColor: history.map((p) => p.growth >= 0 ? "#1f8a4c" : "#c0392b"),
+              borderRadius: 8
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false }, datalabels: { display: false } }
+        }
+      });
+    }
+    function renderCharts(history) {
+      requestAnimationFrame(function() {
+        renderLineChart("moProfChartPercent", history, "percent", "#1f6392", "%");
+        renderLineChart("moProfChartFact", history, "fact", "#2c7da0", "");
+        renderLineChart("moProfChartCoverage", history, "coverage", "#0d9488", "%");
+        renderGrowthBar("moProfChartGrowth", history);
+      });
+    }
+    function scrollToMoInTable(moName) {
+      close();
+      const tbody = document.getElementById("tableBody");
+      if (!tbody) return;
+      const key = normalizeMoKey(moName);
+      const rows = tbody.querySelectorAll("tr.mo-row-clickable");
+      rows.forEach(function(row) {
+        row.classList.remove("mo-row-highlight");
+        const rowName = row.getAttribute("data-mo-name");
+        if (rowName && normalizeMoKey(rowName) === key) {
+          row.classList.add("mo-row-highlight");
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+          setTimeout(function() {
+            row.classList.remove("mo-row-highlight");
+          }, 3e3);
+        }
+      });
+    }
+    function renderProfile(moName, history, meta) {
+      const mo = currentMos.find((m) => normalizeMoKey(m.name) === normalizeMoKey(moName));
+      if (!mo) {
+        showError("\u041C\u041E \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430 \u0432 \u0442\u0435\u043A\u0443\u0449\u0435\u043C \u043E\u0442\u0447\u0451\u0442\u0435");
+        return;
+      }
+      const rankings = computeMoRankings(moName, currentMos);
+      const lastPeriod = history.length ? formatPeriodLabel(history[history.length - 1].period) : "";
+      const content = document.getElementById("moProfileContent");
+      if (!content) return;
+      content.innerHTML = `
+      <header class="mo-profile-header">
+        <h2 id="moProfileTitle">${escapeHtml(mo.name)}</h2>
+        <div class="mo-profile-header-meta">
+          ${escapeHtml(lastPeriod)} \xB7 ${meta.matchedReports} \u0438\u0437 ${meta.totalReports} \u0430\u0440\u0445\u0438\u0432\u043D\u044B\u0445 \u043E\u0442\u0447\u0451\u0442\u043E\u0432
+        </div>
+        ${renderRankBadges(rankings)}
+      </header>
+      ${renderKpiStrip(mo, rankings)}
+      ${renderChartCards()}
+      ${renderHistoryTable(history)}
+      <div class="mo-profile-footer-actions">
+        <button type="button" class="mo-profile-link-btn" id="moProfileScrollToRow">
+          <i class="fas fa-table"></i> \u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0432 \u0442\u0430\u0431\u043B\u0438\u0446\u0435
+        </button>
+      </div>
+    `;
+      const scrollBtn = document.getElementById("moProfileScrollToRow");
+      if (scrollBtn) {
+        scrollBtn.addEventListener("click", function() {
+          scrollToMoInTable(moName);
+        });
+      }
+      renderCharts(history);
+    }
+    function fetchHistory(moName) {
+      if (!gasAdapter) {
+        return Promise.resolve({ points: [], meta: { totalReports: 0, matchedReports: 0, moName } });
+      }
+      return gasAdapter.call("getMoHistoryFromArchive", { params: [moName] });
+    }
+    function open(moName) {
+      if (!moName) return;
+      showOverlay();
+      showLoading();
+      fetchHistory(moName).then(function(result) {
+        const mo = currentMos.find((m) => normalizeMoKey(m.name) === normalizeMoKey(moName));
+        let history = result && result.points || [];
+        history = mergeCurrentPoint(history, mo);
+        const meta = result && result.meta || {
+          totalReports: history.length,
+          matchedReports: history.length,
+          moName
+        };
+        renderProfile(moName, history, meta);
+      }).catch(function(err) {
+        showError(err.message || "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u0438\u0441\u0442\u043E\u0440\u0438\u044E \u041C\u041E");
+      });
+    }
+    function setupUi() {
+      const closeBtn = document.getElementById("moProfileClose");
+      const overlay = document.getElementById("moProfileOverlay");
+      if (closeBtn) closeBtn.addEventListener("click", close);
+      if (overlay) {
+        overlay.addEventListener("click", function(e) {
+          if (e.target === overlay) close();
+        });
+      }
+    }
+    function init(options) {
+      gasAdapter = options && options.gasAdapter || null;
+      if (!initialized) {
+        setupUi();
+        initialized = true;
+      }
+    }
+    return {
+      init,
+      setCurrentMos,
+      setCurrentReportId,
+      open,
+      close
+    };
+  })();
+  window.MoProfile = MoProfile;
+})();
+
+</script>

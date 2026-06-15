@@ -63,6 +63,7 @@ export default [
         ...browserGlobals,
         DashboardPhase1: 'readonly',
         DashboardPhase2: 'readonly',
+        MoProfile: 'readonly',
       },
     },
   },
@@ -127,6 +128,7 @@ export default [
     ignores: [
       'node_modules/',
       'DashboardPhase*.html',
+      'MoProfile.html',
       'Ui*.html',
       '*Page.html',
       'LibBundle.html',

@@ -11,6 +11,7 @@
  *   getArchivedReportsList()            — список {id, dateStr} для селектов
  *   getArchivedReportById(id)           — один отчёт
  *   getArchivedReportsForCompare(a, b)  — два отчёта одним запросом (сравнение)
+ *   getMoHistoryFromArchive(moName)     — история одной МО по всему архиву
  *   getArchivedReportWithPrevious(id)   — отчёт + предыдущий (для дельт KPI)
  *   getArchiveBootstrap(requestedId)    — список + отчёт одним вызовом (viewer)
  *
@@ -293,11 +294,184 @@ function getArchivedReportsForCompare(idA, idB) {
   };
 }
 
+var MO_HISTORY_CACHE_TTL = 300;
+
+function normalizeMoKey_(name) {
+  return String(name || '')
+    .trim()
+    .toLowerCase();
+}
+
+function toNumArchive_(v) {
+  if (v == null || v === '') return 0;
+  if (typeof v === 'number' && !isNaN(v)) return v;
+  var s = String(v).replace(/\s/g, '').replace(',', '.');
+  var n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+function buildMoFromArchiveRow_(r) {
+  var plan = toNumArchive_(r.plan != null ? r.plan : r['План на год']);
+  var fact = toNumArchive_(r.fact != null ? r.fact : r['Общий итог']);
+  var percentRaw = r.percent != null ? toNumArchive_(r.percent) : plan ? (fact / plan) * 100 : 0;
+  return {
+    name: r.name || r['Наименование МО'] || 'МО',
+    plan: plan,
+    fact: fact,
+    percent: percentRaw,
+    growth: toNumArchive_(r.growth != null ? r.growth : r['Динамика']),
+    colon: toNumArchive_(r.colon != null ? r.colon : r['Прошли колоноскопию']),
+    zno: toNumArchive_(r.zno != null ? r.zno : r['ЗНО']),
+    noDev: toNumArchive_(r.noDev != null ? r.noDev : r['Нет отклонений']),
+    hasDev: toNumArchive_(r.hasDev != null ? r.hasDev : r['Есть отклонения']),
+  };
+}
+
+function buildMosFromArchiveData_(data) {
+  if (!data || !data.length) return [];
+  var mos = [];
+  for (var i = 0; i < data.length; i++) {
+    mos.push(buildMoFromArchiveRow_(data[i]));
+  }
+  return mos;
+}
+
+function moToHistoryPoint_(mo, reportId, dateStr, period) {
+  var hasDev = mo.hasDev || 0;
+  var colon = mo.colon || 0;
+  return {
+    reportId: reportId,
+    dateStr: dateStr,
+    period: period || '',
+    fact: mo.fact,
+    plan: mo.plan,
+    percent: mo.percent,
+    growth: mo.growth,
+    colon: colon,
+    hasDev: hasDev,
+    noDev: mo.noDev,
+    zno: mo.zno,
+    coverage: hasDev > 0 ? (colon / hasDev) * 100 : 0,
+  };
+}
+
+function findMoInArchiveReport_(report, reportId, dateValue, period, moKey) {
+  var mos = buildMosFromArchiveData_(report.mosData || []);
+  for (var i = 0; i < mos.length; i++) {
+    if (normalizeMoKey_(mos[i].name) === moKey) {
+      return moToHistoryPoint_(mos[i], reportId, formatArchiveDate_(dateValue), period || report.period || '');
+    }
+  }
+  return null;
+}
+
+/**
+ * Собрать историю МО из массива строк архива (для тестов и сервера).
+ * rows: [[id, date, json, period], ...]
+ */
+function buildMoHistoryFromRows_(rows, moName) {
+  var moKey = normalizeMoKey_(moName);
+  if (!moKey) {
+    return { points: [], meta: { totalReports: 0, matchedReports: 0, moName: '' } };
+  }
+
+  var points = [];
+  var totalReports = 0;
+
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var reportId = Number(row[0]);
+    if (!reportId || isNaN(reportId)) continue;
+    totalReports += 1;
+    try {
+      var report = parseArchiveReportRow_(row);
+      var point = findMoInArchiveReport_(report, reportId, row[1], row[3], moKey);
+      if (point) points.push(point);
+    } catch (e) {
+      // пропускаем повреждённые строки
+    }
+  }
+
+  points.sort(function (a, b) {
+    return a.reportId - b.reportId;
+  });
+
+  return {
+    points: points,
+    meta: {
+      totalReports: totalReports,
+      matchedReports: points.length,
+      moName: moName,
+    },
+  };
+}
+
+function getMoHistoryCacheKey_(moName) {
+  return 'mo_history_v1_' + normalizeMoKey_(moName);
+}
+
+function getCachedMoHistory_(moName) {
+  try {
+    var cached = CacheService.getScriptCache().get(getMoHistoryCacheKey_(moName));
+    if (cached) return JSON.parse(cached);
+  } catch (e) {
+    console.warn('archive: чтение кэша истории МО не удалось', e && e.message);
+  }
+  return null;
+}
+
+function putCachedMoHistory_(moName, payload) {
+  try {
+    CacheService.getScriptCache().put(
+      getMoHistoryCacheKey_(moName),
+      JSON.stringify(payload),
+      MO_HISTORY_CACHE_TTL
+    );
+  } catch (e) {
+    console.warn('archive: запись кэша истории МО не удалась', e && e.message);
+  }
+}
+
+/** История показателей одной МО по всем отчётам архива */
+function getMoHistoryFromArchive(moName) {
+  if (!moName || !String(moName).trim()) {
+    throw new Error('Не указано название МО');
+  }
+
+  var cached = getCachedMoHistory_(moName);
+  if (cached) return cached;
+
+  var sheet = getArchiveSheet_();
+  if (!sheet) {
+    return {
+      points: [],
+      meta: { totalReports: 0, matchedReports: 0, moName: moName },
+    };
+  }
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return {
+      points: [],
+      meta: { totalReports: 0, matchedReports: 0, moName: moName },
+    };
+  }
+
+  var values = sheet.getRange(2, 1, lastRow, 4).getValues();
+  var result = buildMoHistoryFromRows_(values, moName);
+  putCachedMoHistory_(moName, result);
+  return result;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     parseArchiveReportRow_,
     buildArchiveIndex_,
     getPreviousArchiveIdFromList_,
     formatArchiveDate_,
+    normalizeMoKey_,
+    buildMoHistoryFromRows_,
+    buildMosFromArchiveData_,
+    moToHistoryPoint_,
   };
 }

@@ -10,22 +10,31 @@
   // src/lib/index.js
   var lib_exports = {};
   __export(lib_exports, {
+    buildMoHistoryPoint: () => buildMoHistoryPoint,
+    buildMoInsights: () => buildMoInsights,
     buildMosFromData: () => buildMosFromData,
+    computeMoRankings: () => computeMoRankings,
     computePeriodDeltas: () => computePeriodDeltas,
     computeTotals: () => computeTotals,
     computeTotalsFromMosData: () => computeTotalsFromMosData,
     computeYearPercent: () => computeYearPercent,
+    detectMoTrend: () => detectMoTrend,
     escapeHtml: () => escapeHtml,
     extractFact: () => extractFact,
     extractNumber: () => extractNumber,
+    formatPeriodLabel: () => formatPeriodLabel,
     formatShortDate: () => formatShortDate,
     getNextWeekPeriod: () => getNextWeekPeriod,
     getPlans: () => getPlans,
     hasAllowedMarkup: () => hasAllowedMarkup,
+    mergeDisplayedMoPoint: () => mergeDisplayedMoPoint,
     normalizeArchiveReport: () => normalizeArchiveReport,
+    normalizeMoKey: () => normalizeMoKey,
     parseCSV: () => parseCSV,
+    rankBadgeClass: () => rankBadgeClass,
     renderHtmlContent: () => renderHtmlContent,
     sanitizeHtmlFragment: () => sanitizeHtmlFragment,
+    sortMoHistoryPoints: () => sortMoHistoryPoints,
     toNum: () => toNum,
     truncateName: () => truncateName
   });
@@ -268,11 +277,220 @@
       end: nextFriday
     };
   }
+  function formatPeriodLabel(period) {
+    if (!period) return "";
+    let s = String(period).trim();
+    s = s.replace(
+      /^[\s«"'„]*Масштабирование\s+онкоскрининговых\s+исследований[\s»"'"]*/i,
+      ""
+    );
+    s = s.trim();
+    const rangeMatch = s.match(/(\d{2}\.\d{2}\.\d{4})\s*[-–—]\s*(\d{2}\.\d{2}\.\d{4})/);
+    if (rangeMatch) return rangeMatch[2];
+    const singleMatch = s.match(/(\d{2}\.\d{2}\.\d{4})/);
+    if (singleMatch) return singleMatch[1];
+    return s || String(period).trim();
+  }
 
   // src/lib/moUtils.js
   function truncateName(name, max) {
     const n = String(name || "");
     return n.length > max ? n.slice(0, max - 1) + "\u2026" : n;
+  }
+
+  // src/lib/moAnalytics.js
+  function normalizeMoKey(name) {
+    return String(name || "").trim().toLowerCase();
+  }
+  function rankPosition(sorted, moKey, valueKey, higherIsBetter) {
+    const idx = sorted.findIndex((m) => normalizeMoKey(m.name) === moKey);
+    if (idx === -1) return null;
+    return higherIsBetter ? idx + 1 : sorted.length - idx;
+  }
+  function coverageOf(mo) {
+    return mo.hasDev > 0 ? mo.colon / mo.hasDev * 100 : 0;
+  }
+  function computeMoRankings(moName, allMos) {
+    const key = normalizeMoKey(moName);
+    const total = allMos.length;
+    const mo = allMos.find((m) => normalizeMoKey(m.name) === key);
+    if (!mo || !total) {
+      return {
+        total: 0,
+        mo: null,
+        byPercent: null,
+        byCoverage: null,
+        byGrowth: null,
+        byFact: null,
+        avgPercent: 0,
+        avgCoverage: 0,
+        topPercent: 0
+      };
+    }
+    const byPercent = [...allMos].sort((a, b) => b.percent - a.percent);
+    const byCoverage = [...allMos].sort((a, b) => coverageOf(b) - coverageOf(a));
+    const byGrowth = [...allMos].sort((a, b) => (b.growth || 0) - (a.growth || 0));
+    const byFact = [...allMos].sort((a, b) => b.fact - a.fact);
+    const avgPercent = allMos.reduce((s, m) => s + m.percent, 0) / total;
+    const avgCoverage = allMos.reduce((s, m) => s + coverageOf(m), 0) / total;
+    return {
+      total,
+      mo,
+      byPercent: rankPosition(byPercent, key, "percent", true),
+      byCoverage: rankPosition(byCoverage, key, "coverage", true),
+      byGrowth: rankPosition(byGrowth, key, "growth", true),
+      byFact: rankPosition(byFact, key, "fact", true),
+      avgPercent,
+      avgCoverage,
+      topPercent: byPercent[0] ? byPercent[0].percent : 0,
+      coverage: coverageOf(mo)
+    };
+  }
+  function detectMoTrend(history, field, windowSize) {
+    const win = windowSize || 4;
+    if (!history || history.length < 2) return "stable";
+    const slice = history.slice(-Math.min(win, history.length));
+    const first = slice[0][field];
+    const last = slice[slice.length - 1][field];
+    const diff = last - first;
+    if (Math.abs(diff) < 0.5) return "stable";
+    return diff > 0 ? "up" : "down";
+  }
+  function buildMoInsights(mo, history, rankings, config) {
+    if (!mo) return [];
+    const plans = getPlans(config);
+    const PLAN_THRESHOLD = plans.threshold;
+    const PLAN_WEEKLY = plans.weekly;
+    const COLON_THRESHOLD = 50;
+    const insights = [];
+    const coverage = rankings.coverage ?? (mo.hasDev > 0 ? mo.colon / mo.hasDev * 100 : 0);
+    if (mo.percent >= PLAN_THRESHOLD) {
+      insights.push({
+        className: "signal-success",
+        icon: "fa-circle-check",
+        text: `\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0435 \u0433\u043E\u0434\u043E\u0432\u043E\u0433\u043E \u043F\u043B\u0430\u043D\u0430 \u041A\u043D\u0421\u041A: ${mo.percent.toFixed(1)}% (\u043F\u043E\u0440\u043E\u0433 ${PLAN_THRESHOLD}%)`
+      });
+    } else {
+      insights.push({
+        className: mo.percent >= PLAN_THRESHOLD * 0.85 ? "signal-warn" : "signal-danger",
+        icon: "fa-triangle-exclamation",
+        text: `\u041D\u0438\u0436\u0435 \u043F\u043E\u0440\u043E\u0433\u0430 ${PLAN_THRESHOLD}%: ${mo.percent.toFixed(1)}% \u0433\u043E\u0434\u043E\u0432\u043E\u0433\u043E \u043F\u043B\u0430\u043D\u0430 \u041A\u043D\u0421\u041A`
+      });
+    }
+    if (coverage >= COLON_THRESHOLD) {
+      insights.push({
+        className: "signal-success",
+        icon: "fa-stethoscope",
+        text: `\u041E\u0445\u0432\u0430\u0442 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439 ${coverage.toFixed(1)}% (\u0432\u044B\u0448\u0435 \u043F\u043E\u0440\u043E\u0433\u0430 ${COLON_THRESHOLD}%)`
+      });
+    } else {
+      insights.push({
+        className: coverage >= COLON_THRESHOLD * 0.7 ? "signal-warn" : "signal-danger",
+        icon: "fa-hospital",
+        text: `\u041E\u0445\u0432\u0430\u0442 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439 ${coverage.toFixed(1)}% \u2014 \u043D\u0438\u0436\u0435 \u043F\u043E\u0440\u043E\u0433\u0430 ${COLON_THRESHOLD}%`
+      });
+    }
+    const weekPct = PLAN_WEEKLY ? (mo.growth || 0) / PLAN_WEEKLY * 100 : 0;
+    const weekClass = weekPct >= 100 ? "signal-success" : weekPct >= 70 ? "signal-warn" : "signal-danger";
+    insights.push({
+      className: weekClass,
+      icon: "fa-calendar-week",
+      text: `\u041D\u0435\u0434\u0435\u043B\u044C\u043D\u044B\u0439 \u043F\u0440\u0438\u0440\u043E\u0441\u0442 ${(mo.growth || 0).toLocaleString("ru-RU")} (${weekPct.toFixed(0)}% \u043E\u0442 \u043F\u043B\u0430\u043D\u0430 ${PLAN_WEEKLY.toLocaleString("ru-RU")}/\u043D\u0435\u0434.)`
+    });
+    if (rankings.total && rankings.byPercent) {
+      insights.push({
+        className: rankings.byPercent <= 5 ? "signal-success" : rankings.byPercent <= rankings.total / 2 ? "signal-warn" : "signal-danger",
+        icon: "fa-trophy",
+        text: `${rankings.byPercent}-\u0435 \u043C\u0435\u0441\u0442\u043E \u0438\u0437 ${rankings.total} \u043F\u043E % \u0433\u043E\u0434\u043E\u0432\u043E\u0433\u043E \u043F\u043B\u0430\u043D\u0430 \u041A\u043D\u0421\u041A`
+      });
+    }
+    if (rankings.total && rankings.byCoverage) {
+      insights.push({
+        className: rankings.byCoverage <= 5 ? "signal-success" : "signal-warn",
+        icon: "fa-chart-line",
+        text: `${rankings.byCoverage}-\u0435 \u043C\u0435\u0441\u0442\u043E \u0438\u0437 ${rankings.total} \u043F\u043E \u043E\u0445\u0432\u0430\u0442\u0443 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439`
+      });
+    }
+    if (history && history.length >= 2) {
+      const first = history[0];
+      const last = history[history.length - 1];
+      const deltaPct = last.percent - first.percent;
+      const trend = detectMoTrend(history, "percent");
+      const trendText = trend === "up" ? "\u043F\u043E\u043B\u043E\u0436\u0438\u0442\u0435\u043B\u044C\u043D\u0430\u044F" : trend === "down" ? "\u043E\u0442\u0440\u0438\u0446\u0430\u0442\u0435\u043B\u044C\u043D\u0430\u044F" : "\u0441\u0442\u0430\u0431\u0438\u043B\u044C\u043D\u0430\u044F";
+      insights.push({
+        className: deltaPct >= 0 ? "signal-success" : "signal-warn",
+        icon: "fa-chart-line",
+        text: `\u0414\u0438\u043D\u0430\u043C\u0438\u043A\u0430 % \u043F\u043B\u0430\u043D\u0430 \u0437\u0430 ${history.length} \u043E\u0442\u0447\u0451\u0442\u043E\u0432: ${trendText} (${deltaPct >= 0 ? "+" : ""}${deltaPct.toFixed(1)} \u043F.\u043F.)`
+      });
+    }
+    if (rankings.avgPercent && mo.percent < rankings.avgPercent) {
+      insights.push({
+        className: "signal-warn",
+        icon: "fa-scale-balanced",
+        text: `\u041E\u0442\u0441\u0442\u0430\u0432\u0430\u043D\u0438\u0435 \u043E\u0442 \u0441\u0440\u0435\u0434\u043D\u0435\u0433\u043E \u043F\u043E \u0440\u0435\u0433\u0438\u043E\u043D\u0443: ${mo.percent.toFixed(1)}% vs ${rankings.avgPercent.toFixed(1)}%`
+      });
+    }
+    return insights.slice(0, 6);
+  }
+  function rankBadgeClass(position, total) {
+    if (!position || !total) return "mo-profile-rank-badge--mid";
+    const ratio = position / total;
+    if (ratio <= 0.2) return "mo-profile-rank-badge--top";
+    if (ratio <= 0.5) return "mo-profile-rank-badge--mid";
+    return "mo-profile-rank-badge--low";
+  }
+
+  // src/lib/moHistory.js
+  function sortMoHistoryPoints(points) {
+    return [...points || []].sort(function(a, b) {
+      const idA = Number(a.reportId);
+      const idB = Number(b.reportId);
+      if (!isNaN(idA) && !isNaN(idB) && idA !== idB) return idA - idB;
+      return String(a.dateStr || "").localeCompare(String(b.dateStr || ""), "ru");
+    });
+  }
+  function buildMoHistoryPoint(mo, reportId, period, dateStr) {
+    const hasDev = mo.hasDev || 0;
+    const colon = mo.colon || 0;
+    return {
+      reportId,
+      dateStr: dateStr || "",
+      period: period || "",
+      fact: mo.fact,
+      plan: mo.plan,
+      percent: mo.percent,
+      growth: mo.growth,
+      colon,
+      hasDev,
+      noDev: mo.noDev,
+      zno: mo.zno,
+      coverage: hasDev > 0 ? colon / hasDev * 100 : 0
+    };
+  }
+  function mergeDisplayedMoPoint(history, mo, options) {
+    const list = history || [];
+    if (!mo) return sortMoHistoryPoints(list);
+    const opts = options || {};
+    const archiveReportId = opts.archiveReportId;
+    const hasArchiveId = archiveReportId != null && archiveReportId !== "" && !isNaN(Number(archiveReportId));
+    const reportId = hasArchiveId ? Number(archiveReportId) : 999999;
+    const point = buildMoHistoryPoint(mo, reportId, opts.period, opts.dateStr);
+    if (hasArchiveId) {
+      const idx = list.findIndex(function(p) {
+        return Number(p.reportId) === Number(archiveReportId);
+      });
+      if (idx >= 0) {
+        const next = list.slice();
+        next[idx] = Object.assign({}, next[idx], point, { reportId: Number(archiveReportId) });
+        return sortMoHistoryPoints(next);
+      }
+      return sortMoHistoryPoints(list.concat([point]));
+    }
+    const last = list[list.length - 1];
+    if (last && Math.abs(last.percent - point.percent) < 0.01 && last.fact === point.fact) {
+      return sortMoHistoryPoints(list);
+    }
+    return sortMoHistoryPoints(list.concat([point]));
   }
 
   // .build-tmp/lib.entry.js

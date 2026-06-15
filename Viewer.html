@@ -30,6 +30,7 @@
     </script>
     <?!= include('DashboardPhase1'); ?>
     <?!= include('DashboardPhase2'); ?>
+    <?!= include('MoProfile'); ?>
 </head>
 <body class="dashboard-phase1 viewer-mode">
 <div class="dashboard" id="dashboardContainer" data-initial-report-id="<?= reportId || '' ?>">
@@ -53,7 +54,7 @@
             <select id="archiveSelect">
                 <option value="">— Загрузка списка... —</option>
             </select>
-            <button type="button" class="refresh-btn secondary" id="presentationModeBtn"><i class="fas fa-expand"></i> Презентация</button>
+            <button type="button" class="refresh-btn refresh-btn--presentation" id="presentationModeBtn"><i class="fas fa-expand"></i> Презентация</button>
         </div>
         <div class="compare-controls">
             <label><i class="fas fa-code-compare"></i> Сравнить:</label>
@@ -159,6 +160,7 @@
             <div class="table-scroll-wrap">
                 <table id="mainTable"><thead><tr><th>№</th><th>МО</th><th>План</th><th>Итого</th><th>%</th><th>Динамика</th><th>Нет откл.</th><th>Есть откл.</th><th>Колоноск.</th><th>ЗНО</th></tr></thead><tbody id="tableBody"></tbody></table>
             </div>
+            <p class="table-mo-hint"><i class="fas fa-hand-pointer"></i> Для более детального анализа нажмите на одну из МО в таблице</p>
         </div>
     </div>
 </div>
@@ -178,6 +180,13 @@
         <button type="button" class="compare-panel-close" id="comparePanelClose" aria-label="Закрыть">&times;</button>
         <h3 id="comparePanelTitle"><i class="fas fa-code-compare"></i> Сравнение двух архивных отчётов</h3>
         <div id="comparePanelContent"></div>
+    </div>
+</div>
+
+<div id="moProfileOverlay" class="mo-profile-overlay" aria-hidden="true">
+    <div class="mo-profile-panel" role="dialog" aria-modal="true" aria-labelledby="moProfileTitle">
+        <button type="button" class="compare-panel-close" id="moProfileClose" aria-label="Закрыть">&times;</button>
+        <div id="moProfileContent"></div>
     </div>
 </div>
 <?!= include('ViewerPage'); ?>

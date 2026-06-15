@@ -17,3 +17,5 @@ export * from './constants.js';
 export * from './kpiCalculator.js';
 export * from './dateUtils.js';
 export * from './moUtils.js';
+export * from './moAnalytics.js';
+export * from './moHistory.js';

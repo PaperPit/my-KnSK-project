@@ -104,35 +104,72 @@ const DashboardPhase2 = (function () {
     initChart('moDrawerChart').then(function (chart) {
       if (!chart || !mo) return;
 
+      const fact = mo.fact || 0;
+      const noDev = mo.noDev || 0;
+      const hasDev = mo.hasDev || 0;
+      const colon = mo.colon || 0;
+      const positiveNoColon = Math.max(0, hasDev - colon);
+      const accounted = noDev + positiveNoColon + colon;
+      const other = Math.max(0, fact - accounted);
+
+      const slices = [
+        { name: 'Кол-во иссл. КнСК без отклонений', value: noDev, color: '#2c7da0' },
+        { name: 'КнСК+, без колоноскопии', value: positiveNoColon, color: '#e67e22' },
+        { name: 'Кол-во колоноскопий пац. с КнСК+', value: colon, color: '#1f8a4c' },
+      ];
+      if (other > 0) {
+        slices.push({ name: 'Прочие', value: other, color: '#94a3b8' });
+      }
+      const data = slices.filter(function (s) {
+        return s.value > 0;
+      });
+
       chart.setOption({
-      tooltip: { trigger: 'axis' },
-      grid: { left: 40, right: 16, top: 16, bottom: 28 },
-      xAxis: {
-        type: 'category',
-        data: ['План %', 'Факт', 'Динам.', 'Колоноск.', 'ЗНО'],
-        axisLabel: { fontSize: 9 },
-      },
-      yAxis: { type: 'value', axisLabel: { fontSize: 9 } },
-      series: [
-        {
-          type: 'bar',
-          data: [
-            parseFloat(mo.percent.toFixed(1)),
-            mo.fact,
-            mo.growth,
-            mo.colon,
-            mo.zno,
-          ],
-          itemStyle: {
-            color(params) {
-              const colors = ['#2c7da0', '#1e4663', '#1f8a4c', '#e67e22', '#c0392b'];
-              return colors[params.dataIndex] || '#2c7da0';
-            },
-            borderRadius: [4, 4, 0, 0],
+        tooltip: {
+          trigger: 'item',
+          confine: true,
+          position: function (point, _params, _dom, rect, size) {
+            const pad = 12;
+            const x = rect.x + rect.width - size.contentSize[0] - pad;
+            let y = point[1] - size.contentSize[1] / 2;
+            y = Math.max(
+              rect.y + pad,
+              Math.min(y, rect.y + rect.height - size.contentSize[1] - pad)
+            );
+            return [x, y];
           },
-          label: { show: true, position: 'top', fontSize: 9 },
+          formatter: '{b}: {c} ({d}% от ' + fact.toLocaleString('ru-RU') + ' КнСК)',
         },
-      ],
+        graphic: [
+          {
+            type: 'text',
+            left: 'center',
+            top: 'center',
+            style: {
+              text: fact.toLocaleString('ru-RU') + '\nКнСК',
+              textAlign: 'center',
+              fill: '#1e4663',
+              fontSize: 14,
+              fontWeight: 700,
+              lineHeight: 18,
+            },
+          },
+        ],
+        series: [
+          {
+            type: 'pie',
+            radius: ['42%', '68%'],
+            center: ['50%', '50%'],
+            avoidLabelOverlap: true,
+            label: {
+              fontSize: 10,
+              formatter: '{b}\n{c}',
+            },
+            data: data.map(function (s) {
+              return { name: s.name, value: s.value, itemStyle: { color: s.color } };
+            }),
+          },
+        ],
       });
     });
   }
@@ -189,7 +226,20 @@ const DashboardPhase2 = (function () {
         </div>
       </div>
       <div id="moDrawerChart" class="mo-drawer-chart"></div>
+      <button type="button" class="mo-drawer-profile-link" id="moDrawerProfileBtn">
+        <i class="fas fa-microscope"></i> Глубокий анализ МО
+      </button>
     `;
+
+    const profileBtn = document.getElementById('moDrawerProfileBtn');
+    if (profileBtn) {
+      profileBtn.addEventListener('click', function () {
+        closeMoDrawer();
+        if (window.MoProfile && mo.name) {
+          window.MoProfile.open(mo.name);
+        }
+      });
+    }
 
     overlay.classList.add('open');
     document.body.style.overflow = 'hidden';
@@ -230,8 +280,11 @@ const DashboardPhase2 = (function () {
     }
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
-        closeMoDrawer();
-        if (document.getElementById('compareOverlay')?.classList.contains('open')) {
+        if (document.getElementById('moProfileOverlay')?.classList.contains('open')) {
+          window.MoProfile && window.MoProfile.close();
+        } else if (document.getElementById('moDrawerOverlay')?.classList.contains('open')) {
+          closeMoDrawer();
+        } else if (document.getElementById('compareOverlay')?.classList.contains('open')) {
           closeComparePanel();
         } else if (document.body.classList.contains('presentation-mode')) {
           togglePresentationMode(false);

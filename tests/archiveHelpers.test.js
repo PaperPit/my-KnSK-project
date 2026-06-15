@@ -7,6 +7,8 @@ import {
   buildArchiveIndex_,
   getPreviousArchiveIdFromList_,
   formatArchiveDate_,
+  buildMoHistoryFromRows_,
+  normalizeMoKey_,
 } from '../src/server/archive.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -167,5 +169,46 @@ describe('getPreviousArchiveIdFromList_', () => {
 
   it('coerces currentId to Number', () => {
     expect(getPreviousArchiveIdFromList_(list, '30')).toBe(20);
+  });
+});
+
+describe('buildMoHistoryFromRows_', () => {
+  it('extracts history points for MO across reports', () => {
+    const row1 = [1, '2026-01-10', JSON.stringify(fixture), '10.01 - 17.01'];
+    const row2Payload = {
+      mosData: [
+        {
+          name: 'ГКБ №1',
+          plan: 5000,
+          fact: 3500,
+          percent: 70,
+          growth: 130,
+          colon: 460,
+          zno: 10,
+          noDev: 750,
+          hasDev: 1100,
+        },
+      ],
+      period: '17.01 - 24.01',
+    };
+    const row2 = [2, '2026-01-17', JSON.stringify(row2Payload), '17.01 - 24.01'];
+    const result = buildMoHistoryFromRows_([row1, row2], 'ГКБ №1');
+
+    expect(result.meta.totalReports).toBe(2);
+    expect(result.meta.matchedReports).toBe(2);
+    expect(result.points).toHaveLength(2);
+    expect(result.points[0].reportId).toBe(1);
+    expect(result.points[1].fact).toBe(3500);
+    expect(result.points[0].coverage).toBeCloseTo((450 / 1200) * 100, 1);
+  });
+
+  it('returns empty for unknown MO', () => {
+    const row = [1, '2026-01-10', JSON.stringify(fixture), 'p'];
+    const result = buildMoHistoryFromRows_([row], 'Неизвестная МО');
+    expect(result.points).toEqual([]);
+  });
+
+  it('normalizeMoKey_ matches case-insensitively', () => {
+    expect(normalizeMoKey_('  ГКБ №1 ')).toBe('гкб №1');
   });
 });

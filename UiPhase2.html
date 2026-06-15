@@ -391,15 +391,22 @@
   }
 }
 
-/* Drawer МО */
+/* Drawer МО — центрированное модальное окно */
 .mo-drawer-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 43, 61, 0.45);
   z-index: 9000;
+  background: rgba(15, 43, 61, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 3vh, 32px) clamp(12px, 3vw, 24px);
+  overflow-y: auto;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.25s, visibility 0.25s;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
 }
 
 .mo-drawer-overlay.open {
@@ -408,22 +415,21 @@
 }
 
 .mo-drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: min(420px, 92vw);
-  height: 100%;
+  position: relative;
+  width: min(100%, 560px);
+  max-height: min(90vh, 720px);
   background: white;
-  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
-  z-index: 9001;
-  transform: translateX(100%);
-  transition: transform 0.28s ease;
+  border-radius: 24px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  transform: translateY(12px) scale(0.98);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
   overflow-y: auto;
-  padding: 24px 22px;
+  padding: 24px 26px 28px;
+  margin: auto;
 }
 
 .mo-drawer-overlay.open .mo-drawer {
-  transform: translateX(0);
+  transform: translateY(0) scale(1);
 }
 
 .mo-drawer h3 {
@@ -478,8 +484,23 @@
 }
 
 .mo-drawer-chart {
-  height: 200px;
+  height: 240px;
   width: 100%;
+}
+
+.table-mo-hint {
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  font-size: 0.8rem;
+  color: #4a6b7c;
+  background: #f0f7fb;
+  border-radius: 8px;
+  border-left: 3px solid #2c7da0;
+}
+
+.table-mo-hint i {
+  margin-right: 6px;
+  color: #2c7da0;
 }
 
 /* Кликабельные строки таблицы */
@@ -522,6 +543,339 @@ tr.mo-row-clickable:hover {
 .toolbar-btn:hover {
   background: #eef6fb;
   border-color: #2c7da0;
+}
+
+.toolbar-btn--presentation,
+.refresh-btn--presentation {
+  background: #e67e22 !important;
+  border: none !important;
+  color: #fff !important;
+}
+
+.toolbar-btn--presentation:hover,
+.refresh-btn--presentation:hover {
+  background: #d35400 !important;
+}
+
+.toolbar-btn--profile {
+  background: #2c7da0;
+  border: none;
+  color: #fff;
+}
+
+.toolbar-btn--profile:hover:not(:disabled) {
+  background: #1f6392;
+}
+
+.toolbar-btn--profile:disabled,
+.toolbar-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Селектор профиля МО */
+.mo-profile-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.mo-profile-controls label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.control-panel .mo-profile-controls label {
+  color: #fff;
+}
+
+.viewer-select-panel .mo-profile-controls label {
+  color: #1e4663;
+}
+
+.mo-profile-controls select {
+  flex: 1;
+  min-width: 200px;
+  max-width: 420px;
+  padding: 8px 14px;
+  border-radius: 30px;
+  border: 1px solid #cbd5e1;
+  font-size: 0.85rem;
+  color: #1e293b;
+  background: #fff;
+}
+
+.control-panel .mo-profile-controls select {
+  border: none;
+}
+
+/* Профиль МО — полноэкранный оверлей */
+.mo-profile-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: rgba(15, 43, 61, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(12px, 2vh, 28px) clamp(10px, 2vw, 20px);
+  overflow-y: auto;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.mo-profile-overlay.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.mo-profile-panel {
+  background: #fff;
+  border-radius: 20px;
+  padding: 22px 24px 28px;
+  width: min(100%, 1200px);
+  max-height: 92vh;
+  overflow-y: auto;
+  position: relative;
+  margin: auto 0;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+  transform: translateY(12px) scale(0.98);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mo-profile-overlay.open .mo-profile-panel {
+  transform: translateY(0) scale(1);
+}
+
+.mo-profile-header {
+  margin-bottom: 18px;
+  padding-right: 40px;
+}
+
+.mo-profile-header h2 {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #1e4663;
+  margin: 0 0 8px;
+  line-height: 1.3;
+}
+
+.mo-profile-header-meta {
+  font-size: 0.85rem;
+  color: #5b6e8c;
+}
+
+.mo-profile-rank-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.mo-profile-rank-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.mo-profile-rank-badge--top {
+  background: #e8f5e9;
+  color: #1f8a4c;
+}
+
+.mo-profile-rank-badge--mid {
+  background: #fff3e0;
+  color: #e67e22;
+}
+
+.mo-profile-rank-badge--low {
+  background: #ffebee;
+  color: #c0392b;
+}
+
+.mo-profile-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.mo-profile-kpi {
+  border-radius: 16px;
+  padding: 14px 16px;
+  color: #fff;
+  min-height: 88px;
+}
+
+.mo-profile-kpi--plan { background: linear-gradient(145deg, #1e4663, #0c4a6e); }
+.mo-profile-kpi--fact { background: linear-gradient(145deg, #0891b2, #0e7490); }
+.mo-profile-kpi--colon { background: linear-gradient(145deg, #0d9488, #047857); }
+.mo-profile-kpi--growth { background: linear-gradient(145deg, #059669, #047857); }
+
+.mo-profile-kpi-label {
+  font-size: 0.68rem;
+  opacity: 0.88;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.mo-profile-kpi-value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.mo-profile-insights {
+  margin-bottom: 20px;
+}
+
+.mo-profile-insights h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1e4663;
+  margin-bottom: 10px;
+}
+
+.mo-profile-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.mo-profile-chart-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+
+.mo-profile-chart-card h4 {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #1e4663;
+  margin: 0 0 10px;
+}
+
+.mo-profile-chart-wrap {
+  position: relative;
+  height: 200px;
+}
+
+.mo-profile-chart-wrap canvas {
+  max-height: 200px !important;
+}
+
+.mo-profile-echart {
+  height: 220px;
+  width: 100%;
+}
+
+.mo-profile-history {
+  margin-bottom: 16px;
+}
+
+.mo-profile-history h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1e4663;
+  margin-bottom: 10px;
+}
+
+.mo-profile-history-scroll {
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.mo-profile-history table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+  min-width: 700px;
+}
+
+.mo-profile-history th {
+  position: sticky;
+  top: 0;
+  background: #f1f5f9;
+  padding: 8px 6px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.mo-profile-history td {
+  padding: 7px 6px;
+  text-align: center;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.mo-profile-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.mo-profile-link-btn {
+  background: #eef6fb;
+  border: 1px solid #c5dce8;
+  color: #1e4663;
+  padding: 8px 16px;
+  border-radius: 24px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.mo-profile-link-btn:hover {
+  background: #2c7da0;
+  color: #fff;
+  border-color: #2c7da0;
+}
+
+.mo-drawer-profile-link {
+  margin-top: 14px;
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: 24px;
+  border: none;
+  background: #e67e22;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.mo-drawer-profile-link:hover {
+  background: #d35400;
+}
+
+tr.mo-row-highlight {
+  background: #fff8e1 !important;
+  outline: 2px solid #e67e22;
+  outline-offset: -2px;
+}
+
+@media (max-width: 900px) {
+  .mo-profile-charts-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Режим презентации */

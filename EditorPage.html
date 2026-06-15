@@ -558,10 +558,16 @@
             previousMos: opts.previousMos || null
           });
         }
+        if (window.MoProfile) {
+          window.MoProfile.setCurrentMos(mos);
+          if (opts.archiveReportId != null) {
+            window.MoProfile.setCurrentReportId(opts.archiveReportId);
+          }
+        }
         return result;
       });
     }
-    function applyArchiveReport(report, previousTotals, previousMos) {
+    function applyArchiveReport(report, previousTotals, previousMos, reportId) {
       if (!window.DashboardPhase1) {
         setStatus("\u041C\u043E\u0434\u0443\u043B\u044C \u043E\u0442\u0447\u0451\u0442\u0430 \u043D\u0435 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u043B\u0441\u044F. \u0412\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u0435 clasp push \u0438 \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0435 \u0434\u0435\u043F\u043B\u043E\u0439.", false);
         return;
@@ -573,7 +579,8 @@
       }
       renderMOSDashboard(normalized.mosData, {
         previousTotals,
-        previousMos: previousMos || null
+        previousMos: previousMos || null,
+        archiveReportId: reportId
       });
       weeksData = (normalized.weeksData || []).map((w) => ({
         id: nextId++,
@@ -623,7 +630,7 @@
           previousTotals = DashboardPhase1.computeTotalsFromMosData(payload.previous.mosData);
           previousMos = DashboardPhase1.buildMosFromData(payload.previous.mosData);
         }
-        applyArchiveReport(report, previousTotals, previousMos);
+        applyArchiveReport(report, previousTotals, previousMos, reportId);
         if (window.DashboardPhase2 && DashboardPhase2.cacheArchiveReport) {
           DashboardPhase2.cacheArchiveReport(reportId, report);
           if (payload.previous && window.DashboardPhase1 && DashboardPhase1.getPreviousArchiveId) {
@@ -950,6 +957,9 @@
       if (window.DashboardPhase2) {
         DashboardPhase2.init({ onStatus: setStatus });
       }
+      if (window.MoProfile) {
+        window.MoProfile.init({ gasAdapter });
+      }
       document.getElementById("csvFile").addEventListener("change", (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -957,6 +967,7 @@
         reader.onload = (ev) => {
           if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
           currentMOSData = parseCSV(ev.target.result);
+          if (window.MoProfile) window.MoProfile.setCurrentReportId(null);
           renderMOSDashboard(currentMOSData).then(function() {
             setStatus(`\u0417\u0430\u0433\u0440\u0443\u0436\u0435\u043D CSV: ${file.name}`, true);
           });

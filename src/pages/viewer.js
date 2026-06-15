@@ -144,7 +144,7 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         } catch (_e) {}
     }
 
-    function applyReportToDashboard(report, previousTotals, previousMos) {
+    function applyReportToDashboard(report, previousTotals, previousMos, reportId) {
         if (!report || !window.DashboardPhase1) return Promise.resolve(null);
 
         if (!report.timestamp) {
@@ -201,6 +201,10 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
                     previousMos: previousMos || null,
                 });
             }
+            if (window.MoProfile) {
+                window.MoProfile.setCurrentMos(mos);
+                window.MoProfile.setCurrentReportId(reportId || null);
+            }
             return result;
         });
     }
@@ -215,7 +219,7 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         const cached = loadViewerCache();
         if (cached && cached.report && (!initialId || cached.reportId === initialId)) {
             const ctx = resolvePreviousContext(cached.previous);
-            applyReportToDashboard(cached.report, ctx.previousTotals, ctx.previousMos);
+            applyReportToDashboard(cached.report, ctx.previousTotals, ctx.previousMos, cached.reportId);
         }
 
     gasAdapter
@@ -237,7 +241,7 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
 
         if (data && data.report) {
           const prevCtx = resolvePreviousContext(data.previous);
-          applyReportToDashboard(data.report, prevCtx.previousTotals, prevCtx.previousMos);
+          applyReportToDashboard(data.report, prevCtx.previousTotals, prevCtx.previousMos, data.reportId);
           saveViewerCache(data.reportId, data.report, data.previous);
           if (window.DashboardPhase2 && DashboardPhase2.cacheArchiveReport) {
             DashboardPhase2.cacheArchiveReport(data.reportId, data.report);
@@ -271,7 +275,7 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         if (!report) return;
 
         const prevCtx = resolvePreviousContext(payload.previous);
-        applyReportToDashboard(report, prevCtx.previousTotals, prevCtx.previousMos);
+        applyReportToDashboard(report, prevCtx.previousTotals, prevCtx.previousMos, parseInt(id, 10));
         saveViewerCache(parseInt(id, 10), report, payload.previous);
         if (window.DashboardPhase2 && DashboardPhase2.cacheArchiveReport) {
           DashboardPhase2.cacheArchiveReport(parseInt(id, 10), report);
@@ -295,6 +299,9 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
                 DashboardPhase2.init({
                     onStatus: function (msg) { if (window.__KNSK_DEBUG) console.log(msg); }
                 });
+            }
+            if (window.MoProfile) {
+                window.MoProfile.init({ gasAdapter: gasAdapter });
             }
             initViewer();
 

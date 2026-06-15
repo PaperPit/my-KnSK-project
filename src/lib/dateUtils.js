@@ -42,3 +42,25 @@ export function getNextWeekPeriod() {
     end: nextFriday,
   };
 }
+
+/**
+ * Короткая подпись периода: одна конечная дата (например 17.04.2026).
+ */
+export function formatPeriodLabel(period) {
+  if (!period) return '';
+  let s = String(period).trim();
+
+  s = s.replace(
+    /^[\s«"'„]*Масштабирование\s+онкоскрининговых\s+исследований[\s»"'"]*/i,
+    ''
+  );
+  s = s.trim();
+
+  const rangeMatch = s.match(/(\d{2}\.\d{2}\.\d{4})\s*[-–—]\s*(\d{2}\.\d{2}\.\d{4})/);
+  if (rangeMatch) return rangeMatch[2];
+
+  const singleMatch = s.match(/(\d{2}\.\d{2}\.\d{4})/);
+  if (singleMatch) return singleMatch[1];
+
+  return s || String(period).trim();
+}

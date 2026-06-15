@@ -196,11 +196,17 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
                     previousMos: opts.previousMos || null,
                 });
             }
+            if (window.MoProfile) {
+                window.MoProfile.setCurrentMos(mos);
+                if (opts.archiveReportId != null) {
+                    window.MoProfile.setCurrentReportId(opts.archiveReportId);
+                }
+            }
             return result;
         });
     }
 
-    function applyArchiveReport(report, previousTotals, previousMos) {
+    function applyArchiveReport(report, previousTotals, previousMos, reportId) {
         if (!window.DashboardPhase1) {
             setStatus('Модуль отчёта не загрузился. Выполните clasp push и обновите деплой.', false);
             return;
@@ -213,6 +219,7 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         renderMOSDashboard(normalized.mosData, {
             previousTotals: previousTotals,
             previousMos: previousMos || null,
+            archiveReportId: reportId,
         });
         weeksData = (normalized.weeksData || []).map((w) => ({
             id: nextId++,
@@ -272,7 +279,7 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
                     previousMos = DashboardPhase1.buildMosFromData(payload.previous.mosData);
                 }
 
-                applyArchiveReport(report, previousTotals, previousMos);
+                applyArchiveReport(report, previousTotals, previousMos, reportId);
                 if (window.DashboardPhase2 && DashboardPhase2.cacheArchiveReport) {
                     DashboardPhase2.cacheArchiveReport(reportId, report);
                     if (payload.previous && window.DashboardPhase1 && DashboardPhase1.getPreviousArchiveId) {
@@ -632,6 +639,9 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         if (window.DashboardPhase2) {
             DashboardPhase2.init({ onStatus: setStatus });
         }
+        if (window.MoProfile) {
+            window.MoProfile.init({ gasAdapter: gasAdapter });
+        }
         
         document.getElementById('csvFile').addEventListener('change', e => {
             const file = e.target.files[0];
@@ -640,6 +650,7 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
             reader.onload = ev => {
                 if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
                 currentMOSData = parseCSV(ev.target.result);
+                if (window.MoProfile) window.MoProfile.setCurrentReportId(null);
                 renderMOSDashboard(currentMOSData).then(function () {
                     setStatus(`Загружен CSV: ${file.name}`, true);
                 });

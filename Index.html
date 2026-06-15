@@ -31,6 +31,7 @@
     </script>
     <?!= include('DashboardPhase1'); ?>
     <?!= include('DashboardPhase2'); ?>
+    <?!= include('MoProfile'); ?>
 </head>
 <body class="dashboard-phase1">
 <div class="dashboard" id="dashboardContainer">
@@ -41,7 +42,7 @@
             <div class="upload-btn" id="saveToArchiveBtn"><i class="fas fa-archive"></i> Сохранить в архив</div>
             <div class="save-html-btn" id="saveHtmlBtn"><i class="fas fa-download"></i> Сохранить как HTML</div>
             <div class="upload-btn" id="webVersionBtn"><i class="fas fa-globe"></i> Веб-версия</div>
-            <button type="button" class="toolbar-btn" id="presentationModeBtn"><i class="fas fa-expand"></i> Презентация</button>
+            <button type="button" class="toolbar-btn toolbar-btn--presentation" id="presentationModeBtn"><i class="fas fa-expand"></i> Презентация</button>
         </div>
         <div class="info-text">
             <i class="fas fa-info-circle"></i> 
@@ -199,6 +200,7 @@
             <div class="table-scroll-wrap">
                 <table id="mainTable"><thead><tr><th>№</th><th>МО</th><th>План</th><th>Итого</th><th>%</th><th>Динамика</th><th>Нет откл.</th><th>Есть откл.</th><th>Колоноск.</th><th>ЗНО</th></tr></thead><tbody id="tableBody"></tbody></table>
             </div>
+            <p class="table-mo-hint"><i class="fas fa-hand-pointer"></i> Для более детального анализа нажмите на одну из МО в таблице</p>
             <div style="margin-top: 12px; font-size: 0.7rem; text-align: right;" id="updateTime"></div>
         </div>
     </div>
@@ -219,6 +221,13 @@
         <button type="button" class="compare-panel-close" id="comparePanelClose" aria-label="Закрыть">&times;</button>
         <h3 id="comparePanelTitle"><i class="fas fa-code-compare"></i> Сравнение двух архивных отчётов</h3>
         <div id="comparePanelContent"></div>
+    </div>
+</div>
+
+<div id="moProfileOverlay" class="mo-profile-overlay" aria-hidden="true">
+    <div class="mo-profile-panel" role="dialog" aria-modal="true" aria-labelledby="moProfileTitle">
+        <button type="button" class="compare-panel-close" id="moProfileClose" aria-label="Закрыть">&times;</button>
+        <div id="moProfileContent"></div>
     </div>
 </div>
 <?!= include('EditorPage'); ?>
