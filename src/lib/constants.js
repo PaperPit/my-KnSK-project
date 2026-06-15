@@ -11,7 +11,7 @@
  * ПОСЛЕ ПРАВОК: npm run build
  * =============================================================================
  */
-function getPlans(config) {
+export function getPlans(config) {
   const cfg = config || (typeof CONFIG !== 'undefined' ? CONFIG : null);
   if (cfg && cfg.plans) {
     return {
@@ -22,8 +22,4 @@ function getPlans(config) {
   }
   // Значения по умолчанию совпадают с config.js
   return { year: 220000, weekly: 4583, threshold: 70 };
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { getPlans };
 }

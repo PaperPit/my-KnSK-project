@@ -1,136 +1,110 @@
 <script>
-/**
- * =============================================================================
- * viewer.js — логика режима ПРОСМОТРА (Viewer.html)
- * =============================================================================
- *
- * URL: ?viewer=1  или  ?viewer=1&id=<ID>
- * Старт: getArchiveBootstrap — список архива + отчёт одним запросом.
- * Кэш: localStorage VIEWER_CACHE_KEY.
- * =============================================================================
- */
-(function () {
-  const L = window.KnSKLib;
-  const renderHtmlContent = L.renderHtmlContent;
-  const escapeHtml = L.escapeHtml;
-  const gasAdapter = new GoogleAppsScriptAdapter(CONFIG.api || {});
+(() => {
+  // src/lib/sanitize.js
+  var ALLOWED_TAGS = /^(b|strong|a|ul|li|br)$/i;
+  var SAFE_HREF = /^(https?:\/\/|mailto:)/i;
+  function escapeHtml(str) {
+    if (str == null) return "";
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function hasAllowedMarkup(html) {
+    return /<(b|strong|a|ul|li|br)\b/i.test(html);
+  }
+  function sanitizeHtmlFragment(html) {
+    if (!html) return "";
+    let out = String(html);
+    out = out.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+    out = out.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, function(match, tag) {
+      const t = tag.toLowerCase();
+      if (t === "a") return match;
+      if (!ALLOWED_TAGS.test(t)) return "";
+      if (match.startsWith("</")) return "</" + t + ">";
+      if (t === "br") return "<br>";
+      return "<" + t + ">";
+    });
+    out = out.replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, function(_match, attrs, inner) {
+      const hrefMatch = attrs.match(/href\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+      const href = hrefMatch ? hrefMatch[1] || hrefMatch[2] : "";
+      if (!SAFE_HREF.test(href)) return sanitizeHtmlFragment(inner);
+      return '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">' + sanitizeHtmlFragment(inner) + "</a>";
+    });
+    return out;
+  }
+  function renderHtmlContent(text) {
+    if (!text || String(text).trim() === "") return "\u2014";
+    const raw = String(text);
+    const safe = sanitizeHtmlFragment(raw);
+    if (hasAllowedMarkup(safe)) {
+      if (!/<br\b/i.test(safe) && !/<li\b/i.test(safe)) {
+        return safe.replace(/\n/g, "<br>");
+      }
+      return safe;
+    }
+    return escapeHtml(raw).replace(/\n/g, "<br>");
+  }
 
-  const VIEWER_CACHE_KEY = 'knsk_viewer_report_v1';
-    const PLAN_WEEKLY = CONFIG.plans.weekly;
-    let dynamicChart = null;
-    let planFactChart = null;
-    let reportsList = [];
-    let chartsReady = false;
+  // src/lib/dateUtils.js
+  function formatShortDate(dateStr) {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    return `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")}`;
+  }
+  function getNextWeekPeriod() {
+    const today = /* @__PURE__ */ new Date();
+    const nextMonday = new Date(today);
+    const day = today.getDay();
+    let daysUntilMonday = day === 0 ? 1 : 8 - day;
+    if (day === 1) daysUntilMonday = 0;
+    nextMonday.setDate(today.getDate() + daysUntilMonday);
+    const nextFriday = new Date(nextMonday);
+    nextFriday.setDate(nextMonday.getDate() + 4);
+    const fmt = (d) => `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")}`;
+    return {
+      display: `${fmt(nextMonday)} - ${fmt(nextFriday)}`,
+      start: nextMonday,
+      end: nextFriday
+    };
+  }
 
-    function whenChartsReady(fn) {
-        if (typeof Chart !== 'undefined' && ChartDataLabels) {
-            if (!chartsReady) {
-                Chart.register(ChartDataLabels);
-                chartsReady = true;
-            }
-            fn();
-            return;
-        }
-        var attempts = 0;
-        var timer = setInterval(function () {
-            attempts += 1;
-            if (typeof Chart !== 'undefined' && ChartDataLabels) {
-                clearInterval(timer);
-                Chart.register(ChartDataLabels);
-                chartsReady = true;
-                fn();
-            } else if (attempts > 200) {
-                clearInterval(timer);
-                console.error('Chart.js не загрузился');
-            }
-        }, 25);
+  // src/lib/charts.js
+  function makeTrendChart(opts) {
+    const { canvasId, weeks, planWeekly, emptyMessage, noteId, previous } = opts;
+    const weeksArr = weeks || [];
+    if (!weeksArr.length) {
+      const note2 = document.getElementById(noteId);
+      if (note2) note2.innerHTML = emptyMessage || "";
+      if (previous) previous.destroy();
+      return null;
     }
-    
-    function formatDate(dateStr) {
-        if (!dateStr) return '';
-        const d = new Date(dateStr);
-        return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
-    }
-    
-    function getNextWeekPeriod() {
-        const today = new Date();
-        let nextMonday = new Date(today);
-        const day = today.getDay();
-        let daysUntilMonday = (day === 0 ? 1 : 8 - day);
-        if (day === 1) daysUntilMonday = 0;
-        nextMonday.setDate(today.getDate() + daysUntilMonday);
-        let nextFriday = new Date(nextMonday);
-        nextFriday.setDate(nextMonday.getDate() + 4);
-        const format = d => `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
-        return { display: `${format(nextMonday)} - ${format(nextFriday)}` };
-    }
-    
-    function getWeekRangeFromReportDate(reportDateStr) {
-        if (!reportDateStr) return 'Дата не указана';
-        const match = reportDateStr.match(/(\d{2})\.(\d{2})\.(\d{4})/);
-        if (!match) {
-            console.warn('Не удалось распарсить дату (нет dd.mm.yyyy):', reportDateStr);
-            return reportDateStr;
-        }
-        const day = parseInt(match[1], 10);
-        const month = parseInt(match[2], 10);
-        const year = parseInt(match[3], 10);
-        const reportDate = new Date(year, month - 1, day);
-        if (isNaN(reportDate.getTime())) {
-            console.warn('Некорректная дата после парсинга:', reportDateStr);
-            return reportDateStr;
-        }
-        
-        const dayOfWeek = reportDate.getDay();
-        let daysToMonday = (dayOfWeek === 0 ? 6 : dayOfWeek - 1);
-        const monday = new Date(reportDate);
-        monday.setDate(reportDate.getDate() - daysToMonday);
-        const friday = new Date(monday);
-        friday.setDate(monday.getDate() + 4);
-        
-        const format = d => `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
-        return `${format(monday)} – ${format(friday)}`;
-    }
-    
-  function updateTrendGraph(weeksArray) {
-    if (!weeksArray || !weeksArray.length) {
-      const trendNote = document.getElementById('trendNote');
-      if (trendNote) trendNote.innerHTML = 'Нет данных о неделях';
-      if (dynamicChart) dynamicChart.destroy();
-      return;
-    }
-    const weeks = weeksArray.map((w) => ({
-      period: `${formatDate(w.start)}-${formatDate(w.end)}`,
-      value: w.value,
-    }));
-    const labels = weeks.map((w) => w.period);
-    const factValues = weeks.map((w) => w.value);
-    const planLine = new Array(weeks.length).fill(PLAN_WEEKLY);
-    const ctx = document.getElementById('trendChart').getContext('2d');
-    if (dynamicChart) dynamicChart.destroy();
-    dynamicChart = new Chart(ctx, {
-      type: 'line',
+    const labels = weeksArr.map((w) => w.period);
+    const facts = weeksArr.map((w) => w.value);
+    const planLine = new Array(weeksArr.length).fill(planWeekly);
+    const canvas = document.getElementById(canvasId);
+    const ctx = canvas.getContext("2d");
+    if (previous) previous.destroy();
+    const chart = new Chart(ctx, {
+      type: "line",
       data: {
-        labels: labels,
+        labels,
         datasets: [
           {
-            label: 'Факт КнСК',
-            data: factValues,
-            borderColor: '#1f6392',
+            label: "\u0424\u0430\u043A\u0442 \u041A\u043D\u0421\u041A",
+            data: facts,
+            borderColor: "#1f6392",
             borderWidth: 3,
             tension: 0.2,
             fill: false,
-            pointRadius: 6,
+            pointRadius: 6
           },
           {
-            label: 'План',
+            label: "\u041F\u043B\u0430\u043D",
             data: planLine,
-            borderColor: '#e67e22',
+            borderColor: "#e67e22",
             borderWidth: 2.5,
             borderDash: [8, 6],
-            fill: false,
-          },
-        ],
+            fill: false
+          }
+        ]
       },
       options: {
         responsive: true,
@@ -139,197 +113,452 @@
           datalabels: { display: false },
           tooltip: {
             callbacks: {
-              label: (ctx) => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} иссл.`,
-            },
-          },
-        },
-      },
+              label: (c) => `${c.dataset.label}: ${c.raw.toLocaleString()} \u0438\u0441\u0441\u043B.`
+            }
+          }
+        }
+      }
     });
-    const trendNote = document.getElementById('trendNote');
-    if (trendNote) {
-      trendNote.innerHTML = `* Последняя точка: ${weeks[weeks.length - 1].period} — <strong>${factValues[factValues.length - 1].toLocaleString()}</strong> (план ~${PLAN_WEEKLY.toLocaleString()})`;
+    const note = document.getElementById(noteId);
+    if (note) {
+      const last = weeksArr[weeksArr.length - 1];
+      note.innerHTML = `* \u041F\u043E\u0441\u043B\u0435\u0434\u043D\u044F\u044F \u0442\u043E\u0447\u043A\u0430: ${last.period} \u2014 <strong>${facts[facts.length - 1].toLocaleString()}</strong> (\u043F\u043B\u0430\u043D ~${planWeekly.toLocaleString()})`;
     }
+    return chart;
+  }
+  function makePlanFactChart(opts) {
+    const { canvasId, growth, planWeekly, noteId, previous } = opts;
+    const categoryPercentage = opts.categoryPercentage;
+    if (previous) previous.destroy();
+    const canvas = document.getElementById(canvasId);
+    const ctx = canvas.getContext("2d");
+    const dataset = {
+      label: "\u0418\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u043D\u0438\u044F \u041A\u043D\u0421\u041A",
+      data: [planWeekly, growth || 0],
+      backgroundColor: ["#2c7da0", "#e9b35f"],
+      borderRadius: 12,
+      barPercentage: 0.6
+    };
+    if (categoryPercentage != null) dataset.categoryPercentage = categoryPercentage;
+    const chart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: ["\u041D\u0435\u0434\u0435\u043B\u044C\u043D\u044B\u0439 \u043F\u043B\u0430\u043D", "\u0424\u0430\u043A\u0442"],
+        datasets: [dataset]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          datalabels: {
+            display: true,
+            color: "#1e293b",
+            anchor: "center",
+            align: "center",
+            font: { size: 14, weight: "bold" },
+            formatter: (v) => v.toLocaleString()
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E \u0438\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u043D\u0438\u0439" },
+            ticks: { callback: (v) => v.toLocaleString() }
+          }
+        }
+      }
+    });
+    const pct = growth ? (growth / planWeekly * 100).toFixed(1) : 0;
+    const note = document.getElementById(noteId);
+    if (note) {
+      note.innerHTML = `\u26A0\uFE0F <strong>${pct}% \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F \u043D\u0435\u0434\u0435\u043B\u044C\u043D\u043E\u0433\u043E \u043F\u043B\u0430\u043D\u0430</strong>`;
+    }
+    return chart;
   }
 
-  function updatePlanFactChart(totalGrowth) {
-        const ctx = document.getElementById('planFactChart').getContext('2d');
-        if (planFactChart) planFactChart.destroy();
-        planFactChart = new Chart(ctx, {
-            type: 'bar', 
-            data: { 
-                labels: ['Недельный план', 'Факт'], 
-                datasets: [{ 
-                    label: 'Исследования КнСК', 
-                    data: [PLAN_WEEKLY, totalGrowth || 0], 
-                    backgroundColor: ['#2c7da0', '#e9b35f'], 
-                    borderRadius: 12,
-                    barPercentage: 0.6,
-                    categoryPercentage: 0.8
-                }] 
-            }, 
-            options: { 
-                responsive: true, 
-                maintainAspectRatio: true,
-                plugins: {
-                    datalabels: {
-                        display: true,
-                        color: '#1e293b',
-                        anchor: 'center',
-                        align: 'center',
-                        font: { size: 14, weight: 'bold' },
-                        formatter: (value) => value.toLocaleString()
-                    }
-                },
-                scales: { 
-                    y: { 
-                        beginAtZero: true, 
-                        title: { display: true, text: 'Количество исследований' },
-                        ticks: { callback: (value) => value.toLocaleString() }
-                    }
-                }
-            }
-        });
-        const percent = totalGrowth ? (totalGrowth / PLAN_WEEKLY * 100).toFixed(1) : 0;
-        const planFactNote = document.getElementById('planFactNote');
-        if (planFactNote) {
-            planFactNote.innerHTML = `⚠️ <strong>${percent}% выполнения недельного плана</strong>`;
-        }
+  // src/core/GoogleAppsScriptAdapter.js
+  var GoogleAppsScriptAdapter = class {
+    constructor(config = {}) {
+      this.config = {
+        maxRetries: config.maxRetries || 3,
+        retryDelay: config.retryDelay || 1e3,
+        timeout: config.timeout || 3e4,
+        queueEnabled: config.queueEnabled !== false,
+        maxConcurrent: config.maxConcurrent || 5,
+        debug: config.debug || false
+      };
+      this.queue = [];
+      this.active = 0;
+      this.pendingRetries = /* @__PURE__ */ new Map();
+      this.handlers = {
+        // Глобальные обработчики
+        onError: null,
+        onNetworkError: null
+      };
+      this.originalRun = typeof google !== "undefined" && google.script && google.script.run ? google.script.run : null;
+      if (!this.originalRun && typeof console !== "undefined") {
+        console.warn("[Adapter] google.script.run \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D, \u0440\u0430\u0431\u043E\u0442\u0430 \u0432 \u0434\u0435\u043C\u043E-\u0440\u0435\u0436\u0438\u043C\u0435");
+      }
     }
-    
-    function resolvePreviousContext(previous) {
-        if (!previous || !window.DashboardPhase1) {
-            return { previousTotals: null, previousMos: null };
-        }
-        return {
-            previousTotals: DashboardPhase1.computeTotalsFromMosData(previous.mosData),
-            previousMos: DashboardPhase1.buildMosFromData(previous.mosData)
+    /**
+     * Основной метод вызова
+     * @param {string} functionName - Имя функции на сервере
+     * @param {Object} options - Опции вызова
+     * @returns {Promise} - Promise с результатом
+     */
+    call(functionName, options = {}) {
+      return new Promise((resolve, reject) => {
+        const request = {
+          id: Date.now() + "_" + Math.random(),
+          functionName,
+          params: options.params || [],
+          resolve,
+          reject,
+          retries: 0,
+          withSuccessHandler: options.withSuccessHandler || null,
+          withFailureHandler: options.withFailureHandler || null,
+          timeout: options.timeout || this.config.timeout
         };
+        if (this.config.queueEnabled && this.active >= this.config.maxConcurrent) {
+          this.queue.push(request);
+          this._log("debug", `[Adapter] \u0417\u0430\u043F\u0440\u043E\u0441 ${request.id} \u0432 \u043E\u0447\u0435\u0440\u0435\u0434\u0438 (${this.queue.length})`);
+        } else {
+          this._execute(request);
+        }
+      });
     }
-
-    function populateArchiveSelect(list, selectedId) {
-        const select = document.getElementById('archiveSelect');
-        if (!select) return;
-        select.innerHTML = '<option value="">— Выберите отчёт (доступно ' + list.length + ') —</option>';
-        list.forEach(function (item) {
-            const option = document.createElement('option');
-            option.value = item.id;
-            option.textContent = item.dateStr || ('Отчёт #' + item.id);
-            select.appendChild(option);
+    /**
+     * Выполнение запроса
+     * @private
+     */
+    _execute(request) {
+      if (!this.originalRun) {
+        request.resolve({ mock: true, function: request.functionName });
+        return;
+      }
+      this.active++;
+      this._log("debug", `[Adapter] \u0412\u044B\u043F\u043E\u043B\u043D\u044F\u0435\u0442\u0441\u044F ${request.functionName} (${request.id}), \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445: ${this.active}`);
+      let timeoutId;
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`\u0422\u0430\u0439\u043C\u0430\u0443\u0442 ${request.timeout}ms \u0434\u043B\u044F ${request.functionName}`));
+        }, request.timeout);
+      });
+      const executor = (resolve, reject) => {
+        let run = this.originalRun;
+        if (request.withSuccessHandler) {
+          run = run.withSuccessHandler(request.withSuccessHandler);
+        }
+        if (request.withFailureHandler) {
+          run = run.withFailureHandler(request.withFailureHandler);
+        }
+        run = run.withSuccessHandler((result) => {
+          clearTimeout(timeoutId);
+          resolve(result);
+        }).withFailureHandler((error) => {
+          clearTimeout(timeoutId);
+          reject(error);
         });
-        if (selectedId) select.value = String(selectedId);
+        run[request.functionName](...request.params);
+      };
+      Promise.race([
+        new Promise(executor),
+        timeoutPromise
+      ]).then((result) => {
+        this.active--;
+        request.resolve(result);
+        this._processQueue();
+      }).catch((error) => {
+        this.active--;
+        if (request.retries < this.config.maxRetries) {
+          request.retries++;
+          this._log("warn", `[Adapter] ${request.functionName} \u043E\u0448\u0438\u0431\u043A\u0430, retry ${request.retries}/${this.config.maxRetries}`);
+          const retryDelay = this.config.retryDelay * Math.pow(2, request.retries - 1);
+          const timerId = setTimeout(() => {
+            this.pendingRetries.delete(request.id);
+            this._execute(request);
+          }, retryDelay);
+          this.pendingRetries.set(request.id, timerId);
+        } else {
+          this._log("error", `[Adapter] ${request.functionName} \u043E\u043A\u043E\u043D\u0447\u0430\u0442\u0435\u043B\u044C\u043D\u0430\u044F \u043E\u0448\u0438\u0431\u043A\u0430:`, error);
+          if (this.handlers.onError) {
+            this.handlers.onError(error, request);
+          }
+          request.reject(error);
+        }
+        this._processQueue();
+      });
     }
-
-    function loadViewerCache() {
-        try {
-            var raw = localStorage.getItem(VIEWER_CACHE_KEY);
-            return raw ? JSON.parse(raw) : null;
-        } catch (_e) {
-            return null;
-        }
+    /**
+     * Обработка очереди
+     * @private
+     */
+    _processQueue() {
+      if (!this.config.queueEnabled) return;
+      while (this.queue.length > 0 && this.active < this.config.maxConcurrent) {
+        const nextRequest = this.queue.shift();
+        this._execute(nextRequest);
+      }
     }
-
-    function saveViewerCache(reportId, report, previous) {
-        try {
-            localStorage.setItem(VIEWER_CACHE_KEY, JSON.stringify({
-                reportId: reportId,
-                report: report,
-                previous: previous,
-                savedAt: Date.now()
-            }));
-        } catch (_e) {}
+    /**
+     * Отмена всех запросов
+     */
+    cancelAll() {
+      this.queue.forEach((req) => {
+        req.reject(new Error("\u0417\u0430\u043F\u0440\u043E\u0441 \u043E\u0442\u043C\u0435\u043D\u0451\u043D"));
+      });
+      this.queue = [];
+      this.pendingRetries.forEach((timerId) => {
+        clearTimeout(timerId);
+      });
+      this.pendingRetries.clear();
     }
-
-    function applyReportToDashboard(report, previousTotals, previousMos) {
-        if (!report || !window.DashboardPhase1) return Promise.resolve(null);
-
-        if (!report.timestamp) {
-            report.timestamp = new Date().toLocaleDateString('ru-RU');
-        }
-
-        const timestamp = report.timestamp;
-        const periodText = report.period || 'Период не указан';
-        const nextWeek = getNextWeekPeriod();
-        const currentWeekRange = getWeekRangeFromReportDate(timestamp);
-
-        const periodEl = document.getElementById('periodDisplayText');
-        if (periodEl) periodEl.textContent = periodText;
-
-        const doneDisplay = document.getElementById('doneTextDisplay');
-        if (doneDisplay) doneDisplay.innerHTML = renderHtmlContent(report.doneText);
-        const plansDisplay = document.getElementById('plansTextDisplay');
-        if (plansDisplay) plansDisplay.innerHTML = renderHtmlContent(report.plansText);
-        const doneDate = document.getElementById('doneDateDisplay');
-        if (doneDate) doneDate.innerHTML = '<i class="far fa-calendar-alt"></i> Отчётная неделя: ' + escapeHtml(currentWeekRange);
-        const plansDate = document.getElementById('plansDateDisplay');
-        if (plansDate) plansDate.innerHTML = '<i class="far fa-calendar-alt"></i> ' + escapeHtml(timestamp);
-        const nextWeekEl = document.getElementById('nextWeekPeriodDisplay');
-        if (nextWeekEl) nextWeekEl.textContent = nextWeek.display;
-        const normalized = DashboardPhase1.normalizeArchiveReport(report);
-        const mosData = normalized ? normalized.mosData : report.mosData;
-
-        if (!mosData || !mosData.length) {
-            document.getElementById('tableBody').innerHTML = '<tr><td colspan="10">Нет данных МО в архиве</td></tr>';
-            return Promise.resolve(null);
-        }
-
-        const mos = DashboardPhase1.buildMosFromData(mosData);
-        if (!mos.length) {
-            document.getElementById('tableBody').innerHTML = '<tr><td colspan="10">Не удалось разобрать данные МО</td></tr>';
-            return Promise.resolve(null);
-        }
-
-        DashboardPhase1.resetTableSearchBinding();
-        if (window.DashboardPhase2) DashboardPhase2.resetTableClickBinding();
-
-        return DashboardPhase1.renderAll(mosData, {
-            mos: mos,
-            previousTotals: previousTotals || null,
-            previousMos: previousMos || null,
-        }).then(function (result) {
-            whenChartsReady(function () {
-                updatePlanFactChart(result.totals ? result.totals.growth : 0);
-                updateTrendGraph(report.weeksData || []);
-            });
-            if (window.DashboardPhase2) {
-                DashboardPhase2.renderAll(mos, {
-                    totals: result.totals,
-                    previousMos: previousMos || null,
-                });
+    /**
+     * Установка глобального обработчика ошибок
+     */
+    setGlobalErrorHandler(handler) {
+      this.handlers.onError = handler;
+    }
+    /**
+     * Совместимость с оригинальным синтаксисом
+     * google.script.run.withSuccessHandler(...).functionName()
+     */
+    get run() {
+      const adapter = this;
+      return {
+        withSuccessHandler: function(handler) {
+          return {
+            withFailureHandler: function(errorHandler) {
+              return new Proxy({}, {
+                get: (_, functionName) => {
+                  return (...params) => {
+                    adapter.call(functionName, {
+                      params,
+                      withSuccessHandler: handler,
+                      withFailureHandler: errorHandler
+                    }).catch((err) => {
+                      if (typeof console !== "undefined") {
+                        console.error(err);
+                      }
+                    });
+                  };
+                }
+              });
             }
-            return result;
-        });
-    }
-    
-  function initViewer() {
-        const container = document.getElementById('dashboardContainer');
-        const initialIdRaw = container && container.getAttribute('data-initial-report-id');
-        const initialId = initialIdRaw ? parseInt(initialIdRaw, 10) : null;
-
-        if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
-
-        const cached = loadViewerCache();
-        if (cached && cached.report && (!initialId || cached.reportId === initialId)) {
-            const ctx = resolvePreviousContext(cached.previous);
-            applyReportToDashboard(cached.report, ctx.previousTotals, ctx.previousMos);
+          };
+        },
+        // Прямой вызов без обработчиков
+        [/* @__PURE__ */ Symbol.for("direct")]: (functionName, ...params) => {
+          return adapter.call(functionName, { params });
         }
+      };
+    }
+    /**
+     * Логирование
+     */
+    _log(level, ...args) {
+      if (typeof Logger !== "undefined" && Logger[level]) {
+        Logger[level](...args);
+      } else if (this.config.debug && typeof console !== "undefined" && console[level]) {
+        console[level](...args);
+      }
+    }
+  };
 
-    gasAdapter
-      .call('getArchiveBootstrap', { params: [initialId || null] })
-      .then(function (data) {
-        reportsList = (data && data.list) || [];
+  // src/pages/viewer.js
+  (function() {
+    const gasAdapter = new GoogleAppsScriptAdapter(CONFIG.api || {});
+    const VIEWER_CACHE_KEY = "knsk_viewer_report_v1";
+    const PLAN_WEEKLY = CONFIG.plans.weekly;
+    let dynamicChart = null;
+    let planFactChart = null;
+    let reportsList = [];
+    let chartsReady = false;
+    const formatDate = formatShortDate;
+    function whenChartsReady(fn) {
+      if (typeof Chart !== "undefined" && ChartDataLabels) {
+        if (!chartsReady) {
+          Chart.register(ChartDataLabels);
+          chartsReady = true;
+        }
+        fn();
+        return;
+      }
+      var attempts = 0;
+      var timer = setInterval(function() {
+        attempts += 1;
+        if (typeof Chart !== "undefined" && ChartDataLabels) {
+          clearInterval(timer);
+          Chart.register(ChartDataLabels);
+          chartsReady = true;
+          fn();
+        } else if (attempts > 200) {
+          clearInterval(timer);
+          console.error("Chart.js \u043D\u0435 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u043B\u0441\u044F");
+        }
+      }, 25);
+    }
+    function getWeekRangeFromReportDate(reportDateStr) {
+      if (!reportDateStr) return "\u0414\u0430\u0442\u0430 \u043D\u0435 \u0443\u043A\u0430\u0437\u0430\u043D\u0430";
+      const match = reportDateStr.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+      if (!match) {
+        console.warn("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0440\u0430\u0441\u043F\u0430\u0440\u0441\u0438\u0442\u044C \u0434\u0430\u0442\u0443 (\u043D\u0435\u0442 dd.mm.yyyy):", reportDateStr);
+        return reportDateStr;
+      }
+      const day = parseInt(match[1], 10);
+      const month = parseInt(match[2], 10);
+      const year = parseInt(match[3], 10);
+      const reportDate = new Date(year, month - 1, day);
+      if (isNaN(reportDate.getTime())) {
+        console.warn("\u041D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u0430\u044F \u0434\u0430\u0442\u0430 \u043F\u043E\u0441\u043B\u0435 \u043F\u0430\u0440\u0441\u0438\u043D\u0433\u0430:", reportDateStr);
+        return reportDateStr;
+      }
+      const dayOfWeek = reportDate.getDay();
+      let daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const monday = new Date(reportDate);
+      monday.setDate(reportDate.getDate() - daysToMonday);
+      const friday = new Date(monday);
+      friday.setDate(monday.getDate() + 4);
+      const format = (d) => `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")}`;
+      return `${format(monday)} \u2013 ${format(friday)}`;
+    }
+    function updateTrendGraph(weeksArray) {
+      const weeks = (weeksArray || []).map((w) => ({
+        period: `${formatDate(w.start)}-${formatDate(w.end)}`,
+        value: w.value
+      }));
+      dynamicChart = makeTrendChart({
+        canvasId: "trendChart",
+        weeks,
+        planWeekly: PLAN_WEEKLY,
+        emptyMessage: "\u041D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445 \u043E \u043D\u0435\u0434\u0435\u043B\u044F\u0445",
+        noteId: "trendNote",
+        previous: dynamicChart
+      });
+    }
+    function updatePlanFactChart(totalGrowth) {
+      planFactChart = makePlanFactChart({
+        canvasId: "planFactChart",
+        growth: totalGrowth,
+        planWeekly: PLAN_WEEKLY,
+        categoryPercentage: 0.8,
+        noteId: "planFactNote",
+        previous: planFactChart
+      });
+    }
+    function resolvePreviousContext(previous) {
+      if (!previous || !window.DashboardPhase1) {
+        return { previousTotals: null, previousMos: null };
+      }
+      return {
+        previousTotals: DashboardPhase1.computeTotalsFromMosData(previous.mosData),
+        previousMos: DashboardPhase1.buildMosFromData(previous.mosData)
+      };
+    }
+    function populateArchiveSelect(list, selectedId) {
+      const select = document.getElementById("archiveSelect");
+      if (!select) return;
+      select.innerHTML = '<option value="">\u2014 \u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043E\u0442\u0447\u0451\u0442 (\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E ' + list.length + ") \u2014</option>";
+      list.forEach(function(item) {
+        const option = document.createElement("option");
+        option.value = item.id;
+        option.textContent = item.dateStr || "\u041E\u0442\u0447\u0451\u0442 #" + item.id;
+        select.appendChild(option);
+      });
+      if (selectedId) select.value = String(selectedId);
+    }
+    function loadViewerCache() {
+      try {
+        var raw = localStorage.getItem(VIEWER_CACHE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (_e) {
+        return null;
+      }
+    }
+    function saveViewerCache(reportId, report, previous) {
+      try {
+        localStorage.setItem(VIEWER_CACHE_KEY, JSON.stringify({
+          reportId,
+          report,
+          previous,
+          savedAt: Date.now()
+        }));
+      } catch (_e) {
+      }
+    }
+    function applyReportToDashboard(report, previousTotals, previousMos) {
+      if (!report || !window.DashboardPhase1) return Promise.resolve(null);
+      if (!report.timestamp) {
+        report.timestamp = (/* @__PURE__ */ new Date()).toLocaleDateString("ru-RU");
+      }
+      const timestamp = report.timestamp;
+      const periodText = report.period || "\u041F\u0435\u0440\u0438\u043E\u0434 \u043D\u0435 \u0443\u043A\u0430\u0437\u0430\u043D";
+      const nextWeek = getNextWeekPeriod();
+      const currentWeekRange = getWeekRangeFromReportDate(timestamp);
+      const periodEl = document.getElementById("periodDisplayText");
+      if (periodEl) periodEl.textContent = periodText;
+      const doneDisplay = document.getElementById("doneTextDisplay");
+      if (doneDisplay) doneDisplay.innerHTML = renderHtmlContent(report.doneText);
+      const plansDisplay = document.getElementById("plansTextDisplay");
+      if (plansDisplay) plansDisplay.innerHTML = renderHtmlContent(report.plansText);
+      const doneDate = document.getElementById("doneDateDisplay");
+      if (doneDate) doneDate.innerHTML = '<i class="far fa-calendar-alt"></i> \u041E\u0442\u0447\u0451\u0442\u043D\u0430\u044F \u043D\u0435\u0434\u0435\u043B\u044F: ' + escapeHtml(currentWeekRange);
+      const plansDate = document.getElementById("plansDateDisplay");
+      if (plansDate) plansDate.innerHTML = '<i class="far fa-calendar-alt"></i> ' + escapeHtml(timestamp);
+      const nextWeekEl = document.getElementById("nextWeekPeriodDisplay");
+      if (nextWeekEl) nextWeekEl.textContent = nextWeek.display;
+      const normalized = DashboardPhase1.normalizeArchiveReport(report);
+      const mosData = normalized ? normalized.mosData : report.mosData;
+      if (!mosData || !mosData.length) {
+        document.getElementById("tableBody").innerHTML = '<tr><td colspan="10">\u041D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445 \u041C\u041E \u0432 \u0430\u0440\u0445\u0438\u0432\u0435</td></tr>';
+        return Promise.resolve(null);
+      }
+      const mos = DashboardPhase1.buildMosFromData(mosData);
+      if (!mos.length) {
+        document.getElementById("tableBody").innerHTML = '<tr><td colspan="10">\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0440\u0430\u0437\u043E\u0431\u0440\u0430\u0442\u044C \u0434\u0430\u043D\u043D\u044B\u0435 \u041C\u041E</td></tr>';
+        return Promise.resolve(null);
+      }
+      DashboardPhase1.resetTableSearchBinding();
+      if (window.DashboardPhase2) DashboardPhase2.resetTableClickBinding();
+      return DashboardPhase1.renderAll(mosData, {
+        mos,
+        previousTotals: previousTotals || null,
+        previousMos: previousMos || null
+      }).then(function(result) {
+        whenChartsReady(function() {
+          updatePlanFactChart(result.totals ? result.totals.growth : 0);
+          updateTrendGraph(report.weeksData || []);
+        });
+        if (window.DashboardPhase2) {
+          DashboardPhase2.renderAll(mos, {
+            totals: result.totals,
+            previousMos: previousMos || null
+          });
+        }
+        return result;
+      });
+    }
+    function initViewer() {
+      const container = document.getElementById("dashboardContainer");
+      const initialIdRaw = container && container.getAttribute("data-initial-report-id");
+      const initialId = initialIdRaw ? parseInt(initialIdRaw, 10) : null;
+      if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
+      const cached = loadViewerCache();
+      if (cached && cached.report && (!initialId || cached.reportId === initialId)) {
+        const ctx = resolvePreviousContext(cached.previous);
+        applyReportToDashboard(cached.report, ctx.previousTotals, ctx.previousMos);
+      }
+      gasAdapter.call("getArchiveBootstrap", { params: [initialId || null] }).then(function(data) {
+        reportsList = data && data.list || [];
         window.archiveReportsList = reportsList;
-
         if (!reportsList.length) {
-          document.getElementById('signalsList').innerHTML =
-            '<li>Нет сохранённых отчётов в архиве</li>';
+          document.getElementById("signalsList").innerHTML = "<li>\u041D\u0435\u0442 \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D\u043D\u044B\u0445 \u043E\u0442\u0447\u0451\u0442\u043E\u0432 \u0432 \u0430\u0440\u0445\u0438\u0432\u0435</li>";
           return;
         }
-
         populateArchiveSelect(reportsList, data.reportId);
         if (window.DashboardPhase2) {
           DashboardPhase2.populateCompareSelects(reportsList, null);
         }
-
         if (data && data.report) {
           const prevCtx = resolvePreviousContext(data.previous);
           applyReportToDashboard(data.report, prevCtx.previousTotals, prevCtx.previousMos);
@@ -345,26 +574,18 @@
             }
           }
         }
-      })
-      .catch(function (err) {
+      }).catch(function(err) {
         if (window.DashboardPhase1) DashboardPhase1.hideLoadingState();
-        document.getElementById('signalsList').innerHTML =
-          '<li>Ошибка загрузки: ' + escapeHtml(err.message || String(err)) + '</li>';
-        console.error('Ошибка bootstrap:', err);
+        document.getElementById("signalsList").innerHTML = "<li>\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438: " + escapeHtml(err.message || String(err)) + "</li>";
+        console.error("\u041E\u0448\u0438\u0431\u043A\u0430 bootstrap:", err);
       });
-  }
-
-  function loadReportById(id) {
-    if (!id || id === '') return;
-
-    if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
-
-    gasAdapter
-      .call('getArchivedReportWithPrevious', { params: [parseInt(id, 10)] })
-      .then(function (payload) {
+    }
+    function loadReportById(id) {
+      if (!id || id === "") return;
+      if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
+      gasAdapter.call("getArchivedReportWithPrevious", { params: [parseInt(id, 10)] }).then(function(payload) {
         const report = payload && payload.report;
         if (!report) return;
-
         const prevCtx = resolvePreviousContext(payload.previous);
         applyReportToDashboard(report, prevCtx.previousTotals, prevCtx.previousMos);
         saveViewerCache(parseInt(id, 10), report, payload.previous);
@@ -375,31 +596,31 @@
             if (prevId) DashboardPhase2.cacheArchiveReport(prevId, payload.previous);
           }
         }
-      })
-      .catch(function (err) {
+      }).catch(function(err) {
         if (window.DashboardPhase1) DashboardPhase1.hideLoadingState();
-        document.getElementById('signalsList').innerHTML =
-          '<li>Ошибка загрузки отчёта: ' + escapeHtml(err.message || String(err)) + '</li>';
-        console.error('Ошибка загрузки отчёта:', err);
+        document.getElementById("signalsList").innerHTML = "<li>\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u043E\u0442\u0447\u0451\u0442\u0430: " + escapeHtml(err.message || String(err)) + "</li>";
+        console.error("\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u043E\u0442\u0447\u0451\u0442\u0430:", err);
       });
-  }
-
-  window.addEventListener('DOMContentLoaded', function () {
-        whenChartsReady(function () {
-            if (window.DashboardPhase2) {
-                DashboardPhase2.init({
-                    onStatus: function (msg) { if (window.__KNSK_DEBUG) console.log(msg); }
-                });
+    }
+    window.addEventListener("DOMContentLoaded", function() {
+      whenChartsReady(function() {
+        if (window.DashboardPhase2) {
+          DashboardPhase2.init({
+            onStatus: function(msg) {
+              if (window.__KNSK_DEBUG) console.log(msg);
             }
-            initViewer();
-
-            document.getElementById('archiveSelect').addEventListener('change', function () {
-                const selectedId = this.value;
-                if (selectedId && selectedId !== '') {
-                    loadReportById(selectedId);
-                }
-            });
+          });
+        }
+        initViewer();
+        document.getElementById("archiveSelect").addEventListener("change", function() {
+          const selectedId = this.value;
+          if (selectedId && selectedId !== "") {
+            loadReportById(selectedId);
+          }
         });
-  });
+      });
+    });
+  })();
 })();
+
 </script>

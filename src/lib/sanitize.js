@@ -19,7 +19,7 @@ const ALLOWED_TAGS = /^(b|strong|a|ul|li|br)$/i;
 const SAFE_HREF = /^(https?:\/\/|mailto:)/i;
 
 /** Экранирование текста перед вставкой в innerHTML */
-function escapeHtml(str) {
+export function escapeHtml(str) {
   if (str == null) return '';
   return String(str)
     .replace(/&/g, '&amp;')
@@ -29,12 +29,12 @@ function escapeHtml(str) {
 }
 
 /** Есть ли в строке разрешённая разметка после санитизации */
-function hasAllowedMarkup(html) {
+export function hasAllowedMarkup(html) {
   return /<(b|strong|a|ul|li|br)\b/i.test(html);
 }
 
 /** Оставляет только разрешённые теги, остальное вырезает */
-function sanitizeHtmlFragment(html) {
+export function sanitizeHtmlFragment(html) {
   if (!html) return '';
   let out = String(html);
 
@@ -69,7 +69,7 @@ function sanitizeHtmlFragment(html) {
  * Готовый HTML для карточек «Сделано» / «Планы».
  * Переносы строк → <br>, если пользователь не вставил свои теги.
  */
-function renderHtmlContent(text) {
+export function renderHtmlContent(text) {
   if (!text || String(text).trim() === '') return '—';
   const raw = String(text);
   const safe = sanitizeHtmlFragment(raw);
@@ -82,8 +82,4 @@ function renderHtmlContent(text) {
   }
 
   return escapeHtml(raw).replace(/\n/g, '<br>');
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { escapeHtml, sanitizeHtmlFragment, renderHtmlContent };
 }

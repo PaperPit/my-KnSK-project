@@ -16,7 +16,7 @@
  */
 
 /** Динамика и целые с опциональным знаком и суффиксом в скобках */
-function extractNumber(v) {
+export function extractNumber(v) {
   if (!v) return 0;
   let s = String(v).trim();
   if (s === '-' || s === '') return 0;
@@ -33,7 +33,7 @@ function extractNumber(v) {
 }
 
 /** Факт КнСК из колонки «Общий итог» — первая группа цифр в строке */
-function extractFact(v) {
+export function extractFact(v) {
   if (!v) return 0;
   const m = String(v).match(/(\d[\d\s]*)/);
   return m ? parseInt(m[1].replace(/\s/g, ''), 10) : 0;
@@ -43,14 +43,10 @@ function extractFact(v) {
  * Универсальное приведение к числу (архив JSON, смешанные типы).
  * Сначала extractNumber, если 0 — пробуем extractFact.
  */
-function toNum(v) {
+export function toNum(v) {
   if (v == null || v === '') return 0;
   if (typeof v === 'number' && !isNaN(v)) return v;
   const n = extractNumber(v);
   if (n !== 0) return n;
   return extractFact(v);
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { extractNumber, extractFact, toNum };
 }

@@ -4,7 +4,8 @@
  * =============================================================================
  *
  * ПОДКЛЮЧЕНИЕ: Index.html и Viewer.html → include('DashboardPhase1')
- * API: window.DashboardPhase1.renderAll(data, options)
+ * API: window.DashboardPhase1.renderAll(data, options) — window-регистрация
+ * нужна для include-порядка между отдельными <script>-бандлами.
  *
  * РАЗДЕЛЫ ВНУТРИ:
  *   renderKpis          — 4 карточки KPI (+ дельты к прошлому отчёту)
@@ -14,23 +15,27 @@
  *   buildCoverageChart  — охват колоноскопией (все МО)
  *
  * Планы: PLAN_YEAR (220000), PLAN_WEEKLY (4583), PLAN_THRESHOLD (70) из CONFIG
- * Расчёты МО: KnSKLib.buildMosFromData / computeTotals
+ * Расчёты МО: import из lib/index.js (esbuild bundle)
  *
  * ПОСЛЕ ПРАВОК: npm run build → clasp push
  * =============================================================================
  */
+import {
+  getPlans,
+  toNum,
+  escapeHtml,
+  normalizeArchiveReport,
+  buildMosFromData,
+  computeTotals,
+  computeTotalsFromMosData,
+  truncateName,
+} from '../lib/index.js';
+
 const DashboardPhase1 = (function () {
-  const L = typeof KnSKLib !== 'undefined' ? KnSKLib : {};
-  const plans = L.getPlans ? L.getPlans(CONFIG) : { year: 220000, weekly: 4583, threshold: 70 };
+  const plans = getPlans(typeof CONFIG !== 'undefined' ? CONFIG : null);
   const PLAN_YEAR = plans.year;
   const PLAN_WEEKLY = plans.weekly;
   const PLAN_THRESHOLD = plans.threshold;
-  const toNum = L.toNum || function () { return 0; };
-  const escapeHtml = L.escapeHtml || function (s) { return String(s || ''); };
-  const normalizeArchiveReport = L.normalizeArchiveReport || function (r) { return r; };
-  const buildMosFromData = L.buildMosFromData || function () { return []; };
-  const computeTotals = L.computeTotals || function () { return null; };
-  const computeTotalsFromMosData = L.computeTotalsFromMosData || function () { return null; };
   const rankCharts = {};
   const MIN_POSITIVE_KNSK_FOR_COVERAGE_ANTITOP = 10;
 
@@ -232,11 +237,6 @@ const DashboardPhase1 = (function () {
           `<li class="${s.className}"><i class="fas ${s.icon}"></i><span>${escapeHtml(s.text)}</span></li>`
       )
       .join('');
-  }
-
-  function truncateName(name, max) {
-    const n = name || 'МО';
-    return n.length > max ? `${n.slice(0, max - 1)}…` : n;
   }
 
   function destroyRankCharts() {
@@ -696,6 +696,9 @@ const DashboardPhase1 = (function () {
   };
 })();
 
+// Регистрация в window для include-порядка между <script>-бандлами GAS
 if (typeof window !== 'undefined') {
   window.DashboardPhase1 = DashboardPhase1;
 }
+
+export default DashboardPhase1;

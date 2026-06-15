@@ -12,7 +12,7 @@
  * ПОСЛЕ ПРАВОК: npm run build → npm test (tests/archiveNormalizer.test.js)
  * =============================================================================
  */
-function normalizeArchiveReport(report) {
+export function normalizeArchiveReport(report) {
   if (!report || typeof report !== 'object') return null;
 
   const normalized = Object.assign({}, report);
@@ -30,8 +30,4 @@ function normalizeArchiveReport(report) {
 
   normalized.mosData = mos;
   return normalized;
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { normalizeArchiveReport };
 }

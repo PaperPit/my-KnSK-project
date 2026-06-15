@@ -11,14 +11,12 @@
  * computeTotals(mos) — суммы по всем МО + % плана и % колоноскопии.
  * computePeriodDeltas — разница между двумя отчётами (сравнение периодов).
  *
- * Зависит от функций extractNumber / extractFact / toNum из numbers.js
- * (в бандле они в той же области видимости).
- *
  * ПОСЛЕ ПРАВОК: npm run build → npm test (tests/kpiCalculator.test.js)
  * =============================================================================
  */
+import { extractNumber, extractFact, toNum } from './numbers.js';
 
-function buildMosFromData(data) {
+export function buildMosFromData(data) {
   if (!data || !data.length) return [];
 
   const firstRow = data[0];
@@ -74,7 +72,7 @@ function buildMosFromData(data) {
 }
 
 /** Агрегированные показатели по всем МО для 4 KPI-карточек */
-function computeTotals(mos) {
+export function computeTotals(mos) {
   const t = {
     plan: 0,
     fact: 0,
@@ -101,33 +99,29 @@ function computeTotals(mos) {
   return t;
 }
 
-function computeTotalsFromMosData(mosData) {
+export function computeTotalsFromMosData(mosData) {
   return computeTotals(buildMosFromData(mosData));
 }
 
 /** % годового плана КнСК (220 000) — для KPI «План на год» */
-function computeYearPercent(totals, planYear) {
+export function computeYearPercent(totals, planYear) {
   return planYear ? (totals.fact / planYear) * 100 : 0;
 }
 
-/** Дельты для сравнения двух архивных отчётов (поздний − ранний) */
-function computePeriodDeltas(currentTotals, previousTotals) {
+/**
+ * Дельты для сравнения двух архивных отчётов (поздний − ранний).
+ * percent — разница % от планов МО; yearPercent — разница % от годового плана
+ * (planYear) — её использует compare-панель для карточки «％ год. плана».
+ */
+export function computePeriodDeltas(currentTotals, previousTotals, planYear) {
   if (!previousTotals) return null;
+  const yearPct = (t) => (planYear ? (t.fact / planYear) * 100 : 0);
   return {
     fact: currentTotals.fact - previousTotals.fact,
     percent: currentTotals.percent - previousTotals.percent,
+    yearPercent: yearPct(currentTotals) - yearPct(previousTotals),
     growth: currentTotals.growth - previousTotals.growth,
     colon: currentTotals.colon - previousTotals.colon,
     zno: currentTotals.zno - previousTotals.zno,
-  };
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    buildMosFromData,
-    computeTotals,
-    computeTotalsFromMosData,
-    computeYearPercent,
-    computePeriodDeltas,
   };
 }

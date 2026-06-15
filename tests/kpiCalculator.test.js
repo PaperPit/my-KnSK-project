@@ -68,16 +68,25 @@ describe('computeYearPercent', () => {
 describe('computePeriodDeltas', () => {
   it('returns null without previous totals', () => {
     const totals = computeTotalsFromMosData(archiveFixture.mosData);
-    expect(computePeriodDeltas(totals, null)).toBeNull();
+    expect(computePeriodDeltas(totals, null, 220000)).toBeNull();
   });
 
-  it('computes deltas between periods', () => {
+  it('computes deltas between periods including yearPercent', () => {
     const current = computeTotalsFromMosData(archiveFixture.mosData);
     const previous = { ...current, fact: 5500, growth: 180, colon: 700, zno: 15, percent: 59 };
-    const deltas = computePeriodDeltas(current, previous);
+    const deltas = computePeriodDeltas(current, previous, 220000);
     expect(deltas.fact).toBe(500);
     expect(deltas.growth).toBe(35);
     expect(deltas.colon).toBe(130);
     expect(deltas.zno).toBe(5);
+    // yearPercent = (6000/220000*100) - (5500/220000*100)
+    expect(deltas.yearPercent).toBeCloseTo(((6000 - 5500) / 220000) * 100, 4);
+  });
+
+  it('yearPercent is 0 when planYear is falsy', () => {
+    const current = computeTotalsFromMosData(archiveFixture.mosData);
+    const previous = { ...current, fact: 5500 };
+    const deltas = computePeriodDeltas(current, previous, 0);
+    expect(deltas.yearPercent).toBe(0);
   });
 });

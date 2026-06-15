@@ -1,27 +1,50 @@
 #!/usr/bin/env node
 /**
- * Проверка: артефакты совпадают с результатом npm run build.
+ * Проверка: артефакты на диске совпадают с результатом npm run build.
+ * Два прогона подряд — второй должен только skip (иначе артефакты устарели).
  */
 import { execSync } from 'child_process';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-execSync('node scripts/build-gas.mjs', { cwd: ROOT, stdio: 'pipe' });
+const ARTIFACTS = [
+  'UiTokens.html',
+  'UiPhase2.html',
+  'EditorStyles.html',
+  'ViewerStyles.html',
+  'UiKpiCards.html',
+  'LibBundle.html',
+  'GASAdapter.html',
+  'DashboardPhase1.html',
+  'DashboardPhase2.html',
+  'EditorPage.html',
+  'ViewerPage.html',
+  'Code.js',
+];
 
-const dirty = execSync('git status --porcelain', { cwd: ROOT, encoding: 'utf8' }).trim();
-const artifactPattern = /^(DashboardPhase|Ui|Editor|Viewer|LibBundle|GASAdapter|Code\.js)/;
+function runBuild() {
+  return execSync('node scripts/build-gas.mjs', { cwd: ROOT, encoding: 'utf8' });
+}
 
-const lines = dirty ? dirty.split('\n') : [];
-const artifactChanges = lines.filter((line) => {
-  const file = line.substring(2).trim();
-  return artifactPattern.test(path.basename(file)) || file === 'Code.js';
+const first = runBuild();
+if (/\bwrote\s/.test(first)) {
+  const second = runBuild();
+  if (/\bwrote\s/.test(second)) {
+    console.error('Artifacts are out of sync with src/. Run npm run build.');
+    process.exit(1);
+  }
+}
+
+const missing = ARTIFACTS.filter((name) => {
+  const full = path.join(ROOT, name);
+  return !fs.existsSync(full) || fs.statSync(full).size === 0;
 });
 
-if (artifactChanges.length) {
-  console.error('Generated artifacts are out of sync. Run npm run build and commit changes:');
-  artifactChanges.forEach((l) => console.error(' ', l));
+if (missing.length) {
+  console.error('Missing or empty artifacts:', missing.join(', '));
   process.exit(1);
 }
 

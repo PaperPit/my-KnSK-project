@@ -11,13 +11,14 @@
  *   - Архив: сохранение/загрузка через gasAdapter
  *   - Экспорт HTML, кнопка «Веб-версия»
  *
- * KPI и таблица — DashboardPhase1/2. Математика — window.KnSKLib.
+ * KPI и таблица — DashboardPhase1/2 (через window). Математика — KnSKLib.
  * =============================================================================
  */
+import { renderHtmlContent, parseCSV, formatShortDate, getNextWeekPeriod } from '../lib/index.js';
+import { makeTrendChart, makePlanFactChart } from '../lib/charts.js';
+import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
+
 (function () {
-  const L = window.KnSKLib;
-  const renderHtmlContent = L.renderHtmlContent;
-  const parseCSV = L.parseCSV;
   const gasAdapter = new GoogleAppsScriptAdapter(CONFIG.api || {});
 
   Chart.register(ChartDataLabels);
@@ -29,6 +30,8 @@
     const PLAN_WEEKLY = CONFIG.plans.weekly;
     let dynamicChart = null;
     let planFactChart = null;
+    // Алиас для совместимости с вызовами formatDate внутри файла.
+    const formatDate = formatShortDate;
     
     // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
     function getTextareaSelection(textareaId) {
@@ -84,29 +87,9 @@
         const period = document.getElementById('periodInput').value.trim();
         document.getElementById('periodDisplayText').innerHTML = period || 'Период не указан';
     }
-    
-    function getNextWeekPeriod() {
-        const today = new Date();
-        let nextMonday = new Date(today);
-        const day = today.getDay();
-        let daysUntilMonday = (day === 0 ? 1 : 8 - day);
-        if (day === 1) daysUntilMonday = 0;
-        nextMonday.setDate(today.getDate() + daysUntilMonday);
-        let nextFriday = new Date(nextMonday);
-        nextFriday.setDate(nextMonday.getDate() + 4);
-        const format = d => `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
-        return { display: `${format(nextMonday)} - ${format(nextFriday)}` };
-    }
-    
+
     function updateNextWeekPeriodDisplay() {
         document.getElementById('nextWeekPeriodDisplay').innerHTML = getNextWeekPeriod().display;
-    }
-    
-    // ==================== НЕДЕЛЬНАЯ ДИНАМИКА ====================
-    function formatDate(dateStr) {
-        if (!dateStr) return '';
-        const d = new Date(dateStr);
-        return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
     }
     
     function addWeek() {
@@ -152,39 +135,26 @@
     function getCurrentWeeksData() {
         return weeksData.map(w => ({ period: `${formatDate(w.start)}-${formatDate(w.end)}`, value: w.value }));
     }
-    
+
     function updateTrendGraph() {
-        const w = getCurrentWeeksData();
-        if (!w.length) {
-            document.getElementById('trendNote').innerHTML = 'Добавьте недели';
-            if (dynamicChart) dynamicChart.destroy();
-            return;
-        }
-        const labels = w.map(item => item.period);
-        const facts = w.map(item => item.value);
-        const planLine = new Array(w.length).fill(PLAN_WEEKLY);
-        const ctx = document.getElementById('trendChart').getContext('2d');
-        if (dynamicChart) dynamicChart.destroy();
-        dynamicChart = new Chart(ctx, {
-            type: 'line',
-            data: { labels, datasets: [
-                { label: 'Факт КнСК', data: facts, borderColor: '#1f6392', borderWidth: 3, tension: 0.2, fill: false, pointRadius: 6 },
-                { label: 'План', data: planLine, borderColor: '#e67e22', borderWidth: 2.5, borderDash: [8,6], fill: false }
-            ]},
-            options: { responsive: true, maintainAspectRatio: true, plugins: { datalabels: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} иссл.` } } } }
+        dynamicChart = makeTrendChart({
+            canvasId: 'trendChart',
+            weeks: getCurrentWeeksData(),
+            planWeekly: PLAN_WEEKLY,
+            emptyMessage: 'Добавьте недели',
+            noteId: 'trendNote',
+            previous: dynamicChart,
         });
-        document.getElementById('trendNote').innerHTML = `* Последняя точка: ${w[w.length-1].period} — <strong>${facts[facts.length-1].toLocaleString()}</strong> (план ~${PLAN_WEEKLY.toLocaleString()})`;
     }
-    
+
     function updatePlanFactChart(growth) {
-        if (planFactChart) planFactChart.destroy();
-        const ctx = document.getElementById('planFactChart').getContext('2d');
-        planFactChart = new Chart(ctx, {
-            type: 'bar', data: { labels: ['Недельный план', 'Факт'], datasets: [{ label: 'Исследования КнСК', data: [PLAN_WEEKLY, growth || 0], backgroundColor: ['#2c7da0', '#e9b35f'], borderRadius: 12, barPercentage: 0.6 }] },
-            options: { responsive: true, maintainAspectRatio: true, plugins: { datalabels: { display: true, color: '#1e293b', anchor: 'center', align: 'center', font: { size: 14, weight: 'bold' }, formatter: v => v.toLocaleString() } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Количество исследований' }, ticks: { callback: v => v.toLocaleString() } } } }
+        planFactChart = makePlanFactChart({
+            canvasId: 'planFactChart',
+            growth: growth,
+            planWeekly: PLAN_WEEKLY,
+            noteId: 'planFactNote',
+            previous: planFactChart,
         });
-        const pct = growth ? (growth / PLAN_WEEKLY * 100).toFixed(1) : 0;
-        document.getElementById('planFactNote').innerHTML = `⚠️ <strong>${pct}% выполнения недельного плана</strong>`;
     }
 
   // ==================== ПАРСИНГ CSV И ОТРИСОВКА ====================

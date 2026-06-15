@@ -413,14 +413,7 @@ function getArchivedReportsForCompare(idA, idB) {
     reportB: readArchiveReportAtRow_(sheet, rowB),
   };
 }
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    parseArchiveReportRow_,
-    buildArchiveIndex_,
-    getPreviousArchiveIdFromList_,
-    formatArchiveDate_,
-  };
+;
 }
 
 /**
@@ -673,13 +666,5 @@ function migrateArchivePlansTo2026(dryRun) {
   console.log(message);
   return message;
 }
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    normalizeMoName_,
-    extractFactFromMo_,
-    lookupNewPlan2026_,
-    updateMoPlanFields_,
-    updateReportPlans2026_,
-  };
+;
 }

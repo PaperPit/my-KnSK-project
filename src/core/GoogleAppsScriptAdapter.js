@@ -13,7 +13,7 @@
  * =============================================================================
  */
 
-class GoogleAppsScriptAdapter {
+export class GoogleAppsScriptAdapter {
   constructor(config = {}) {
     this.config = {
       maxRetries: config.maxRetries || 3,
@@ -237,20 +237,4 @@ class GoogleAppsScriptAdapter {
       console[level](...args);
     }
   }
-}
-
-// Создаём глобальный экземпляр (только в браузере)
-if (typeof window !== 'undefined') {
-  // Получаем конфигурацию, если она существует
-  let config = null;
-  if (typeof CONFIG !== 'undefined' && CONFIG?.api) {
-    config = CONFIG.api;
-  }
-  
-  window.GASAdapter = new GoogleAppsScriptAdapter(config);
-}
-
-// Для Google Apps Script (экспорт)
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { GoogleAppsScriptAdapter };
 }

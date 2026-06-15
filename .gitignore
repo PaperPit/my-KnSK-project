@@ -1,5 +1,8 @@
 node_modules/
 
+# Временные entry-обёртки esbuild
+.build-tmp/
+
 # Python (сторонние окружения и кэши — не проектный код)
 .venv-graphify/
 graphify-out/

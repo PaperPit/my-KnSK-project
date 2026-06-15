@@ -16,6 +16,14 @@
  * ПОСЛЕ ПРАВОК: npm run build → clasp push
  * =============================================================================
  */
+import {
+  escapeHtml,
+  buildMosFromData,
+  computeTotals,
+  getPlans,
+  truncateName,
+} from '../lib/index.js';
+
 const DashboardPhase2 = (function () {
   const echartsInstances = {};
   let echartsLoadPromise = null;
@@ -57,22 +65,13 @@ const DashboardPhase2 = (function () {
   }
 
   function getPlanYear() {
-    if (window.DashboardPhase1 && DashboardPhase1.PLAN_YEAR) return DashboardPhase1.PLAN_YEAR;
-    if (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.plans) return CONFIG.plans.year;
-    return 220000;
+    // Prefer Phase1's resolved constant, then CONFIG, then default.
+    if (typeof window !== 'undefined' && window.DashboardPhase1 && window.DashboardPhase1.PLAN_YEAR) {
+      return window.DashboardPhase1.PLAN_YEAR;
+    }
+    const plans = getPlans(typeof CONFIG !== 'undefined' ? CONFIG : null);
+    return plans.year;
   }
-
-  function truncateName(name, max) {
-    const n = name || 'МО';
-    return n.length > max ? `${n.slice(0, max - 1)}…` : n;
-  }
-
-  const escapeHtml =
-    (typeof KnSKLib !== 'undefined' && KnSKLib.escapeHtml) ||
-    function (str) {
-      if (!str) return '';
-      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    };
 
   function findMoByName(mos, name) {
     const key = String(name || '').trim().toLowerCase();
@@ -330,12 +329,12 @@ const DashboardPhase2 = (function () {
 
   function renderComparisonPanel(reportA, reportB, metaA, metaB) {
     const content = document.getElementById('comparePanelContent');
-    if (!content || !window.DashboardPhase1) return;
+    if (!content) return;
 
-    const mosA = DashboardPhase1.buildMosFromData(reportA.mosData || reportA);
-    const mosB = DashboardPhase1.buildMosFromData(reportB.mosData || reportB);
-    const tA = DashboardPhase1.computeTotals(mosA);
-    const tB = DashboardPhase1.computeTotals(mosB);
+    const mosA = buildMosFromData(reportA.mosData || reportA);
+    const mosB = buildMosFromData(reportB.mosData || reportB);
+    const tA = computeTotals(mosA);
+    const tB = computeTotals(mosB);
     const planYear = getPlanYear();
     const pctA = planYear ? (tA.fact / planYear) * 100 : 0;
     const pctB = planYear ? (tB.fact / planYear) * 100 : 0;
@@ -583,6 +582,9 @@ const DashboardPhase2 = (function () {
   };
 })();
 
+// Регистрация в window для include-порядка между <script>-бандлами GAS
 if (typeof window !== 'undefined') {
   window.DashboardPhase2 = DashboardPhase2;
 }
+
+export default DashboardPhase2;

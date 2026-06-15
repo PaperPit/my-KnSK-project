@@ -8,10 +8,11 @@
  * Кэш: localStorage VIEWER_CACHE_KEY.
  * =============================================================================
  */
+import { renderHtmlContent, escapeHtml, formatShortDate, getNextWeekPeriod } from '../lib/index.js';
+import { makeTrendChart, makePlanFactChart } from '../lib/charts.js';
+import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
+
 (function () {
-  const L = window.KnSKLib;
-  const renderHtmlContent = L.renderHtmlContent;
-  const escapeHtml = L.escapeHtml;
   const gasAdapter = new GoogleAppsScriptAdapter(CONFIG.api || {});
 
   const VIEWER_CACHE_KEY = 'knsk_viewer_report_v1';
@@ -20,6 +21,8 @@
     let planFactChart = null;
     let reportsList = [];
     let chartsReady = false;
+    // Алиас для совместимости с вызовами formatDate внутри файла.
+    const formatDate = formatShortDate;
 
     function whenChartsReady(fn) {
         if (typeof Chart !== 'undefined' && ChartDataLabels) {
@@ -44,26 +47,7 @@
             }
         }, 25);
     }
-    
-    function formatDate(dateStr) {
-        if (!dateStr) return '';
-        const d = new Date(dateStr);
-        return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
-    }
-    
-    function getNextWeekPeriod() {
-        const today = new Date();
-        let nextMonday = new Date(today);
-        const day = today.getDay();
-        let daysUntilMonday = (day === 0 ? 1 : 8 - day);
-        if (day === 1) daysUntilMonday = 0;
-        nextMonday.setDate(today.getDate() + daysUntilMonday);
-        let nextFriday = new Date(nextMonday);
-        nextFriday.setDate(nextMonday.getDate() + 4);
-        const format = d => `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}`;
-        return { display: `${format(nextMonday)} - ${format(nextFriday)}` };
-    }
-    
+
     function getWeekRangeFromReportDate(reportDateStr) {
         if (!reportDateStr) return 'Дата не указана';
         const match = reportDateStr.match(/(\d{2})\.(\d{2})\.(\d{4})/);
@@ -92,108 +76,30 @@
     }
     
   function updateTrendGraph(weeksArray) {
-    if (!weeksArray || !weeksArray.length) {
-      const trendNote = document.getElementById('trendNote');
-      if (trendNote) trendNote.innerHTML = 'Нет данных о неделях';
-      if (dynamicChart) dynamicChart.destroy();
-      return;
-    }
-    const weeks = weeksArray.map((w) => ({
+    const weeks = (weeksArray || []).map((w) => ({
       period: `${formatDate(w.start)}-${formatDate(w.end)}`,
       value: w.value,
     }));
-    const labels = weeks.map((w) => w.period);
-    const factValues = weeks.map((w) => w.value);
-    const planLine = new Array(weeks.length).fill(PLAN_WEEKLY);
-    const ctx = document.getElementById('trendChart').getContext('2d');
-    if (dynamicChart) dynamicChart.destroy();
-    dynamicChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [
-          {
-            label: 'Факт КнСК',
-            data: factValues,
-            borderColor: '#1f6392',
-            borderWidth: 3,
-            tension: 0.2,
-            fill: false,
-            pointRadius: 6,
-          },
-          {
-            label: 'План',
-            data: planLine,
-            borderColor: '#e67e22',
-            borderWidth: 2.5,
-            borderDash: [8, 6],
-            fill: false,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        plugins: {
-          datalabels: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => `${ctx.dataset.label}: ${ctx.raw.toLocaleString()} иссл.`,
-            },
-          },
-        },
-      },
+    dynamicChart = makeTrendChart({
+      canvasId: 'trendChart',
+      weeks: weeks,
+      planWeekly: PLAN_WEEKLY,
+      emptyMessage: 'Нет данных о неделях',
+      noteId: 'trendNote',
+      previous: dynamicChart,
     });
-    const trendNote = document.getElementById('trendNote');
-    if (trendNote) {
-      trendNote.innerHTML = `* Последняя точка: ${weeks[weeks.length - 1].period} — <strong>${factValues[factValues.length - 1].toLocaleString()}</strong> (план ~${PLAN_WEEKLY.toLocaleString()})`;
-    }
   }
 
   function updatePlanFactChart(totalGrowth) {
-        const ctx = document.getElementById('planFactChart').getContext('2d');
-        if (planFactChart) planFactChart.destroy();
-        planFactChart = new Chart(ctx, {
-            type: 'bar', 
-            data: { 
-                labels: ['Недельный план', 'Факт'], 
-                datasets: [{ 
-                    label: 'Исследования КнСК', 
-                    data: [PLAN_WEEKLY, totalGrowth || 0], 
-                    backgroundColor: ['#2c7da0', '#e9b35f'], 
-                    borderRadius: 12,
-                    barPercentage: 0.6,
-                    categoryPercentage: 0.8
-                }] 
-            }, 
-            options: { 
-                responsive: true, 
-                maintainAspectRatio: true,
-                plugins: {
-                    datalabels: {
-                        display: true,
-                        color: '#1e293b',
-                        anchor: 'center',
-                        align: 'center',
-                        font: { size: 14, weight: 'bold' },
-                        formatter: (value) => value.toLocaleString()
-                    }
-                },
-                scales: { 
-                    y: { 
-                        beginAtZero: true, 
-                        title: { display: true, text: 'Количество исследований' },
-                        ticks: { callback: (value) => value.toLocaleString() }
-                    }
-                }
-            }
-        });
-        const percent = totalGrowth ? (totalGrowth / PLAN_WEEKLY * 100).toFixed(1) : 0;
-        const planFactNote = document.getElementById('planFactNote');
-        if (planFactNote) {
-            planFactNote.innerHTML = `⚠️ <strong>${percent}% выполнения недельного плана</strong>`;
-        }
-    }
+    planFactChart = makePlanFactChart({
+      canvasId: 'planFactChart',
+      growth: totalGrowth,
+      planWeekly: PLAN_WEEKLY,
+      categoryPercentage: 0.8,
+      noteId: 'planFactNote',
+      previous: planFactChart,
+    });
+  }
     
     function resolvePreviousContext(previous) {
         if (!previous || !window.DashboardPhase1) {

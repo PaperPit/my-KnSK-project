@@ -17,7 +17,7 @@
  * ПОСЛЕ ПРАВОК: npm run build → npm test (tests/csvParser.test.js)
  * =============================================================================
  */
-function parseCSV(text) {
+export function parseCSV(text) {
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
   if (lines.length < 2) return [];
 
@@ -46,8 +46,4 @@ function parseCSV(text) {
     data.push(row);
   }
   return data;
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { parseCSV };
 }

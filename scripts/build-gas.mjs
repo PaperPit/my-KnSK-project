@@ -8,16 +8,24 @@
  *
  * ЧТО ДЕЛАЕТ:
  *   1. CSS из src/ui/           → UiTokens.html, EditorStyles.html, …
- *   2. JS из src/lib/           → LibBundle.html (общая библиотека KnSKLib)
- *   3. JS из src/dashboard, pages, core → *Page.html, DashboardPhase*.html
- *   4. JS из src/server/        → Code.js (НЕ править Code.js вручную!)
+ *   2. JS из src/lib/ (esbuild) → LibBundle.html (window.KnSKLib)
+ *   3. JS клиентских модулей (esbuild, format=iife):
+ *      - GoogleAppsScriptAdapter → GASAdapter.html
+ *      - dashboardPhase1/2       → DashboardPhase1/2.html (window.DashboardPhaseN)
+ *      - editor/viewer           → EditorPage/ViewerPage.html
+ *   4. JS из src/server/        → Code.js (конкатенация, НЕ править Code.js вручную!)
+ *      GAS требует bare top-level function declarations — esbuild не подходит.
+ *
+ * Incremental: артефакт перезаписывается только при изменении хеша контента.
  *
  * После сборки: clasp push → новая версия развёртывания в GAS.
  * =============================================================================
  */
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import * as esbuild from 'esbuild';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -26,10 +34,19 @@ function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
 
+/** Запись с incremental-проверкой: пропускаем, если контент не изменился. */
 function write(rel, content) {
   const full = path.join(ROOT, rel);
+  const newHash = crypto.createHash('sha256').update(content, 'utf8').digest('hex');
+  if (fs.existsSync(full)) {
+    const oldHash = crypto.createHash('sha256').update(fs.readFileSync(full, 'utf8'), 'utf8').digest('hex');
+    if (oldHash === newHash) {
+      console.log(`  skip  ${rel} (unchanged)`);
+      return;
+    }
+  }
   fs.writeFileSync(full, content, 'utf8');
-  console.log('  wrote', rel);
+  console.log(`  wrote ${rel}`);
 }
 
 /** CSS-файл → HTML-фрагмент для <?!= include('...') ?> */
@@ -38,38 +55,50 @@ function wrapStyle(cssPath, outHtml) {
   write(outHtml, `<style>\n${css}\n</style>\n`);
 }
 
-/** Один JS-файл → HTML с тегом script */
-function wrapScript(jsPath, outHtml) {
-  const js = read(jsPath).trim();
-  write(outHtml, `<script>\n${js}\n</script>\n`);
+/** Обёрнуть готовый JS-код в <script> и записать как HTML-фрагмент. */
+function wrapScriptCode(code, outHtml) {
+  write(outHtml, `<script>\n${code}\n</script>\n`);
 }
 
-/** Несколько lib-модулей в один бандл + экспорт window.KnSKLib */
-function concatScripts(paths, outHtml, banner) {
-  const parts = paths.map((p) => read(p).trim());
-  const body = parts.join('\n\n');
-  const footer = `
-window.KnSKLib = {
-  getPlans: typeof getPlans !== 'undefined' ? getPlans : function () { return { year: 220000, weekly: 4583, threshold: 70 }; },
-  extractNumber: extractNumber,
-  extractFact: extractFact,
-  toNum: toNum,
-  escapeHtml: escapeHtml,
-  sanitizeHtmlFragment: sanitizeHtmlFragment,
-  renderHtmlContent: renderHtmlContent,
-  parseCSV: parseCSV,
-  normalizeArchiveReport: normalizeArchiveReport,
-  buildMosFromData: buildMosFromData,
-  computeTotals: computeTotals,
-  computeTotalsFromMosData: computeTotalsFromMosData,
-  computeYearPercent: computeYearPercent,
-  computePeriodDeltas: computePeriodDeltas,
-};
-`;
-  write(outHtml, `<script>\n${banner ? banner + '\n' : ''}${body}\n${footer}\n</script>\n`);
+/**
+ * Бандл esbuild (IIFE) для клиентского модуля.
+ * entry — путь относительно ROOT либо временный inline-код.
+ * Возвращает собранный JS (без <script>).
+ */
+async function buildClient(entry, outHtml, options = {}) {
+  const result = await esbuild.build({
+    entryPoints: [entry],
+    bundle: true,
+    format: 'iife',
+    target: ['es2020'],
+    platform: 'browser',
+    minify: false,
+    write: false,
+    absWorkingDir: ROOT,
+    sourcemap: options.sourcemap || false,
+    logLevel: 'warning',
+    banner: options.banner ? { js: options.banner } : undefined,
+    globalName: options.globalName,
+  });
+  const js = result.outputFiles[0].text;
+  wrapScriptCode(js, outHtml);
 }
 
-/** Склейка серверных модулей в корневой Code.js */
+/**
+ * Создать временный entry-файл-обёртку, который импортирует модуль и выставляет
+ * его публичный API в window (нужно для include-порядка между <script>-бандлами).
+ * Возвращает путь к временному файлу.
+ */
+function makeEntryWrapper(importFrom, windowAssignment, name) {
+  const tmpDir = path.join(ROOT, '.build-tmp');
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const tmpFile = path.join(tmpDir, `${name}.entry.js`);
+  const code = `import * as M from '${importFrom}';\n${windowAssignment}\n`;
+  fs.writeFileSync(tmpFile, code, 'utf8');
+  return tmpFile;
+}
+
+/** Склейка серверных модулей в корневой Code.js (без esbuild — GAS-требование). */
 function buildCodeJs() {
   const modules = [
     'src/server/webapp.js',
@@ -77,10 +106,21 @@ function buildCodeJs() {
     'src/server/migrations.js',
   ];
   const banner = '// AUTO-GENERATED by scripts/build-gas.mjs — правки в src/server/\n';
-  const body = modules.map((p) => read(p).trim()).join('\n\n');
+  const body = modules
+    .map((p) => stripCjsExports(read(p).trim()))
+    .join('\n\n');
   write('Code.js', banner + body + '\n');
 }
 
+/** Вырезать хвостовой CommonJS-блок `if (typeof module !== 'undefined' …)` — он нужен только для тестов в Node. */
+function stripCjsExports(src) {
+  return src.replace(
+    /\n*if\s*\(\s*typeof\s+module\s*!==?\s*['"]undefined['"]\s*&&\s*module\.exports\s*\)\s*\{[\s\S]*?\}\n?/g,
+    '\n'
+  );
+}
+
+// ───────────────────────── СБОРКА ─────────────────────────
 console.log('build-gas: styles');
 wrapStyle('src/ui/tokens.css', 'UiTokens.html');
 wrapStyle('src/ui/phase2.css', 'UiPhase2.html');
@@ -88,28 +128,25 @@ wrapStyle('src/ui/editor.css', 'EditorStyles.html');
 wrapStyle('src/ui/viewer.css', 'ViewerStyles.html');
 wrapStyle('src/ui/kpi-cards.css', 'UiKpiCards.html');
 
-console.log('build-gas: lib bundle');
-concatScripts(
-  [
-    'src/lib/constants.js',
-    'src/lib/numbers.js',
-    'src/lib/sanitize.js',
-    'src/lib/csvParser.js',
-    'src/lib/archiveNormalizer.js',
-    'src/lib/kpiCalculator.js',
-  ],
-  'LibBundle.html',
-  '/* KnSK shared library */'
+console.log('build-gas: lib bundle (esbuild)');
+const libEntry = makeEntryWrapper(
+  '../src/lib/index.js',
+  'window.KnSKLib = M;',
+  'lib'
 );
+await buildClient(libEntry, 'LibBundle.html', { banner: '/* KnSK shared library */' });
 
-console.log('build-gas: client modules');
-wrapScript('src/core/GoogleAppsScriptAdapter.js', 'GASAdapter.html');
-wrapScript('src/dashboard/dashboardPhase1.js', 'DashboardPhase1.html');
-wrapScript('src/dashboard/dashboardPhase2.js', 'DashboardPhase2.html');
-wrapScript('src/pages/editor.js', 'EditorPage.html');
-wrapScript('src/pages/viewer.js', 'ViewerPage.html');
+console.log('build-gas: client modules (esbuild)');
+await buildClient('src/core/GoogleAppsScriptAdapter.js', 'GASAdapter.html');
+await buildClient('src/dashboard/dashboardPhase1.js', 'DashboardPhase1.html');
+await buildClient('src/dashboard/dashboardPhase2.js', 'DashboardPhase2.html');
+await buildClient('src/pages/editor.js', 'EditorPage.html');
+await buildClient('src/pages/viewer.js', 'ViewerPage.html');
 
-console.log('build-gas: server');
+console.log('build-gas: server (concatenation)');
 buildCodeJs();
+
+// Чистка временных entry-обёрток
+fs.rmSync(path.join(ROOT, '.build-tmp'), { recursive: true, force: true });
 
 console.log('build-gas: done');

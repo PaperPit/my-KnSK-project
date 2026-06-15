@@ -1,36 +1,41 @@
 import js from '@eslint/js';
 import globals from 'globals';
 
+const browserGlobals = {
+  ...globals.browser,
+  CONFIG: 'readonly',
+  Chart: 'readonly',
+  ChartDataLabels: 'readonly',
+  echarts: 'readonly',
+  google: 'readonly',
+  PLAN_YEAR: 'readonly',
+  PLAN_WEEKLY: 'readonly',
+  PLAN_THRESHOLD: 'readonly',
+};
+
+const gasGlobals = {
+  ...globals.browser,
+  CONFIG: 'readonly',
+  HtmlService: 'readonly',
+  SpreadsheetApp: 'readonly',
+  CacheService: 'readonly',
+  ScriptApp: 'readonly',
+  Utilities: 'readonly',
+  Session: 'readonly',
+  Logger: 'readonly',
+  PLAN_YEAR: 'readonly',
+  PLAN_WEEKLY: 'readonly',
+  PLAN_THRESHOLD: 'readonly',
+};
+
 export default [
   js.configs.recommended,
   {
-    files: ['src/**/*.js', 'Code.js', 'config.js'],
+    files: ['src/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
-      sourceType: 'script',
-      globals: {
-        ...globals.browser,
-        ...globals.node,
-        CONFIG: 'readonly',
-        Chart: 'readonly',
-        ChartDataLabels: 'readonly',
-        echarts: 'readonly',
-        google: 'readonly',
-        HtmlService: 'readonly',
-        SpreadsheetApp: 'readonly',
-        CacheService: 'readonly',
-        ScriptApp: 'readonly',
-        Utilities: 'readonly',
-        Session: 'readonly',
-        Logger: 'readonly',
-        PLAN_YEAR: 'readonly',
-        PLAN_WEEKLY: 'readonly',
-        PLAN_THRESHOLD: 'readonly',
-        KnSKLib: 'readonly',
-        DashboardPhase1: 'readonly',
-        DashboardPhase2: 'readonly',
-        GoogleAppsScriptAdapter: 'readonly',
-      },
+      sourceType: 'module',
+      globals: browserGlobals,
     },
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
@@ -39,13 +44,47 @@ export default [
     },
   },
   {
-    files: ['src/lib/kpiCalculator.js'],
+    files: ['Code.js', 'config.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'script',
+      globals: gasGlobals,
+    },
+    rules: {
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+      'no-console': 'off',
+      'no-empty': ['error', { allowEmptyCatch: true }],
+    },
+  },
+  {
+    files: ['src/pages/*.js', 'src/dashboard/*.js'],
     languageOptions: {
       globals: {
-        toNum: 'readonly',
-        extractNumber: 'readonly',
-        extractFact: 'readonly',
+        ...browserGlobals,
+        DashboardPhase1: 'readonly',
+        DashboardPhase2: 'readonly',
       },
+    },
+  },
+  {
+    files: ['src/core/GoogleAppsScriptAdapter.js'],
+    languageOptions: {
+      globals: {
+        ...browserGlobals,
+        Logger: 'readonly',
+      },
+    },
+  },
+  {
+    files: ['src/server/*.js'],
+    languageOptions: {
+      globals: {
+        ...gasGlobals,
+        module: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': 'off',
     },
   },
   {
@@ -59,7 +98,7 @@ export default [
     },
   },
   {
-    files: ['src/dashboard/*.js', 'src/core/GoogleAppsScriptAdapter.js', 'src/lib/*.js', 'src/server/*.js'],
+    files: ['src/dashboard/*.js', 'src/core/GoogleAppsScriptAdapter.js', 'src/lib/*.js'],
     rules: {
       'no-redeclare': 'off',
     },
@@ -67,7 +106,7 @@ export default [
   {
     files: ['src/server/*.js'],
     rules: {
-      'no-unused-vars': 'off',
+      'no-redeclare': 'off',
     },
   },
   {

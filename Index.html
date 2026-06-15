@@ -6,7 +6,7 @@
   ЛОГИКА: EditorPage.html (src/pages/editor.js) — не пишите большие <script> здесь
   СТИЛИ: EditorStyles.html, UiTokens.html, UiPhase2.html
 
-  Порядок скриптов в <head> важен: CONFIG → LibBundle → GASAdapter → Phase1/2
+  Порядок скриптов в <head> важен: CONFIG → DashboardPhase1 → DashboardPhase2
 -->
 <html lang="ru">
 <head>
@@ -29,8 +29,6 @@
       window.CONFIG = _cfg;
     })();
     </script>
-    <?!= include('LibBundle'); ?>
-    <?!= include('GASAdapter'); ?>
     <?!= include('DashboardPhase1'); ?>
     <?!= include('DashboardPhase2'); ?>
 </head>

@@ -1,423 +1,282 @@
 <script>
 /* KnSK shared library */
-/**
- * =============================================================================
- * constants.js — плановые константы для клиента (браузер)
- * =============================================================================
- *
- * Источник истины для PLAN_YEAR / PLAN_WEEKLY / PLAN_THRESHOLD — config.js на сервере.
- * Сервер передаёт значения в браузер через getClientConfigJson() → window.CONFIG.
- *
- * getPlans() — запасной вариант, если CONFIG ещё не подгрузился (тесты, fallback).
- *
- * ПОСЛЕ ПРАВОК: npm run build
- * =============================================================================
- */
-function getPlans(config) {
-  const cfg = config || (typeof CONFIG !== 'undefined' ? CONFIG : null);
-  if (cfg && cfg.plans) {
+(() => {
+  var __defProp = Object.defineProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+
+  // src/lib/index.js
+  var lib_exports = {};
+  __export(lib_exports, {
+    buildMosFromData: () => buildMosFromData,
+    computePeriodDeltas: () => computePeriodDeltas,
+    computeTotals: () => computeTotals,
+    computeTotalsFromMosData: () => computeTotalsFromMosData,
+    computeYearPercent: () => computeYearPercent,
+    escapeHtml: () => escapeHtml,
+    extractFact: () => extractFact,
+    extractNumber: () => extractNumber,
+    formatShortDate: () => formatShortDate,
+    getNextWeekPeriod: () => getNextWeekPeriod,
+    getPlans: () => getPlans,
+    hasAllowedMarkup: () => hasAllowedMarkup,
+    normalizeArchiveReport: () => normalizeArchiveReport,
+    parseCSV: () => parseCSV,
+    renderHtmlContent: () => renderHtmlContent,
+    sanitizeHtmlFragment: () => sanitizeHtmlFragment,
+    toNum: () => toNum,
+    truncateName: () => truncateName
+  });
+
+  // src/lib/numbers.js
+  function extractNumber(v) {
+    if (!v) return 0;
+    let s = String(v).trim();
+    if (s === "-" || s === "") return 0;
+    let sign = 1;
+    if (s.startsWith("+")) s = s.substring(1);
+    else if (s.startsWith("-")) {
+      sign = -1;
+      s = s.substring(1);
+    }
+    const m = s.match(/^(\d+[\d\s]*?)(?:\s*\(|$)/);
+    if (m) return sign * (parseInt(m[1].replace(/\s/g, ""), 10) || 0);
+    return sign * (parseInt(s, 10) || 0);
+  }
+  function extractFact(v) {
+    if (!v) return 0;
+    const m = String(v).match(/(\d[\d\s]*)/);
+    return m ? parseInt(m[1].replace(/\s/g, ""), 10) : 0;
+  }
+  function toNum(v) {
+    if (v == null || v === "") return 0;
+    if (typeof v === "number" && !isNaN(v)) return v;
+    const n = extractNumber(v);
+    if (n !== 0) return n;
+    return extractFact(v);
+  }
+
+  // src/lib/sanitize.js
+  var ALLOWED_TAGS = /^(b|strong|a|ul|li|br)$/i;
+  var SAFE_HREF = /^(https?:\/\/|mailto:)/i;
+  function escapeHtml(str) {
+    if (str == null) return "";
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function hasAllowedMarkup(html) {
+    return /<(b|strong|a|ul|li|br)\b/i.test(html);
+  }
+  function sanitizeHtmlFragment(html) {
+    if (!html) return "";
+    let out = String(html);
+    out = out.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+    out = out.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, function(match, tag) {
+      const t = tag.toLowerCase();
+      if (t === "a") return match;
+      if (!ALLOWED_TAGS.test(t)) return "";
+      if (match.startsWith("</")) return "</" + t + ">";
+      if (t === "br") return "<br>";
+      return "<" + t + ">";
+    });
+    out = out.replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, function(_match, attrs, inner) {
+      const hrefMatch = attrs.match(/href\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+      const href = hrefMatch ? hrefMatch[1] || hrefMatch[2] : "";
+      if (!SAFE_HREF.test(href)) return sanitizeHtmlFragment(inner);
+      return '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">' + sanitizeHtmlFragment(inner) + "</a>";
+    });
+    return out;
+  }
+  function renderHtmlContent(text) {
+    if (!text || String(text).trim() === "") return "\u2014";
+    const raw = String(text);
+    const safe = sanitizeHtmlFragment(raw);
+    if (hasAllowedMarkup(safe)) {
+      if (!/<br\b/i.test(safe) && !/<li\b/i.test(safe)) {
+        return safe.replace(/\n/g, "<br>");
+      }
+      return safe;
+    }
+    return escapeHtml(raw).replace(/\n/g, "<br>");
+  }
+
+  // src/lib/csvParser.js
+  function parseCSV(text) {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) return [];
+    const headers = lines[0].replace(/^\uFEFF/, "").split(",").map((h) => h.trim());
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+      const vals = [];
+      let inQ = false;
+      let cur = "";
+      for (const ch of lines[i]) {
+        if (ch === '"') inQ = !inQ;
+        else if (ch === "," && !inQ) {
+          vals.push(cur.trim());
+          cur = "";
+        } else cur += ch;
+      }
+      vals.push(cur.trim());
+      if (vals.length < 5) continue;
+      const row = {};
+      headers.forEach((h, idx) => {
+        row[h] = vals[idx] || "";
+      });
+      data.push(row);
+    }
+    return data;
+  }
+
+  // src/lib/archiveNormalizer.js
+  function normalizeArchiveReport(report) {
+    if (!report || typeof report !== "object") return null;
+    const normalized = Object.assign({}, report);
+    let mos = normalized.mosData || normalized.MOSData || normalized.data;
+    if (typeof mos === "string") {
+      try {
+        mos = JSON.parse(mos);
+      } catch (_e) {
+        mos = [];
+      }
+    }
+    if (!Array.isArray(mos)) mos = [];
+    normalized.mosData = mos;
+    return normalized;
+  }
+
+  // src/lib/constants.js
+  function getPlans(config) {
+    const cfg = config || (typeof CONFIG !== "undefined" ? CONFIG : null);
+    if (cfg && cfg.plans) {
+      return {
+        year: cfg.plans.year,
+        weekly: cfg.plans.weekly,
+        threshold: cfg.plans.threshold
+      };
+    }
+    return { year: 22e4, weekly: 4583, threshold: 70 };
+  }
+
+  // src/lib/kpiCalculator.js
+  function buildMosFromData(data) {
+    if (!data || !data.length) return [];
+    const firstRow = data[0];
+    if (!firstRow || typeof firstRow !== "object") return [];
+    const hasProcessedShape = (firstRow.name != null || firstRow["\u041D\u0430\u0438\u043C\u0435\u043D\u043E\u0432\u0430\u043D\u0438\u0435 \u041C\u041E"]) && (firstRow.plan != null || firstRow.fact != null || firstRow["\u041F\u043B\u0430\u043D \u043D\u0430 \u0433\u043E\u0434"] != null || firstRow["\u041E\u0431\u0449\u0438\u0439 \u0438\u0442\u043E\u0433"] != null);
+    const mos = [];
+    if (hasProcessedShape) {
+      data.forEach((r) => {
+        const plan = toNum(r.plan != null ? r.plan : r["\u041F\u043B\u0430\u043D \u043D\u0430 \u0433\u043E\u0434"]);
+        const fact = toNum(r.fact != null ? r.fact : r["\u041E\u0431\u0449\u0438\u0439 \u0438\u0442\u043E\u0433"]);
+        const percentRaw = r.percent != null ? toNum(r.percent) : plan ? fact / plan * 100 : 0;
+        mos.push({
+          name: r.name || r["\u041D\u0430\u0438\u043C\u0435\u043D\u043E\u0432\u0430\u043D\u0438\u0435 \u041C\u041E"] || "\u041C\u041E",
+          plan,
+          fact,
+          percent: percentRaw,
+          growth: toNum(r.growth != null ? r.growth : r["\u0414\u0438\u043D\u0430\u043C\u0438\u043A\u0430 \u0441 \u043F\u0440\u043E\u0448\u043B\u043E\u0439 \u043D\u0435\u0434\u0435\u043B\u0438"]),
+          colon: toNum(r.colon != null ? r.colon : r["\u041F\u0440\u043E\u0448\u043B\u0438 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u044E"]),
+          zno: toNum(r.zno != null ? r.zno : r["\u0412\u044B\u044F\u0432\u043B\u0435\u043D\u043E \u0417\u041D\u041E C18-C21"]),
+          noDev: toNum(r.noDev != null ? r.noDev : r["\u041D\u0435\u0442 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0438\u0439"]),
+          hasDev: toNum(r.hasDev != null ? r.hasDev : r["\u0415\u0441\u0442\u044C \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0438\u044F"])
+        });
+      });
+    } else {
+      data.forEach((r) => {
+        const plan = extractNumber(r["\u041F\u043B\u0430\u043D \u043D\u0430 \u0433\u043E\u0434"]);
+        const fact = extractFact(r["\u041E\u0431\u0449\u0438\u0439 \u0438\u0442\u043E\u0433"]);
+        mos.push({
+          name: r["\u041D\u0430\u0438\u043C\u0435\u043D\u043E\u0432\u0430\u043D\u0438\u0435 \u041C\u041E"] || r.name || "\u041C\u041E",
+          plan,
+          fact,
+          percent: plan ? fact / plan * 100 : 0,
+          growth: extractNumber(r["\u0414\u0438\u043D\u0430\u043C\u0438\u043A\u0430 \u0441 \u043F\u0440\u043E\u0448\u043B\u043E\u0439 \u043D\u0435\u0434\u0435\u043B\u0438"]),
+          colon: extractNumber(r["\u041F\u0440\u043E\u0448\u043B\u0438 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u044E"]),
+          zno: extractNumber(r["\u0412\u044B\u044F\u0432\u043B\u0435\u043D\u043E \u0417\u041D\u041E C18-C21"]),
+          noDev: extractNumber(r["\u041D\u0435\u0442 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0438\u0439"]),
+          hasDev: extractNumber(r["\u0415\u0441\u0442\u044C \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0438\u044F"])
+        });
+      });
+    }
+    return mos;
+  }
+  function computeTotals(mos) {
+    const t = {
+      plan: 0,
+      fact: 0,
+      colon: 0,
+      zno: 0,
+      noDev: 0,
+      hasDev: 0,
+      growth: 0,
+      percent: 0,
+      colonPercent: 0
+    };
+    mos.forEach((m) => {
+      t.plan += m.plan;
+      t.fact += m.fact;
+      t.colon += m.colon;
+      t.zno += m.zno;
+      t.noDev += m.noDev;
+      t.hasDev += m.hasDev;
+      t.growth += m.growth;
+    });
+    t.percent = t.plan ? t.fact / t.plan * 100 : 0;
+    t.colonPercent = t.hasDev ? t.colon / t.hasDev * 100 : 0;
+    return t;
+  }
+  function computeTotalsFromMosData(mosData) {
+    return computeTotals(buildMosFromData(mosData));
+  }
+  function computeYearPercent(totals, planYear) {
+    return planYear ? totals.fact / planYear * 100 : 0;
+  }
+  function computePeriodDeltas(currentTotals, previousTotals, planYear) {
+    if (!previousTotals) return null;
+    const yearPct = (t) => planYear ? t.fact / planYear * 100 : 0;
     return {
-      year: cfg.plans.year,
-      weekly: cfg.plans.weekly,
-      threshold: cfg.plans.threshold,
+      fact: currentTotals.fact - previousTotals.fact,
+      percent: currentTotals.percent - previousTotals.percent,
+      yearPercent: yearPct(currentTotals) - yearPct(previousTotals),
+      growth: currentTotals.growth - previousTotals.growth,
+      colon: currentTotals.colon - previousTotals.colon,
+      zno: currentTotals.zno - previousTotals.zno
     };
   }
-  // Значения по умолчанию совпадают с config.js
-  return { year: 220000, weekly: 4583, threshold: 70 };
-}
 
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { getPlans };
-}
-
-/**
- * =============================================================================
- * numbers.js — разбор чисел из CSV и архива
- * =============================================================================
- *
- * ГДЕ ИСПОЛЬЗУЕТСЯ:
- *   Собирается в LibBundle.html → window.KnSKLib
- *   Вызывается из kpiCalculator.js, dashboardPhase1, тестов tests/numbers.test.js
- *
- * КОГДА ПРАВИТЬ:
- *   Если в выгрузке появились новые форматы чисел (скобки, пробелы, знаки +/−).
- *   Примеры из реальных данных: "6052 (97%)", "+1 234", "-", "3 200 (+64%)"
- *
- * ПОСЛЕ ПРАВОК: npm run build → clasp push
- * =============================================================================
- */
-
-/** Динамика и целые с опциональным знаком и суффиксом в скобках */
-function extractNumber(v) {
-  if (!v) return 0;
-  let s = String(v).trim();
-  if (s === '-' || s === '') return 0;
-  let sign = 1;
-  if (s.startsWith('+')) s = s.substring(1);
-  else if (s.startsWith('-')) {
-    sign = -1;
-    s = s.substring(1);
+  // src/lib/dateUtils.js
+  function formatShortDate(dateStr) {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    return `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")}`;
   }
-  // Берём цифры до скобки или конца: "6052 (97%)" → 6052
-  const m = s.match(/^(\d+[\d\s]*?)(?:\s*\(|$)/);
-  if (m) return sign * (parseInt(m[1].replace(/\s/g, ''), 10) || 0);
-  return sign * (parseInt(s, 10) || 0);
-}
-
-/** Факт КнСК из колонки «Общий итог» — первая группа цифр в строке */
-function extractFact(v) {
-  if (!v) return 0;
-  const m = String(v).match(/(\d[\d\s]*)/);
-  return m ? parseInt(m[1].replace(/\s/g, ''), 10) : 0;
-}
-
-/**
- * Универсальное приведение к числу (архив JSON, смешанные типы).
- * Сначала extractNumber, если 0 — пробуем extractFact.
- */
-function toNum(v) {
-  if (v == null || v === '') return 0;
-  if (typeof v === 'number' && !isNaN(v)) return v;
-  const n = extractNumber(v);
-  if (n !== 0) return n;
-  return extractFact(v);
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { extractNumber, extractFact, toNum };
-}
-
-/**
- * =============================================================================
- * sanitize.js — безопасный вывод HTML в блоках «Сделано» и «Планы»
- * =============================================================================
- *
- * ЗАЧЕМ: пользователь вводит текст с разметкой (жирный, ссылки). При анонимном
- * доступе к приложению нужно не допустить произвольный HTML (XSS).
- *
- * РАЗРЕШЁННЫЕ ТЕГИ: b, strong, a, ul, li, br
- * ССЫЛКИ: только http(s) и mailto
- *
- * ГДЕ: renderHtmlContent() — Index/Viewer при отображении doneText / plansText
- *
- * ПОСЛЕ ПРАВОК: npm run build
- * =============================================================================
- */
-
-const ALLOWED_TAGS = /^(b|strong|a|ul|li|br)$/i;
-const SAFE_HREF = /^(https?:\/\/|mailto:)/i;
-
-/** Экранирование текста перед вставкой в innerHTML */
-function escapeHtml(str) {
-  if (str == null) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-/** Есть ли в строке разрешённая разметка после санитизации */
-function hasAllowedMarkup(html) {
-  return /<(b|strong|a|ul|li|br)\b/i.test(html);
-}
-
-/** Оставляет только разрешённые теги, остальное вырезает */
-function sanitizeHtmlFragment(html) {
-  if (!html) return '';
-  let out = String(html);
-
-  out = out.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-
-  out = out.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, function (match, tag) {
-    const t = tag.toLowerCase();
-    if (t === 'a') return match;
-    if (!ALLOWED_TAGS.test(t)) return '';
-    if (match.startsWith('</')) return '</' + t + '>';
-    if (t === 'br') return '<br>';
-    return '<' + t + '>';
-  });
-
-  out = out.replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, function (_match, attrs, inner) {
-    const hrefMatch = attrs.match(/href\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
-    const href = hrefMatch ? hrefMatch[1] || hrefMatch[2] : '';
-    if (!SAFE_HREF.test(href)) return sanitizeHtmlFragment(inner);
-    return (
-      '<a href="' +
-      escapeHtml(href) +
-      '" target="_blank" rel="noopener noreferrer">' +
-      sanitizeHtmlFragment(inner) +
-      '</a>'
-    );
-  });
-
-  return out;
-}
-
-/**
- * Готовый HTML для карточек «Сделано» / «Планы».
- * Переносы строк → <br>, если пользователь не вставил свои теги.
- */
-function renderHtmlContent(text) {
-  if (!text || String(text).trim() === '') return '—';
-  const raw = String(text);
-  const safe = sanitizeHtmlFragment(raw);
-
-  if (hasAllowedMarkup(safe)) {
-    if (!/<br\b/i.test(safe) && !/<li\b/i.test(safe)) {
-      return safe.replace(/\n/g, '<br>');
-    }
-    return safe;
+  function getNextWeekPeriod() {
+    const today = /* @__PURE__ */ new Date();
+    const nextMonday = new Date(today);
+    const day = today.getDay();
+    let daysUntilMonday = day === 0 ? 1 : 8 - day;
+    if (day === 1) daysUntilMonday = 0;
+    nextMonday.setDate(today.getDate() + daysUntilMonday);
+    const nextFriday = new Date(nextMonday);
+    nextFriday.setDate(nextMonday.getDate() + 4);
+    const fmt = (d) => `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")}`;
+    return {
+      display: `${fmt(nextMonday)} - ${fmt(nextFriday)}`,
+      start: nextMonday,
+      end: nextFriday
+    };
   }
 
-  return escapeHtml(raw).replace(/\n/g, '<br>');
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { escapeHtml, sanitizeHtmlFragment, renderHtmlContent };
-}
-
-/**
- * =============================================================================
- * csvParser.js — чтение CSV-выгрузки по МО
- * =============================================================================
- *
- * ОЖИДАЕМЫЕ КОЛОНКИ (первая строка — заголовки):
- *   Наименование МО, План на год, Общий итог, Динамика с прошлой недели,
- *   Прошли колоноскопию, Выявлено ЗНО C18-C21, Нет отклонений, Есть отклонения
- *
- * ГДЕ ВЫЗЫВАЕТСЯ: src/pages/editor.js при загрузке файла через <input type="file">
- *
- * ВАЖНО:
- *   - Поддерживает кавычки в ячейках (поля с запятыми внутри)
- *   - Убирает BOM (\uFEFF) в начале файла из Excel
- *   - Строки короче 5 колонок пропускаются
- *
- * ПОСЛЕ ПРАВОК: npm run build → npm test (tests/csvParser.test.js)
- * =============================================================================
- */
-function parseCSV(text) {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return [];
-
-  const headers = lines[0].replace(/^\uFEFF/, '').split(',').map((h) => h.trim());
-  const data = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const vals = [];
-    let inQ = false;
-    let cur = '';
-    // Построчный разбор с учётом кавычек
-    for (const ch of lines[i]) {
-      if (ch === '"') inQ = !inQ;
-      else if (ch === ',' && !inQ) {
-        vals.push(cur.trim());
-        cur = '';
-      } else cur += ch;
-    }
-    vals.push(cur.trim());
-    if (vals.length < 5) continue;
-
-    const row = {};
-    headers.forEach((h, idx) => {
-      row[h] = vals[idx] || '';
-    });
-    data.push(row);
-  }
-  return data;
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { parseCSV };
-}
-
-/**
- * =============================================================================
- * archiveNormalizer.js — единый формат отчёта из листа «Архив»
- * =============================================================================
- *
- * В Google Таблице в колонке «Данные (JSON)» хранится объект отчёта.
- * Исторически поле МО могло называться mosData, MOSData или data — здесь
- * всё приводится к report.mosData (массив).
- *
- * Схема полей: docs/archive-schema.json
- *
- * ПОСЛЕ ПРАВОК: npm run build → npm test (tests/archiveNormalizer.test.js)
- * =============================================================================
- */
-function normalizeArchiveReport(report) {
-  if (!report || typeof report !== 'object') return null;
-
-  const normalized = Object.assign({}, report);
-
-  // Поддержка старых имён поля и JSON-строки вместо массива
-  let mos = normalized.mosData || normalized.MOSData || normalized.data;
-  if (typeof mos === 'string') {
-    try {
-      mos = JSON.parse(mos);
-    } catch (_e) {
-      mos = [];
-    }
-  }
-  if (!Array.isArray(mos)) mos = [];
-
-  normalized.mosData = mos;
-  return normalized;
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { normalizeArchiveReport };
-}
-
-/**
- * =============================================================================
- * kpiCalculator.js — строки МО и сводные KPI
- * =============================================================================
- *
- * buildMosFromData(data)
- *   На входе: либо сырой CSV (русские заголовки колонок), либо уже сохранённый
- *   mosData из архива (поля name, plan, fact, …).
- *   На выходе: единый массив объектов МО для дашборда.
- *
- * computeTotals(mos) — суммы по всем МО + % плана и % колоноскопии.
- * computePeriodDeltas — разница между двумя отчётами (сравнение периодов).
- *
- * Зависит от функций extractNumber / extractFact / toNum из numbers.js
- * (в бандле они в той же области видимости).
- *
- * ПОСЛЕ ПРАВОК: npm run build → npm test (tests/kpiCalculator.test.js)
- * =============================================================================
- */
-
-function buildMosFromData(data) {
-  if (!data || !data.length) return [];
-
-  const firstRow = data[0];
-  if (!firstRow || typeof firstRow !== 'object') return [];
-
-  // Архив и повторная загрузка уже в «плоском» формате
-  const hasProcessedShape =
-    (firstRow.name != null || firstRow['Наименование МО']) &&
-    (firstRow.plan != null ||
-      firstRow.fact != null ||
-      firstRow['План на год'] != null ||
-      firstRow['Общий итог'] != null);
-
-  const mos = [];
-
-  if (hasProcessedShape) {
-    data.forEach((r) => {
-      const plan = toNum(r.plan != null ? r.plan : r['План на год']);
-      const fact = toNum(r.fact != null ? r.fact : r['Общий итог']);
-      const percentRaw = r.percent != null ? toNum(r.percent) : plan ? (fact / plan) * 100 : 0;
-      mos.push({
-        name: r.name || r['Наименование МО'] || 'МО',
-        plan,
-        fact,
-        percent: percentRaw,
-        growth: toNum(r.growth != null ? r.growth : r['Динамика с прошлой недели']),
-        colon: toNum(r.colon != null ? r.colon : r['Прошли колоноскопию']),
-        zno: toNum(r.zno != null ? r.zno : r['Выявлено ЗНО C18-C21']),
-        noDev: toNum(r.noDev != null ? r.noDev : r['Нет отклонений']),
-        hasDev: toNum(r.hasDev != null ? r.hasDev : r['Есть отклонения']),
-      });
-    });
-  } else {
-    // Свежий CSV с русскими заголовками
-    data.forEach((r) => {
-      const plan = extractNumber(r['План на год']);
-      const fact = extractFact(r['Общий итог']);
-      mos.push({
-        name: r['Наименование МО'] || r.name || 'МО',
-        plan,
-        fact,
-        percent: plan ? (fact / plan) * 100 : 0,
-        growth: extractNumber(r['Динамика с прошлой недели']),
-        colon: extractNumber(r['Прошли колоноскопию']),
-        zno: extractNumber(r['Выявлено ЗНО C18-C21']),
-        noDev: extractNumber(r['Нет отклонений']),
-        hasDev: extractNumber(r['Есть отклонения']),
-      });
-    });
+  // src/lib/moUtils.js
+  function truncateName(name, max) {
+    const n = String(name || "");
+    return n.length > max ? n.slice(0, max - 1) + "\u2026" : n;
   }
 
-  return mos;
-}
-
-/** Агрегированные показатели по всем МО для 4 KPI-карточек */
-function computeTotals(mos) {
-  const t = {
-    plan: 0,
-    fact: 0,
-    colon: 0,
-    zno: 0,
-    noDev: 0,
-    hasDev: 0,
-    growth: 0,
-    percent: 0,
-    colonPercent: 0,
-  };
-  mos.forEach((m) => {
-    t.plan += m.plan;
-    t.fact += m.fact;
-    t.colon += m.colon;
-    t.zno += m.zno;
-    t.noDev += m.noDev;
-    t.hasDev += m.hasDev;
-    t.growth += m.growth;
-  });
-  t.percent = t.plan ? (t.fact / t.plan) * 100 : 0;
-  // Охват колоноскопией: от положительных КнСК (hasDev), не от всех исследований
-  t.colonPercent = t.hasDev ? (t.colon / t.hasDev) * 100 : 0;
-  return t;
-}
-
-function computeTotalsFromMosData(mosData) {
-  return computeTotals(buildMosFromData(mosData));
-}
-
-/** % годового плана КнСК (220 000) — для KPI «План на год» */
-function computeYearPercent(totals, planYear) {
-  return planYear ? (totals.fact / planYear) * 100 : 0;
-}
-
-/** Дельты для сравнения двух архивных отчётов (поздний − ранний) */
-function computePeriodDeltas(currentTotals, previousTotals) {
-  if (!previousTotals) return null;
-  return {
-    fact: currentTotals.fact - previousTotals.fact,
-    percent: currentTotals.percent - previousTotals.percent,
-    growth: currentTotals.growth - previousTotals.growth,
-    colon: currentTotals.colon - previousTotals.colon,
-    zno: currentTotals.zno - previousTotals.zno,
-  };
-}
-
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    buildMosFromData,
-    computeTotals,
-    computeTotalsFromMosData,
-    computeYearPercent,
-    computePeriodDeltas,
-  };
-}
-
-window.KnSKLib = {
-  getPlans: typeof getPlans !== 'undefined' ? getPlans : function () { return { year: 220000, weekly: 4583, threshold: 70 }; },
-  extractNumber: extractNumber,
-  extractFact: extractFact,
-  toNum: toNum,
-  escapeHtml: escapeHtml,
-  sanitizeHtmlFragment: sanitizeHtmlFragment,
-  renderHtmlContent: renderHtmlContent,
-  parseCSV: parseCSV,
-  normalizeArchiveReport: normalizeArchiveReport,
-  buildMosFromData: buildMosFromData,
-  computeTotals: computeTotals,
-  computeTotalsFromMosData: computeTotalsFromMosData,
-  computeYearPercent: computeYearPercent,
-  computePeriodDeltas: computePeriodDeltas,
-};
+  // .build-tmp/lib.entry.js
+  window.KnSKLib = lib_exports;
+})();
 
 </script>
