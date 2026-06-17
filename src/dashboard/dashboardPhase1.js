@@ -29,7 +29,24 @@ import {
   computeTotals,
   computeTotalsFromMosData,
   truncateName,
+  icon,
 } from '../lib/index.js';
+
+function getBundleLoader() {
+  return typeof window !== 'undefined' ? window.KnSKBundleLoader : null;
+}
+
+function ensureDataLabelsReady() {
+  if (typeof ChartDataLabels !== 'undefined') {
+    if (typeof Chart !== 'undefined' && !Chart.registry.getPlugin('datalabels')) {
+      Chart.register(ChartDataLabels);
+    }
+    return Promise.resolve();
+  }
+  const loader = getBundleLoader();
+  if (loader) return loader.ensureChartDataLabels();
+  return Promise.reject(new Error('ChartDataLabels не загружен'));
+}
 
 const DashboardPhase1 = (function () {
   const plans = getPlans(typeof CONFIG !== 'undefined' ? CONFIG : null);
@@ -66,7 +83,7 @@ const DashboardPhase1 = (function () {
 
     const positive = invert ? diff < 0 : diff > 0;
     const cls = positive ? 'delta-up' : 'delta-down';
-    const icon = diff > 0 ? 'fa-arrow-up' : 'fa-arrow-down';
+    const iconName = diff > 0 ? 'arrow-up' : 'arrow-down';
     let text;
 
     if (o.isPercent) {
@@ -77,7 +94,7 @@ const DashboardPhase1 = (function () {
       text = `${diff > 0 ? '+' : ''}${diff}${suffix}`;
     }
 
-    return `<span class="kpi-delta ${cls}"><i class="fas ${icon}"></i> ${text} к прошлому отчёту</span>`;
+    return `<span class="kpi-delta ${cls}">${icon(iconName)} ${text} к прошлому отчёту</span>`;
   }
 
   function setDeltaEl(id, html) {
@@ -103,7 +120,7 @@ const DashboardPhase1 = (function () {
     const growthEl = document.getElementById('weeklyGrowth');
     if (kskEl) kskEl.innerHTML = t.fact.toLocaleString('ru-RU');
     if (growthEl) {
-      growthEl.innerHTML = `<i class="fas fa-arrow-up"></i> +${t.growth.toLocaleString('ru-RU')} за неделю`;
+      growthEl.innerHTML = `${icon('arrow-up')} +${t.growth.toLocaleString('ru-RU')} за неделю`;
     }
 
     const colonEl = document.getElementById('totalColonPassed');
@@ -166,13 +183,13 @@ const DashboardPhase1 = (function () {
       const severity = below.length >= mos.length * 0.3 ? 'signal-danger' : 'signal-warn';
       signals.push({
         className: severity,
-        icon: 'fa-triangle-exclamation',
+        icon: 'triangle-alert',
         text: `${below.length} из ${mos.length} МО ниже ${PLAN_THRESHOLD}% годового плана КнСК`,
       });
     } else {
       signals.push({
         className: 'signal-success',
-        icon: 'fa-circle-check',
+        icon: 'circle-check',
         text: `Все МО выполняют план не ниже ${PLAN_THRESHOLD}% (по текущей выборке)`,
       });
     }
@@ -181,7 +198,7 @@ const DashboardPhase1 = (function () {
     const weekClass = parseFloat(weekPct) >= 100 ? 'signal-success' : parseFloat(weekPct) >= 70 ? 'signal-warn' : 'signal-danger';
     signals.push({
       className: weekClass,
-      icon: 'fa-calendar-week',
+      icon: 'calendar-days',
       text: `Недельный прирост ${totals.growth.toLocaleString('ru-RU')} исследований — ${weekPct}% от плана ${PLAN_WEEKLY.toLocaleString('ru-RU')}/нед.`,
     });
 
@@ -194,14 +211,14 @@ const DashboardPhase1 = (function () {
       const colonSeverity = belowColon.length >= mos.length * 0.3 ? 'signal-danger' : 'signal-warn';
       signals.push({
         className: colonSeverity,
-        icon: 'fa-hospital',
+        icon: 'building-2',
         text: `${belowColon.length} из ${mos.length} МО ниже ${COLON_THRESHOLD}% колоноскопий у пациентов с положительным результатом КнСК`,
       });
     }
 
     signals.push({
       className: 'signal-warn',
-      icon: 'fa-stethoscope',
+      icon: 'stethoscope',
       text: `Охват колоноскопией: ${totals.colonPercent.toFixed(1)}% (${totals.colon.toLocaleString('ru-RU')} из ${totals.hasDev.toLocaleString('ru-RU')} с положительным КнСК)`,
     });
 
@@ -209,7 +226,7 @@ const DashboardPhase1 = (function () {
     if (topGrowth.length && topGrowth[0].growth > 0) {
       signals.push({
         className: 'signal-success',
-        icon: 'fa-arrow-up',
+        icon: 'arrow-up',
         text: `Лидеры прироста КнСК за неделю: ${topGrowth.map((m) => `${truncateName(m.name, 28)} (+${m.growth})`).join('; ')}`,
       });
     }
@@ -218,7 +235,7 @@ const DashboardPhase1 = (function () {
     if (colonLeaders.length) {
       signals.push({
         className: 'signal-success',
-        icon: 'fa-stethoscope',
+        icon: 'stethoscope',
         text: `Лидеры прироста колоноскопий за неделю: ${colonLeaders.map((m) => `${truncateName(m.name, 28)} (+${m.colonDelta})`).join('; ')}`,
       });
     }
@@ -234,7 +251,7 @@ const DashboardPhase1 = (function () {
     list.innerHTML = signals
       .map(
         (s) =>
-          `<li class="${s.className}"><i class="fas ${s.icon}"></i><span>${escapeHtml(s.text)}</span></li>`
+          `<li class="${s.className}">${icon(s.icon)}<span>${escapeHtml(s.text)}</span></li>`
       )
       .join('');
   }
@@ -617,16 +634,29 @@ const DashboardPhase1 = (function () {
   }
 
   function renderChartsDeferred(mos) {
-    scheduleIdle(function () {
-      renderRankCharts(mos);
-      buildCoverageChart(mos);
-    });
+    function paintCharts() {
+      try {
+        renderRankCharts(mos);
+        buildCoverageChart(mos);
+      } catch (err) {
+        console.error('Ошибка отрисовки графиков рейтингов:', err);
+      }
+    }
+
+    ensureDataLabelsReady()
+      .then(function () {
+        scheduleIdle(paintCharts);
+      })
+      .catch(function (err) {
+        console.error('ChartDataLabels:', err);
+        scheduleIdle(paintCharts);
+      });
   }
 
   function finishRender(mos, totals) {
     const now = new Date().toLocaleString('ru-RU');
     const updateEl = document.getElementById('updateTime');
-    if (updateEl) updateEl.innerHTML = `<i class="far fa-clock"></i> Обновлено: ${now}`;
+    if (updateEl) updateEl.innerHTML = `${icon('clock')} Обновлено: ${now}`;
     return { mos: mos, totals: totals };
   }
 
@@ -654,9 +684,11 @@ const DashboardPhase1 = (function () {
 
     if (opts.progressive === false) {
       renderTable(mos);
-      renderRankCharts(mos);
-      buildCoverageChart(mos);
-      return Promise.resolve(finishRender(mos, totals));
+      return ensureDataLabelsReady().then(function () {
+        renderRankCharts(mos);
+        buildCoverageChart(mos);
+        return finishRender(mos, totals);
+      });
     }
 
     return new Promise(function (resolve) {

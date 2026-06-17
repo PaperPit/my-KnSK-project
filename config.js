@@ -69,17 +69,18 @@ const CONFIG = {
   },
   
   // UI настройки (C3, C4)
-  ui: {
+    ui: {
     skeletonEnabled: false,
     skeletonCount: 15,
     mobileBreakpoint: 768,
     animationsEnabled: true,
+    /** Ленивые бандлы: DashboardPhase2, MoProfile, VendorEcharts (datalabels — синхронно в HTML) */
+    lazyBundles: true,
+    icons: 'local:UiIcons',
     cdn: {
-      chartJs: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
-      chartDataLabels:
-        'https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js',
-      echarts: 'https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js',
-      fontAwesome: 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css',
+      chartJs: 'local:VendorChartJs',
+      chartDataLabels: 'local:VendorChartDataLabels',
+      echarts: 'local:VendorEcharts',
     },
   },
   

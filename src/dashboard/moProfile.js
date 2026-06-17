@@ -8,6 +8,7 @@ import {
   rankBadgeClass,
   normalizeMoKey,
   mergeDisplayedMoPoint,
+  icon,
 } from '../lib/index.js';
 import { formatPeriodLabel } from '../lib/dateUtils.js';
 
@@ -119,7 +120,7 @@ const MoProfile = (function () {
     });
 
     return `<div class="mo-profile-history">
-      <h3><i class="fas fa-table"></i> История по отчётам (${history.length})</h3>
+      <h3>${icon('table-2')} История по отчётам (${history.length})</h3>
       <div class="mo-profile-history-scroll">
         <table>
           <thead><tr>
@@ -137,12 +138,12 @@ const MoProfile = (function () {
     const badges = [];
     if (rankings.byPercent) {
       badges.push(
-        `<span class="mo-profile-rank-badge ${rankBadgeClass(rankings.byPercent, rankings.total)}"><i class="fas fa-trophy"></i> ${rankings.byPercent} место из ${rankings.total} по % выполнения плана иссл. КнСК</span>`
+        `<span class="mo-profile-rank-badge ${rankBadgeClass(rankings.byPercent, rankings.total)}">${icon('trophy')} ${rankings.byPercent} место из ${rankings.total} по % выполнения плана иссл. КнСК</span>`
       );
     }
     if (rankings.byCoverage) {
       badges.push(
-        `<span class="mo-profile-rank-badge ${rankBadgeClass(rankings.byCoverage, rankings.total)}"><i class="fas fa-stethoscope"></i> ${rankings.byCoverage} место из ${rankings.total} по охвату колоноскопией пациентов с КнСК+</span>`
+        `<span class="mo-profile-rank-badge ${rankBadgeClass(rankings.byCoverage, rankings.total)}">${icon('stethoscope')} ${rankings.byCoverage} место из ${rankings.total} по охвату колоноскопией пациентов с КнСК+</span>`
       );
     }
     return `<div class="mo-profile-rank-badges">${badges.join('')}</div>`;
@@ -312,7 +313,7 @@ const MoProfile = (function () {
       ${renderHistoryTable(history)}
       <div class="mo-profile-footer-actions">
         <button type="button" class="mo-profile-link-btn" id="moProfileScrollToRow">
-          <i class="fas fa-table"></i> Открыть в таблице
+          ${icon('table-2')} Открыть в таблице
         </button>
       </div>
     `;

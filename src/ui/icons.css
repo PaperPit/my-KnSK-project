@@ -1,0 +1,39 @@
+/* Lucide SVG sprite — замена Font Awesome (~8 KB vs ~676 KB) */
+.knsk-icon {
+  display: inline-block;
+  width: 1.125em;
+  height: 1.125em;
+  vertical-align: -0.15em;
+  flex-shrink: 0;
+}
+
+.knsk-icon--sm {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+}
+
+.compare-kpi-icon .knsk-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.upload-btn .knsk-icon,
+.save-html-btn .knsk-icon,
+.toolbar-btn .knsk-icon {
+  width: 1em;
+  height: 1em;
+  margin-right: 6px;
+}
+
+.rank-card h4 .knsk-icon {
+  width: 1em;
+  height: 1em;
+  margin-right: 4px;
+}
+
+.mo-drawer-profile-link .knsk-icon {
+  width: 1em;
+  height: 1em;
+  margin-right: 6px;
+}

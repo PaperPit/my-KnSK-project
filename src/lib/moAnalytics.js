@@ -101,13 +101,13 @@ export function buildMoInsights(mo, history, rankings, config) {
   if (mo.percent >= PLAN_THRESHOLD) {
     insights.push({
       className: 'signal-success',
-      icon: 'fa-circle-check',
+      icon: 'circle-check',
       text: `Выполнение годового плана КнСК: ${mo.percent.toFixed(1)}% (порог ${PLAN_THRESHOLD}%)`,
     });
   } else {
     insights.push({
       className: mo.percent >= PLAN_THRESHOLD * 0.85 ? 'signal-warn' : 'signal-danger',
-      icon: 'fa-triangle-exclamation',
+      icon: 'triangle-alert',
       text: `Ниже порога ${PLAN_THRESHOLD}%: ${mo.percent.toFixed(1)}% годового плана КнСК`,
     });
   }
@@ -115,13 +115,13 @@ export function buildMoInsights(mo, history, rankings, config) {
   if (coverage >= COLON_THRESHOLD) {
     insights.push({
       className: 'signal-success',
-      icon: 'fa-stethoscope',
+      icon: 'stethoscope',
       text: `Охват колоноскопией ${coverage.toFixed(1)}% (выше порога ${COLON_THRESHOLD}%)`,
     });
   } else {
     insights.push({
       className: coverage >= COLON_THRESHOLD * 0.7 ? 'signal-warn' : 'signal-danger',
-      icon: 'fa-hospital',
+      icon: 'building-2',
       text: `Охват колоноскопией ${coverage.toFixed(1)}% — ниже порога ${COLON_THRESHOLD}%`,
     });
   }
@@ -131,14 +131,14 @@ export function buildMoInsights(mo, history, rankings, config) {
     weekPct >= 100 ? 'signal-success' : weekPct >= 70 ? 'signal-warn' : 'signal-danger';
   insights.push({
     className: weekClass,
-    icon: 'fa-calendar-week',
+    icon: 'calendar-days',
     text: `Недельный прирост ${(mo.growth || 0).toLocaleString('ru-RU')} (${weekPct.toFixed(0)}% от плана ${PLAN_WEEKLY.toLocaleString('ru-RU')}/нед.)`,
   });
 
   if (rankings.total && rankings.byPercent) {
     insights.push({
       className: rankings.byPercent <= 5 ? 'signal-success' : rankings.byPercent <= rankings.total / 2 ? 'signal-warn' : 'signal-danger',
-      icon: 'fa-trophy',
+      icon: 'trophy',
       text: `${rankings.byPercent}-е место из ${rankings.total} по % годового плана КнСК`,
     });
   }
@@ -146,7 +146,7 @@ export function buildMoInsights(mo, history, rankings, config) {
   if (rankings.total && rankings.byCoverage) {
     insights.push({
       className: rankings.byCoverage <= 5 ? 'signal-success' : 'signal-warn',
-      icon: 'fa-chart-line',
+      icon: 'trending-up',
       text: `${rankings.byCoverage}-е место из ${rankings.total} по охвату колоноскопией`,
     });
   }
@@ -164,7 +164,7 @@ export function buildMoInsights(mo, history, rankings, config) {
           : 'стабильная';
     insights.push({
       className: deltaPct >= 0 ? 'signal-success' : 'signal-warn',
-      icon: 'fa-chart-line',
+      icon: 'trending-up',
       text: `Динамика % плана за ${history.length} отчётов: ${trendText} (${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)} п.п.)`,
     });
   }
@@ -172,7 +172,7 @@ export function buildMoInsights(mo, history, rankings, config) {
   if (rankings.avgPercent && mo.percent < rankings.avgPercent) {
     insights.push({
       className: 'signal-warn',
-      icon: 'fa-scale-balanced',
+      icon: 'scale',
       text: `Отставание от среднего по региону: ${mo.percent.toFixed(1)}% vs ${rankings.avgPercent.toFixed(1)}%`,
     });
   }

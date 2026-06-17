@@ -252,15 +252,15 @@ body.dashboard-phase1 .period-info-text {
 .signals-list li.signal-danger { border-left-color: var(--color-danger); }
 .signals-list li.signal-success { border-left-color: var(--color-success); }
 
-.signals-list li i {
+.signals-list li .knsk-icon {
   margin-top: 2px;
   color: var(--color-accent);
   flex-shrink: 0;
 }
 
-.signals-list li.signal-warn i { color: var(--color-warning); }
-.signals-list li.signal-danger i { color: var(--color-danger); }
-.signals-list li.signal-success i { color: var(--color-success); }
+.signals-list li.signal-warn .knsk-icon { color: var(--color-warning); }
+.signals-list li.signal-danger .knsk-icon { color: var(--color-danger); }
+.signals-list li.signal-success .knsk-icon { color: var(--color-success); }
 
 body.dashboard-phase1 .info-card-content ul {
   margin: 0.4em 0 0.4em 1.2em;

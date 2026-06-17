@@ -66,6 +66,22 @@
     };
   }
 
+  // src/lib/icons.js
+  function icon(name, options) {
+    if (!name) return "";
+    let className = "";
+    let style = "";
+    if (typeof options === "string") {
+      className = options;
+    } else if (options) {
+      className = options.className || "";
+      style = options.style || "";
+    }
+    const cls = ["knsk-icon", className].filter(Boolean).join(" ");
+    const styleAttr = style ? ` style="${style}"` : "";
+    return `<svg class="${cls}"${styleAttr} aria-hidden="true"><use href="#icon-${name}"/></svg>`;
+  }
+
   // src/lib/charts.js
   function makeTrendChart(opts) {
     const { canvasId, weeks, planWeekly, emptyMessage, noteId, previous } = opts;
@@ -365,9 +381,131 @@
     }
   };
 
+  // src/core/bundleLoader.js
+  var bundlePromises = /* @__PURE__ */ Object.create(null);
+  var gasAdapter = null;
+  var dataLabelsRegistered = false;
+  var pendingMos = null;
+  var pendingReportId = null;
+  var LAZY_BUNDLES = /* @__PURE__ */ new Set([
+    "DashboardPhase2",
+    "MoProfile",
+    "VendorChartDataLabels",
+    "VendorEcharts"
+  ]);
+  function initBundleLoader(adapter) {
+    gasAdapter = adapter || null;
+  }
+  function injectScript(code) {
+    const el = document.createElement("script");
+    el.textContent = code;
+    document.head.appendChild(el);
+  }
+  function waitForChart(maxMs) {
+    const limit = maxMs || 15e3;
+    const start = Date.now();
+    return new Promise(function(resolve, reject) {
+      (function tick() {
+        if (typeof Chart !== "undefined") {
+          resolve(window.Chart);
+          return;
+        }
+        if (Date.now() - start > limit) {
+          reject(new Error("Chart.js \u043D\u0435 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u043B\u0441\u044F"));
+          return;
+        }
+        setTimeout(tick, 25);
+      })();
+    });
+  }
+  function loadClientBundle(name) {
+    if (!LAZY_BUNDLES.has(name)) {
+      return Promise.reject(new Error("Unknown bundle: " + name));
+    }
+    if (name === "DashboardPhase2" && window.DashboardPhase2) {
+      return Promise.resolve();
+    }
+    if (name === "MoProfile" && window.MoProfile) {
+      return Promise.resolve();
+    }
+    if (name === "VendorEcharts" && typeof echarts !== "undefined") {
+      return Promise.resolve(window.echarts);
+    }
+    if (name === "VendorChartDataLabels" && typeof ChartDataLabels !== "undefined") {
+      return Promise.resolve(window.ChartDataLabels);
+    }
+    if (bundlePromises[name]) return bundlePromises[name];
+    if (!gasAdapter || !gasAdapter.originalRun) {
+      return Promise.reject(new Error("GAS API \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0434\u043B\u044F \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 " + name));
+    }
+    bundlePromises[name] = gasAdapter.call("getClientBundle", { params: [name] }).then(function(code) {
+      if (!code) throw new Error("\u041F\u0443\u0441\u0442\u043E\u0439 \u0431\u0430\u043D\u0434\u043B: " + name);
+      injectScript(code);
+      if (name === "VendorChartDataLabels") registerChartDataLabels();
+    }).catch(function(err) {
+      delete bundlePromises[name];
+      throw err;
+    });
+    return bundlePromises[name];
+  }
+  function registerChartDataLabels() {
+    if (dataLabelsRegistered || typeof Chart === "undefined" || typeof ChartDataLabels === "undefined") {
+      return;
+    }
+    Chart.register(ChartDataLabels);
+    dataLabelsRegistered = true;
+  }
+  function ensureChartDataLabels() {
+    if (typeof ChartDataLabels !== "undefined") {
+      registerChartDataLabels();
+      return Promise.resolve();
+    }
+    return loadClientBundle("VendorChartDataLabels");
+  }
+  function ensureDashboardPhase2() {
+    return loadClientBundle("DashboardPhase2");
+  }
+  function setMoProfileContext(mos, reportId) {
+    pendingMos = mos || null;
+    pendingReportId = reportId != null && reportId !== "" ? reportId : null;
+    if (window.MoProfile) {
+      window.MoProfile.setCurrentMos(pendingMos);
+      window.MoProfile.setCurrentReportId(pendingReportId);
+    }
+  }
+  function ensureMoProfile() {
+    return loadClientBundle("MoProfile").then(function() {
+      if (window.MoProfile && gasAdapter) {
+        window.MoProfile.init({ gasAdapter });
+        if (pendingMos) window.MoProfile.setCurrentMos(pendingMos);
+        if (pendingReportId != null) window.MoProfile.setCurrentReportId(pendingReportId);
+      }
+    });
+  }
+  function ensureEcharts() {
+    if (typeof echarts !== "undefined") return Promise.resolve(window.echarts);
+    return loadClientBundle("VendorEcharts").then(function() {
+      return window.echarts;
+    });
+  }
+  var bundleLoaderApi = {
+    initBundleLoader,
+    loadClientBundle,
+    waitForChart,
+    registerChartDataLabels,
+    ensureChartDataLabels,
+    ensureDashboardPhase2,
+    ensureMoProfile,
+    ensureEcharts,
+    setMoProfileContext
+  };
+  if (typeof window !== "undefined") {
+    window.KnSKBundleLoader = bundleLoaderApi;
+  }
+
   // src/pages/viewer.js
   (function() {
-    const gasAdapter = new GoogleAppsScriptAdapter(CONFIG.api || {});
+    const gasAdapter2 = new GoogleAppsScriptAdapter(CONFIG.api || {});
     const VIEWER_CACHE_KEY = "knsk_viewer_report_v1";
     const PLAN_WEEKLY = CONFIG.plans.weekly;
     let dynamicChart = null;
@@ -376,27 +514,14 @@
     let chartsReady = false;
     const formatDate = formatShortDate;
     function whenChartsReady(fn) {
-      if (typeof Chart !== "undefined" && ChartDataLabels) {
-        if (!chartsReady) {
-          Chart.register(ChartDataLabels);
-          chartsReady = true;
-        }
+      waitForChart().then(function() {
+        return ensureChartDataLabels();
+      }).then(function() {
+        if (!chartsReady) chartsReady = true;
         fn();
-        return;
-      }
-      var attempts = 0;
-      var timer = setInterval(function() {
-        attempts += 1;
-        if (typeof Chart !== "undefined" && ChartDataLabels) {
-          clearInterval(timer);
-          Chart.register(ChartDataLabels);
-          chartsReady = true;
-          fn();
-        } else if (attempts > 200) {
-          clearInterval(timer);
-          console.error("Chart.js \u043D\u0435 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u043B\u0441\u044F");
-        }
-      }, 25);
+      }).catch(function(err) {
+        console.error(err);
+      });
     }
     function getWeekRangeFromReportDate(reportDateStr) {
       if (!reportDateStr) return "\u0414\u0430\u0442\u0430 \u043D\u0435 \u0443\u043A\u0430\u0437\u0430\u043D\u0430";
@@ -502,9 +627,9 @@
       const plansDisplay = document.getElementById("plansTextDisplay");
       if (plansDisplay) plansDisplay.innerHTML = renderHtmlContent(report.plansText);
       const doneDate = document.getElementById("doneDateDisplay");
-      if (doneDate) doneDate.innerHTML = '<i class="far fa-calendar-alt"></i> \u041E\u0442\u0447\u0451\u0442\u043D\u0430\u044F \u043D\u0435\u0434\u0435\u043B\u044F: ' + escapeHtml(currentWeekRange);
+      if (doneDate) doneDate.innerHTML = icon("calendar") + " \u041E\u0442\u0447\u0451\u0442\u043D\u0430\u044F \u043D\u0435\u0434\u0435\u043B\u044F: " + escapeHtml(currentWeekRange);
       const plansDate = document.getElementById("plansDateDisplay");
-      if (plansDate) plansDate.innerHTML = '<i class="far fa-calendar-alt"></i> ' + escapeHtml(timestamp);
+      if (plansDate) plansDate.innerHTML = icon("calendar") + " " + escapeHtml(timestamp);
       const nextWeekEl = document.getElementById("nextWeekPeriodDisplay");
       if (nextWeekEl) nextWeekEl.textContent = nextWeek.display;
       const normalized = DashboardPhase1.normalizeArchiveReport(report);
@@ -535,24 +660,37 @@
             previousMos: previousMos || null
           });
         }
-        if (window.MoProfile) {
-          window.MoProfile.setCurrentMos(mos);
-          window.MoProfile.setCurrentReportId(reportId || null);
-        }
+        setMoProfileContext(mos, reportId || null);
         return result;
       });
     }
-    function initViewer() {
+    window.addEventListener("DOMContentLoaded", function() {
+      initBundleLoader(gasAdapter2);
       const container = document.getElementById("dashboardContainer");
       const initialIdRaw = container && container.getAttribute("data-initial-report-id");
       const initialId = initialIdRaw ? parseInt(initialIdRaw, 10) : null;
-      if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
-      const cached = loadViewerCache();
-      if (cached && cached.report && (!initialId || cached.reportId === initialId)) {
-        const ctx = resolvePreviousContext(cached.previous);
-        applyReportToDashboard(cached.report, ctx.previousTotals, ctx.previousMos, cached.reportId);
-      }
-      gasAdapter.call("getArchiveBootstrap", { params: [initialId || null] }).then(function(data) {
+      Promise.all([waitForChart(), ensureDashboardPhase2()]).then(function() {
+        if (window.DashboardPhase2) {
+          DashboardPhase2.init({
+            onStatus: function(msg, ok) {
+              if (!ok) console.error(msg);
+              else if (window.__KNSK_DEBUG) console.log(msg);
+            },
+            gasAdapter: gasAdapter2
+          });
+        }
+        ensureEcharts().catch(function(err) {
+          console.warn("ECharts preload:", err);
+        });
+        if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
+        const cached = loadViewerCache();
+        if (cached && cached.report && (!initialId || cached.reportId === initialId)) {
+          const ctx = resolvePreviousContext(cached.previous);
+          applyReportToDashboard(cached.report, ctx.previousTotals, ctx.previousMos, cached.reportId);
+        }
+        return gasAdapter2.call("getArchiveBootstrap", { params: [initialId || null] });
+      }).then(function(data) {
+        if (!data) return;
         reportsList = data && data.list || [];
         window.archiveReportsList = reportsList;
         if (!reportsList.length) {
@@ -565,7 +703,12 @@
         }
         if (data && data.report) {
           const prevCtx = resolvePreviousContext(data.previous);
-          applyReportToDashboard(data.report, prevCtx.previousTotals, prevCtx.previousMos, data.reportId);
+          applyReportToDashboard(
+            data.report,
+            prevCtx.previousTotals,
+            prevCtx.previousMos,
+            data.reportId
+          );
           saveViewerCache(data.reportId, data.report, data.previous);
           if (window.DashboardPhase2 && DashboardPhase2.cacheArchiveReport) {
             DashboardPhase2.cacheArchiveReport(data.reportId, data.report);
@@ -574,20 +717,28 @@
                 window.archiveReportsList || reportsList,
                 data.reportId
               );
-              if (bootstrapPrevId) DashboardPhase2.cacheArchiveReport(bootstrapPrevId, data.previous);
+              if (bootstrapPrevId) {
+                DashboardPhase2.cacheArchiveReport(bootstrapPrevId, data.previous);
+              }
             }
           }
         }
       }).catch(function(err) {
         if (window.DashboardPhase1) DashboardPhase1.hideLoadingState();
         document.getElementById("signalsList").innerHTML = "<li>\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438: " + escapeHtml(err.message || String(err)) + "</li>";
-        console.error("\u041E\u0448\u0438\u0431\u043A\u0430 bootstrap:", err);
+        console.error("\u041E\u0448\u0438\u0431\u043A\u0430 \u0438\u043D\u0438\u0446\u0438\u0430\u043B\u0438\u0437\u0430\u0446\u0438\u0438 viewer:", err);
       });
-    }
+      document.getElementById("archiveSelect").addEventListener("change", function() {
+        const selectedId = this.value;
+        if (selectedId && selectedId !== "") {
+          loadReportById(selectedId);
+        }
+      });
+    });
     function loadReportById(id) {
       if (!id || id === "") return;
       if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
-      gasAdapter.call("getArchivedReportWithPrevious", { params: [parseInt(id, 10)] }).then(function(payload) {
+      gasAdapter2.call("getArchivedReportWithPrevious", { params: [parseInt(id, 10)] }).then(function(payload) {
         const report = payload && payload.report;
         if (!report) return;
         const prevCtx = resolvePreviousContext(payload.previous);
@@ -606,27 +757,6 @@
         console.error("\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u043E\u0442\u0447\u0451\u0442\u0430:", err);
       });
     }
-    window.addEventListener("DOMContentLoaded", function() {
-      whenChartsReady(function() {
-        if (window.DashboardPhase2) {
-          DashboardPhase2.init({
-            onStatus: function(msg) {
-              if (window.__KNSK_DEBUG) console.log(msg);
-            }
-          });
-        }
-        if (window.MoProfile) {
-          window.MoProfile.init({ gasAdapter });
-        }
-        initViewer();
-        document.getElementById("archiveSelect").addEventListener("change", function() {
-          const selectedId = this.value;
-          if (selectedId && selectedId !== "") {
-            loadReportById(selectedId);
-          }
-        });
-      });
-    });
   })();
 })();
 

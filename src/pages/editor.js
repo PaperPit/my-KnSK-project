@@ -14,14 +14,23 @@
  * KPI и таблица — DashboardPhase1/2 (через window). Математика — KnSKLib.
  * =============================================================================
  */
-import { renderHtmlContent, parseCSV, formatShortDate, getNextWeekPeriod } from '../lib/index.js';
+import { renderHtmlContent, parseCSV, formatShortDate, getNextWeekPeriod, icon } from '../lib/index.js';
+import {
+  initBundleLoader,
+  waitForChart,
+  ensureDashboardPhase2,
+  ensureEcharts,
+  setMoProfileContext,
+} from '../core/bundleLoader.js';
 import { makeTrendChart, makePlanFactChart } from '../lib/charts.js';
 import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
 
 (function () {
   const gasAdapter = new GoogleAppsScriptAdapter(CONFIG.api || {});
 
-  Chart.register(ChartDataLabels);
+  if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined' && !Chart.registry.getPlugin('datalabels')) {
+    Chart.register(ChartDataLabels);
+  }
 
   let currentMOSData = [];
     let weeksData = [];
@@ -79,8 +88,8 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         const currentDate = new Date().toLocaleString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
         document.getElementById('doneTextDisplay').innerHTML = renderHtmlContent(doneRaw);
         document.getElementById('plansTextDisplay').innerHTML = renderHtmlContent(plansRaw);
-        document.getElementById('doneDateDisplay').innerHTML = `<i class="far fa-calendar-alt"></i> ${currentDate}`;
-        document.getElementById('plansDateDisplay').innerHTML = `<i class="far fa-calendar-alt"></i> ${currentDate}`;
+        document.getElementById('doneDateDisplay').innerHTML = `${icon('calendar')} ${currentDate}`;
+        document.getElementById('plansDateDisplay').innerHTML = `${icon('calendar')} ${currentDate}`;
     }
     
     function syncPeriodToDashboard() {
@@ -121,10 +130,10 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
             const div = document.createElement('div');
             div.className = 'week-card';
             div.innerHTML = `
-                <div class="week-period-display"><i class="far fa-calendar"></i> ${formatDate(w.start)} - ${formatDate(w.end)}</div>
+                <div class="week-period-display">${icon('calendar')} ${formatDate(w.start)} - ${formatDate(w.end)}</div>
                 <label>🔬 Количество исследований</label>
                 <input type="number" class="week-value-input" value="${w.value}" step="100">
-                <button class="btn-remove-week" data-id="${w.id}"><i class="fas fa-trash"></i> Удалить</button>
+                <button class="btn-remove-week" data-id="${w.id}">${icon('trash-2')} Удалить</button>
             `;
             container.appendChild(div);
             div.querySelector('.week-value-input').addEventListener('change', (e) => updateWeekValue(w.id, e.target.value));
@@ -191,17 +200,14 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
             updateTrendGraph();
 
             if (window.DashboardPhase2) {
-                DashboardPhase2.renderAll(mos, {
-                    totals: result.totals,
-                    previousMos: opts.previousMos || null,
+                ensureDashboardPhase2().then(function () {
+                    DashboardPhase2.renderAll(mos, {
+                        totals: result.totals,
+                        previousMos: opts.previousMos || null,
+                    });
                 });
             }
-            if (window.MoProfile) {
-                window.MoProfile.setCurrentMos(mos);
-                if (opts.archiveReportId != null) {
-                    window.MoProfile.setCurrentReportId(opts.archiveReportId);
-                }
-            }
+            setMoProfileContext(mos, opts.archiveReportId != null ? opts.archiveReportId : null);
             return result;
         });
     }
@@ -348,7 +354,9 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
                             select.appendChild(option);
                         });
                         if (window.DashboardPhase2) {
-                            DashboardPhase2.populateCompareSelects(archiveReportsList, null);
+                            ensureDashboardPhase2().then(function () {
+                                DashboardPhase2.populateCompareSelects(archiveReportsList, null);
+                            });
                         }
                         setStatus(`✅ Загружено ${archiveReportsList.length} архивных отчётов`, true);
                     } else {
@@ -514,8 +522,8 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         
         document.getElementById('doneTextDisplay').innerHTML = renderHtmlContent(DONE_TEXT);
         document.getElementById('plansTextDisplay').innerHTML = renderHtmlContent(PLANS_TEXT);
-        document.getElementById('doneDateDisplay').innerHTML = '<i class="far fa-calendar-alt"></i> ' + CURRENT_DATE;
-        document.getElementById('plansDateDisplay').innerHTML = '<i class="far fa-calendar-alt"></i> ' + CURRENT_DATE;
+        document.getElementById('doneDateDisplay').innerHTML = icon('calendar') + ' ' + CURRENT_DATE;
+        document.getElementById('plansDateDisplay').innerHTML = icon('calendar') + ' ' + CURRENT_DATE;
         document.getElementById('nextWeekPeriodDisplay').innerHTML = NEXT_WEEK_PERIOD;
         document.getElementById('periodDisplayText').innerHTML = PERIOD_TEXT || 'Период не указан';
         
@@ -636,13 +644,17 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         syncPeriodToDashboard();
         loadArchiveList();
 
-        if (window.DashboardPhase2) {
-            DashboardPhase2.init({ onStatus: setStatus });
-        }
-        if (window.MoProfile) {
-            window.MoProfile.init({ gasAdapter: gasAdapter });
-        }
-        
+        initBundleLoader(gasAdapter);
+
+        Promise.all([waitForChart(), ensureDashboardPhase2()]).then(function () {
+            if (window.DashboardPhase2) {
+                DashboardPhase2.init({ onStatus: setStatus, gasAdapter: gasAdapter });
+            }
+            ensureEcharts().catch(function (err) {
+                console.warn('ECharts preload:', err);
+            });
+        });
+
         document.getElementById('csvFile').addEventListener('change', e => {
             const file = e.target.files[0];
             if (!file) return;
@@ -650,7 +662,7 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
             reader.onload = ev => {
                 if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
                 currentMOSData = parseCSV(ev.target.result);
-                if (window.MoProfile) window.MoProfile.setCurrentReportId(null);
+                setMoProfileContext(null, null);
                 renderMOSDashboard(currentMOSData).then(function () {
                     setStatus(`Загружен CSV: ${file.name}`, true);
                 });

@@ -85,6 +85,27 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
+/** Разрешённые ленивые клиентские бандлы (имя HTML-файла без расширения). */
+var CLIENT_BUNDLE_ALLOWLIST = {
+  DashboardPhase2: true,
+  MoProfile: true,
+  VendorChartDataLabels: true,
+  VendorEcharts: true,
+};
+
+/**
+ * Ленивая подгрузка JS-бандла с сервера (без внешних CDN).
+ * @param {string} name — имя файла: DashboardPhase2, MoProfile, …
+ * @returns {string} чистый JS-код
+ */
+function getClientBundle(name) {
+  if (!name || !CLIENT_BUNDLE_ALLOWLIST[name]) {
+    throw new Error('Неизвестный клиентский бандл: ' + name);
+  }
+  var raw = HtmlService.createHtmlOutputFromFile(name).getContent();
+  return raw.replace(/^<script>\s*/i, '').replace(/\s*<\/script>\s*$/i, '');
+}
+
 /** Чтение листа «Данные» как массив объектов {заголовок: значение} */
 function getCurrentData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();

@@ -10,11 +10,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <title>Просмотр отчёта Онкоскрининг</title>
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
-    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <?!= include('UiIcons'); ?>
     <?!= include('UiTokens'); ?>
     <?!= include('UiPhase2'); ?>
     <?!= include('ViewerStyles'); ?>
@@ -28,9 +24,6 @@
       window.CONFIG = _cfg;
     })();
     </script>
-    <?!= include('DashboardPhase1'); ?>
-    <?!= include('DashboardPhase2'); ?>
-    <?!= include('MoProfile'); ?>
 </head>
 <body class="dashboard-phase1 viewer-mode">
 <div class="dashboard" id="dashboardContainer" data-initial-report-id="<?= reportId || '' ?>">
@@ -49,15 +42,15 @@
         
         <div class="controls-row">
             <label>
-                <i class="fas fa-history"></i> Выберите отчёт из архива:
+                <svg class="knsk-icon" aria-hidden="true"><use href="#icon-history"/></svg> Выберите отчёт из архива:
             </label>
             <select id="archiveSelect">
                 <option value="">— Загрузка списка... —</option>
             </select>
-            <button type="button" class="refresh-btn refresh-btn--presentation" id="presentationModeBtn"><i class="fas fa-expand"></i> Презентация</button>
+            <button type="button" class="refresh-btn refresh-btn--presentation" id="presentationModeBtn"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-maximize-2"/></svg> Презентация</button>
         </div>
         <div class="compare-controls">
-            <label><i class="fas fa-code-compare"></i> Сравнить:</label>
+            <label><svg class="knsk-icon" aria-hidden="true"><use href="#icon-git-compare"/></svg> Сравнить:</label>
             <select id="compareSelectA" title="Ранний период"></select>
             <span>→</span>
             <select id="compareSelectB" title="Поздний период"></select>
@@ -71,31 +64,31 @@
         </div>
 
         <div class="signals-panel" id="signalsPanel">
-            <h3 class="signals-title"><i class="fas fa-bell"></i> Ключевые сигналы</h3>
+            <h3 class="signals-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-bell"/></svg> Ключевые сигналы</h3>
             <ul class="signals-list" id="signalsList"><li>Загрузка…</li></ul>
         </div>
 
         <div class="kpi-grid">
             <div class="kpi-card kpi-card--plan">
-                <div class="kpi-title"><i class="fas fa-chart-line"></i> План на год</div>
+                <div class="kpi-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-trending-up"/></svg> План на год</div>
                 <div class="kpi-value" id="totalPercent">--</div>
                 <div class="kpi-sub" id="totalPlanFact">--</div>
                 <div id="totalPercentDelta"></div>
             </div>
             <div class="kpi-card kpi-card--ksk">
-                <div class="kpi-title"><i class="fas fa-vial"></i> КНСК с начала года</div>
+                <div class="kpi-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-test-tubes"/></svg> КНСК с начала года</div>
                 <div class="kpi-value" id="totalKsk">--</div>
                 <div class="kpi-sub" id="weeklyGrowth">--</div>
                 <div id="totalGrowthDelta"></div>
             </div>
             <div class="kpi-card kpi-card--colon">
-                <div class="kpi-title"><i class="fas fa-stethoscope"></i> Прошли колоноскопию</div>
+                <div class="kpi-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-stethoscope"/></svg> Прошли колоноскопию</div>
                 <div class="kpi-value" id="totalColonPassed">--</div>
                 <div class="kpi-sub" id="colonPercent">--</div>
                 <div id="totalColonDelta"></div>
             </div>
             <div class="kpi-card kpi-card--zno">
-                <div class="kpi-title"><i class="fas fa-biohazard"></i> Выявлено ЗНО</div>
+                <div class="kpi-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-biohazard"/></svg> Выявлено ЗНО</div>
                 <div class="kpi-value" id="totalZno">--</div>
                 <div class="kpi-sub">1-2 стадия</div>
                 <div id="totalZnoDelta"></div>
@@ -104,30 +97,30 @@
 
         <div class="charts-row">
             <div class="chart-card">
-                <div class="chart-title"><i class="fas fa-chart-column"></i> Недельный план КнСК</div>
+                <div class="chart-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-chart-column"/></svg> Недельный план КнСК</div>
                 <canvas id="planFactChart" height="250"></canvas>
                 <div id="planFactNote" style="margin-top: 12px; font-size: 0.8rem; background:#fef9e3; padding: 8px; border-radius: 18px; text-align: center;"></div>
             </div>
             <div class="chart-card">
-                <div class="chart-title"><i class="fas fa-chart-line"></i> Динамика КнСК</div>
+                <div class="chart-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-trending-up"/></svg> Динамика КнСК</div>
                 <canvas id="trendChart" height="250"></canvas>
                 <div id="trendNote" style="margin-top: 12px; font-size: 0.8rem; color: #4b5563; text-align: center;"></div>
             </div>
         </div>
 
         <div class="rank-row">
-            <div class="rank-card"><h4><i class="fas fa-trophy" style="color:#f39c12;"></i> Топ-5 по % плана КнСК</h4><div class="rank-chart-wrap"><canvas id="top5PlanChart"></canvas></div></div>
-            <div class="rank-card"><h4><i class="fas fa-exclamation-triangle" style="color:#e74c3c;"></i> Антитоп-5 по % плана КнСК</h4><div class="rank-chart-wrap"><canvas id="bottom5PlanChart"></canvas></div></div>
+            <div class="rank-card"><h4><svg class="knsk-icon" style="color:#f39c12;" aria-hidden="true"><use href="#icon-trophy"/></svg> Топ-5 по % плана КнСК</h4><div class="rank-chart-wrap"><canvas id="top5PlanChart"></canvas></div></div>
+            <div class="rank-card"><h4><svg class="knsk-icon" style="color:#e74c3c;" aria-hidden="true"><use href="#icon-triangle-alert"/></svg> Антитоп-5 по % плана КнСК</h4><div class="rank-chart-wrap"><canvas id="bottom5PlanChart"></canvas></div></div>
         </div>
 
         <div class="rank-row">
-            <div class="rank-card"><h4><i class="fas fa-trophy" style="color:#2c7da0;"></i> Топ-5 по охвату колоноскопией</h4><div class="rank-chart-wrap"><canvas id="top5CoverageChart"></canvas></div></div>
-            <div class="rank-card"><h4><i class="fas fa-exclamation-triangle" style="color:#c0392b;"></i> Антитоп-5 по охвату колоноскопией</h4><div class="rank-chart-wrap"><canvas id="bottom5CoverageChart"></canvas></div><p class="rank-chart-note">* В антитоп-5 показаны только МО, у которых 10 и более пациентов с положительным результатом КнСК.</p></div>
+            <div class="rank-card"><h4><svg class="knsk-icon" style="color:#2c7da0;" aria-hidden="true"><use href="#icon-trophy"/></svg> Топ-5 по охвату колоноскопией</h4><div class="rank-chart-wrap"><canvas id="top5CoverageChart"></canvas></div></div>
+            <div class="rank-card"><h4><svg class="knsk-icon" style="color:#c0392b;" aria-hidden="true"><use href="#icon-triangle-alert"/></svg> Антитоп-5 по охвату колоноскопией</h4><div class="rank-chart-wrap"><canvas id="bottom5CoverageChart"></canvas></div><p class="rank-chart-note">* В антитоп-5 показаны только МО, у которых 10 и более пациентов с положительным результатом КнСК.</p></div>
         </div>
 
         <div class="charts-row charts-row--full">
             <div class="chart-card coverage-chart-card">
-                <div class="chart-title"><i class="fas fa-chart-bar"></i> Охват колоноскопией среди КнСК+ (все МО) <span style="font-size:0.75rem;font-weight:500;color:#5b6e8c;">— прокрутите график →</span></div>
+                <div class="chart-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-chart-bar"/></svg> Охват колоноскопией среди КнСК+ (все МО) <span style="font-size:0.75rem;font-weight:500;color:#5b6e8c;">— прокрутите график →</span></div>
                 <div class="coverage-chart-scroll" id="coverageChartScroll">
                     <div class="coverage-chart-inner" id="coverageChartInner">
                         <canvas id="coverageChart" height="280"></canvas>
@@ -152,7 +145,7 @@
         </div>
 
         <div class="table-container">
-            <h3><i class="fas fa-table-list"></i> Сводная таблица по МО (скрининг КнСК)</h3>
+            <h3><svg class="knsk-icon" aria-hidden="true"><use href="#icon-table-2"/></svg> Сводная таблица по МО (скрининг КнСК)</h3>
             <div class="table-toolbar">
                 <input type="search" id="moTableSearch" placeholder="Поиск по названию МО…" autocomplete="off">
                 <span class="table-filter-hint" id="tableFilterHint"></span>
@@ -160,7 +153,7 @@
             <div class="table-scroll-wrap">
                 <table id="mainTable"><thead><tr><th>№</th><th>МО</th><th>План</th><th>Итого</th><th>%</th><th>Динамика</th><th>Нет откл.</th><th>Есть откл.</th><th>Колоноск.</th><th>ЗНО</th></tr></thead><tbody id="tableBody"></tbody></table>
             </div>
-            <p class="table-mo-hint"><i class="fas fa-hand-pointer"></i> Для более детального анализа нажмите на одну из МО в таблице</p>
+            <p class="table-mo-hint"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-mouse-pointer-click"/></svg> Для более детального анализа нажмите на одну из МО в таблице</p>
         </div>
     </div>
 </div>
@@ -178,7 +171,7 @@
 <div id="compareOverlay" class="compare-overlay" aria-hidden="true">
     <div class="compare-panel" id="comparePanel" role="dialog" aria-modal="true" aria-labelledby="comparePanelTitle">
         <button type="button" class="compare-panel-close" id="comparePanelClose" aria-label="Закрыть">&times;</button>
-        <h3 id="comparePanelTitle"><i class="fas fa-code-compare"></i> Сравнение двух архивных отчётов</h3>
+        <h3 id="comparePanelTitle"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-git-compare"/></svg> Сравнение двух архивных отчётов</h3>
         <div id="comparePanelContent"></div>
     </div>
 </div>
@@ -189,5 +182,15 @@
         <div id="moProfileContent"></div>
     </div>
 </div>
+<?!= include('VendorChartJs'); ?>
+<?!= include('VendorChartDataLabels'); ?>
+<script>
+(function () {
+  if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined') {
+    Chart.register(ChartDataLabels);
+  }
+})();
+</script>
+<?!= include('DashboardPhase1'); ?>
 <?!= include('ViewerPage'); ?>
 </body></html>

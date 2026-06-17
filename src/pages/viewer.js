@@ -8,9 +8,17 @@
  * Кэш: localStorage VIEWER_CACHE_KEY.
  * =============================================================================
  */
-import { renderHtmlContent, escapeHtml, formatShortDate, getNextWeekPeriod } from '../lib/index.js';
+import { renderHtmlContent, escapeHtml, formatShortDate, getNextWeekPeriod, icon } from '../lib/index.js';
 import { makeTrendChart, makePlanFactChart } from '../lib/charts.js';
 import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
+import {
+  initBundleLoader,
+  waitForChart,
+  ensureChartDataLabels,
+  ensureDashboardPhase2,
+  ensureEcharts,
+  setMoProfileContext,
+} from '../core/bundleLoader.js';
 
 (function () {
   const gasAdapter = new GoogleAppsScriptAdapter(CONFIG.api || {});
@@ -25,27 +33,17 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
     const formatDate = formatShortDate;
 
     function whenChartsReady(fn) {
-        if (typeof Chart !== 'undefined' && ChartDataLabels) {
-            if (!chartsReady) {
-                Chart.register(ChartDataLabels);
-                chartsReady = true;
-            }
-            fn();
-            return;
-        }
-        var attempts = 0;
-        var timer = setInterval(function () {
-            attempts += 1;
-            if (typeof Chart !== 'undefined' && ChartDataLabels) {
-                clearInterval(timer);
-                Chart.register(ChartDataLabels);
-                chartsReady = true;
+        waitForChart()
+            .then(function () {
+                return ensureChartDataLabels();
+            })
+            .then(function () {
+                if (!chartsReady) chartsReady = true;
                 fn();
-            } else if (attempts > 200) {
-                clearInterval(timer);
-                console.error('Chart.js не загрузился');
-            }
-        }, 25);
+            })
+            .catch(function (err) {
+                console.error(err);
+            });
     }
 
     function getWeekRangeFromReportDate(reportDateStr) {
@@ -164,9 +162,9 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         const plansDisplay = document.getElementById('plansTextDisplay');
         if (plansDisplay) plansDisplay.innerHTML = renderHtmlContent(report.plansText);
         const doneDate = document.getElementById('doneDateDisplay');
-        if (doneDate) doneDate.innerHTML = '<i class="far fa-calendar-alt"></i> Отчётная неделя: ' + escapeHtml(currentWeekRange);
+        if (doneDate) doneDate.innerHTML = icon('calendar') + ' Отчётная неделя: ' + escapeHtml(currentWeekRange);
         const plansDate = document.getElementById('plansDateDisplay');
-        if (plansDate) plansDate.innerHTML = '<i class="far fa-calendar-alt"></i> ' + escapeHtml(timestamp);
+        if (plansDate) plansDate.innerHTML = icon('calendar') + ' ' + escapeHtml(timestamp);
         const nextWeekEl = document.getElementById('nextWeekPeriodDisplay');
         if (nextWeekEl) nextWeekEl.textContent = nextWeek.display;
         const normalized = DashboardPhase1.normalizeArchiveReport(report);
@@ -201,67 +199,96 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
                     previousMos: previousMos || null,
                 });
             }
-            if (window.MoProfile) {
-                window.MoProfile.setCurrentMos(mos);
-                window.MoProfile.setCurrentReportId(reportId || null);
-            }
+            setMoProfileContext(mos, reportId || null);
             return result;
         });
     }
     
-  function initViewer() {
+  window.addEventListener('DOMContentLoaded', function () {
+        initBundleLoader(gasAdapter);
+
         const container = document.getElementById('dashboardContainer');
         const initialIdRaw = container && container.getAttribute('data-initial-report-id');
         const initialId = initialIdRaw ? parseInt(initialIdRaw, 10) : null;
 
-        if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
+        Promise.all([waitForChart(), ensureDashboardPhase2()])
+            .then(function () {
+                if (window.DashboardPhase2) {
+                    DashboardPhase2.init({
+                        onStatus: function (msg, ok) {
+                            if (!ok) console.error(msg);
+                            else if (window.__KNSK_DEBUG) console.log(msg);
+                        },
+                        gasAdapter: gasAdapter,
+                    });
+                }
+                ensureEcharts().catch(function (err) {
+                    console.warn('ECharts preload:', err);
+                });
 
-        const cached = loadViewerCache();
-        if (cached && cached.report && (!initialId || cached.reportId === initialId)) {
-            const ctx = resolvePreviousContext(cached.previous);
-            applyReportToDashboard(cached.report, ctx.previousTotals, ctx.previousMos, cached.reportId);
-        }
+                if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
 
-    gasAdapter
-      .call('getArchiveBootstrap', { params: [initialId || null] })
-      .then(function (data) {
-        reportsList = (data && data.list) || [];
-        window.archiveReportsList = reportsList;
+                const cached = loadViewerCache();
+                if (cached && cached.report && (!initialId || cached.reportId === initialId)) {
+                    const ctx = resolvePreviousContext(cached.previous);
+                    applyReportToDashboard(cached.report, ctx.previousTotals, ctx.previousMos, cached.reportId);
+                }
 
-        if (!reportsList.length) {
-          document.getElementById('signalsList').innerHTML =
-            '<li>Нет сохранённых отчётов в архиве</li>';
-          return;
-        }
+                return gasAdapter.call('getArchiveBootstrap', { params: [initialId || null] });
+            })
+            .then(function (data) {
+                if (!data) return;
+                reportsList = (data && data.list) || [];
+                window.archiveReportsList = reportsList;
 
-        populateArchiveSelect(reportsList, data.reportId);
-        if (window.DashboardPhase2) {
-          DashboardPhase2.populateCompareSelects(reportsList, null);
-        }
+                if (!reportsList.length) {
+                    document.getElementById('signalsList').innerHTML =
+                        '<li>Нет сохранённых отчётов в архиве</li>';
+                    return;
+                }
 
-        if (data && data.report) {
-          const prevCtx = resolvePreviousContext(data.previous);
-          applyReportToDashboard(data.report, prevCtx.previousTotals, prevCtx.previousMos, data.reportId);
-          saveViewerCache(data.reportId, data.report, data.previous);
-          if (window.DashboardPhase2 && DashboardPhase2.cacheArchiveReport) {
-            DashboardPhase2.cacheArchiveReport(data.reportId, data.report);
-            if (data.previous && window.DashboardPhase1 && DashboardPhase1.getPreviousArchiveId) {
-              var bootstrapPrevId = DashboardPhase1.getPreviousArchiveId(
-                window.archiveReportsList || reportsList,
-                data.reportId
-              );
-              if (bootstrapPrevId) DashboardPhase2.cacheArchiveReport(bootstrapPrevId, data.previous);
+                populateArchiveSelect(reportsList, data.reportId);
+                if (window.DashboardPhase2) {
+                    DashboardPhase2.populateCompareSelects(reportsList, null);
+                }
+
+                if (data && data.report) {
+                    const prevCtx = resolvePreviousContext(data.previous);
+                    applyReportToDashboard(
+                        data.report,
+                        prevCtx.previousTotals,
+                        prevCtx.previousMos,
+                        data.reportId
+                    );
+                    saveViewerCache(data.reportId, data.report, data.previous);
+                    if (window.DashboardPhase2 && DashboardPhase2.cacheArchiveReport) {
+                        DashboardPhase2.cacheArchiveReport(data.reportId, data.report);
+                        if (data.previous && window.DashboardPhase1 && DashboardPhase1.getPreviousArchiveId) {
+                            var bootstrapPrevId = DashboardPhase1.getPreviousArchiveId(
+                                window.archiveReportsList || reportsList,
+                                data.reportId
+                            );
+                            if (bootstrapPrevId) {
+                                DashboardPhase2.cacheArchiveReport(bootstrapPrevId, data.previous);
+                            }
+                        }
+                    }
+                }
+            })
+            .catch(function (err) {
+                if (window.DashboardPhase1) DashboardPhase1.hideLoadingState();
+                document.getElementById('signalsList').innerHTML =
+                    '<li>Ошибка загрузки: ' + escapeHtml(err.message || String(err)) + '</li>';
+                console.error('Ошибка инициализации viewer:', err);
+            });
+
+        document.getElementById('archiveSelect').addEventListener('change', function () {
+            const selectedId = this.value;
+            if (selectedId && selectedId !== '') {
+                loadReportById(selectedId);
             }
-          }
-        }
-      })
-      .catch(function (err) {
-        if (window.DashboardPhase1) DashboardPhase1.hideLoadingState();
-        document.getElementById('signalsList').innerHTML =
-          '<li>Ошибка загрузки: ' + escapeHtml(err.message || String(err)) + '</li>';
-        console.error('Ошибка bootstrap:', err);
-      });
-  }
+        });
+  });
 
   function loadReportById(id) {
     if (!id || id === '') return;
@@ -292,25 +319,4 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         console.error('Ошибка загрузки отчёта:', err);
       });
   }
-
-  window.addEventListener('DOMContentLoaded', function () {
-        whenChartsReady(function () {
-            if (window.DashboardPhase2) {
-                DashboardPhase2.init({
-                    onStatus: function (msg) { if (window.__KNSK_DEBUG) console.log(msg); }
-                });
-            }
-            if (window.MoProfile) {
-                window.MoProfile.init({ gasAdapter: gasAdapter });
-            }
-            initViewer();
-
-            document.getElementById('archiveSelect').addEventListener('change', function () {
-                const selectedId = this.value;
-                if (selectedId && selectedId !== '') {
-                    loadReportById(selectedId);
-                }
-            });
-        });
-  });
 })();

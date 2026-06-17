@@ -19,3 +19,4 @@ export * from './dateUtils.js';
 export * from './moUtils.js';
 export * from './moAnalytics.js';
 export * from './moHistory.js';
+export * from './icons.js';

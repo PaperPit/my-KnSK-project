@@ -94,6 +94,144 @@
     };
   }
 
+  // src/lib/icons.js
+  function icon(name, options) {
+    if (!name) return "";
+    let className = "";
+    let style = "";
+    if (typeof options === "string") {
+      className = options;
+    } else if (options) {
+      className = options.className || "";
+      style = options.style || "";
+    }
+    const cls = ["knsk-icon", className].filter(Boolean).join(" ");
+    const styleAttr = style ? ` style="${style}"` : "";
+    return `<svg class="${cls}"${styleAttr} aria-hidden="true"><use href="#icon-${name}"/></svg>`;
+  }
+
+  // src/core/bundleLoader.js
+  var bundlePromises = /* @__PURE__ */ Object.create(null);
+  var gasAdapter = null;
+  var dataLabelsRegistered = false;
+  var pendingMos = null;
+  var pendingReportId = null;
+  var LAZY_BUNDLES = /* @__PURE__ */ new Set([
+    "DashboardPhase2",
+    "MoProfile",
+    "VendorChartDataLabels",
+    "VendorEcharts"
+  ]);
+  function initBundleLoader(adapter) {
+    gasAdapter = adapter || null;
+  }
+  function injectScript(code) {
+    const el = document.createElement("script");
+    el.textContent = code;
+    document.head.appendChild(el);
+  }
+  function waitForChart(maxMs) {
+    const limit = maxMs || 15e3;
+    const start = Date.now();
+    return new Promise(function(resolve, reject) {
+      (function tick() {
+        if (typeof Chart !== "undefined") {
+          resolve(window.Chart);
+          return;
+        }
+        if (Date.now() - start > limit) {
+          reject(new Error("Chart.js \u043D\u0435 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u043B\u0441\u044F"));
+          return;
+        }
+        setTimeout(tick, 25);
+      })();
+    });
+  }
+  function loadClientBundle(name) {
+    if (!LAZY_BUNDLES.has(name)) {
+      return Promise.reject(new Error("Unknown bundle: " + name));
+    }
+    if (name === "DashboardPhase2" && window.DashboardPhase2) {
+      return Promise.resolve();
+    }
+    if (name === "MoProfile" && window.MoProfile) {
+      return Promise.resolve();
+    }
+    if (name === "VendorEcharts" && typeof echarts !== "undefined") {
+      return Promise.resolve(window.echarts);
+    }
+    if (name === "VendorChartDataLabels" && typeof ChartDataLabels !== "undefined") {
+      return Promise.resolve(window.ChartDataLabels);
+    }
+    if (bundlePromises[name]) return bundlePromises[name];
+    if (!gasAdapter || !gasAdapter.originalRun) {
+      return Promise.reject(new Error("GAS API \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0434\u043B\u044F \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 " + name));
+    }
+    bundlePromises[name] = gasAdapter.call("getClientBundle", { params: [name] }).then(function(code) {
+      if (!code) throw new Error("\u041F\u0443\u0441\u0442\u043E\u0439 \u0431\u0430\u043D\u0434\u043B: " + name);
+      injectScript(code);
+      if (name === "VendorChartDataLabels") registerChartDataLabels();
+    }).catch(function(err) {
+      delete bundlePromises[name];
+      throw err;
+    });
+    return bundlePromises[name];
+  }
+  function registerChartDataLabels() {
+    if (dataLabelsRegistered || typeof Chart === "undefined" || typeof ChartDataLabels === "undefined") {
+      return;
+    }
+    Chart.register(ChartDataLabels);
+    dataLabelsRegistered = true;
+  }
+  function ensureChartDataLabels() {
+    if (typeof ChartDataLabels !== "undefined") {
+      registerChartDataLabels();
+      return Promise.resolve();
+    }
+    return loadClientBundle("VendorChartDataLabels");
+  }
+  function ensureDashboardPhase2() {
+    return loadClientBundle("DashboardPhase2");
+  }
+  function setMoProfileContext(mos, reportId) {
+    pendingMos = mos || null;
+    pendingReportId = reportId != null && reportId !== "" ? reportId : null;
+    if (window.MoProfile) {
+      window.MoProfile.setCurrentMos(pendingMos);
+      window.MoProfile.setCurrentReportId(pendingReportId);
+    }
+  }
+  function ensureMoProfile() {
+    return loadClientBundle("MoProfile").then(function() {
+      if (window.MoProfile && gasAdapter) {
+        window.MoProfile.init({ gasAdapter });
+        if (pendingMos) window.MoProfile.setCurrentMos(pendingMos);
+        if (pendingReportId != null) window.MoProfile.setCurrentReportId(pendingReportId);
+      }
+    });
+  }
+  function ensureEcharts() {
+    if (typeof echarts !== "undefined") return Promise.resolve(window.echarts);
+    return loadClientBundle("VendorEcharts").then(function() {
+      return window.echarts;
+    });
+  }
+  var bundleLoaderApi = {
+    initBundleLoader,
+    loadClientBundle,
+    waitForChart,
+    registerChartDataLabels,
+    ensureChartDataLabels,
+    ensureDashboardPhase2,
+    ensureMoProfile,
+    ensureEcharts,
+    setMoProfileContext
+  };
+  if (typeof window !== "undefined") {
+    window.KnSKBundleLoader = bundleLoaderApi;
+  }
+
   // src/lib/charts.js
   function makeTrendChart(opts) {
     const { canvasId, weeks, planWeekly, emptyMessage, noteId, previous } = opts;
@@ -395,8 +533,10 @@
 
   // src/pages/editor.js
   (function() {
-    const gasAdapter = new GoogleAppsScriptAdapter(CONFIG.api || {});
-    Chart.register(ChartDataLabels);
+    const gasAdapter2 = new GoogleAppsScriptAdapter(CONFIG.api || {});
+    if (typeof Chart !== "undefined" && typeof ChartDataLabels !== "undefined" && !Chart.registry.getPlugin("datalabels")) {
+      Chart.register(ChartDataLabels);
+    }
     let currentMOSData = [];
     let weeksData = [];
     let archiveReportsList = [];
@@ -453,8 +593,8 @@
       const currentDate = (/* @__PURE__ */ new Date()).toLocaleString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
       document.getElementById("doneTextDisplay").innerHTML = renderHtmlContent(doneRaw);
       document.getElementById("plansTextDisplay").innerHTML = renderHtmlContent(plansRaw);
-      document.getElementById("doneDateDisplay").innerHTML = `<i class="far fa-calendar-alt"></i> ${currentDate}`;
-      document.getElementById("plansDateDisplay").innerHTML = `<i class="far fa-calendar-alt"></i> ${currentDate}`;
+      document.getElementById("doneDateDisplay").innerHTML = `${icon("calendar")} ${currentDate}`;
+      document.getElementById("plansDateDisplay").innerHTML = `${icon("calendar")} ${currentDate}`;
     }
     function syncPeriodToDashboard() {
       const period = document.getElementById("periodInput").value.trim();
@@ -492,10 +632,10 @@
         const div = document.createElement("div");
         div.className = "week-card";
         div.innerHTML = `
-                <div class="week-period-display"><i class="far fa-calendar"></i> ${formatDate(w.start)} - ${formatDate(w.end)}</div>
+                <div class="week-period-display">${icon("calendar")} ${formatDate(w.start)} - ${formatDate(w.end)}</div>
                 <label>\u{1F52C} \u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E \u0438\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u043D\u0438\u0439</label>
                 <input type="number" class="week-value-input" value="${w.value}" step="100">
-                <button class="btn-remove-week" data-id="${w.id}"><i class="fas fa-trash"></i> \u0423\u0434\u0430\u043B\u0438\u0442\u044C</button>
+                <button class="btn-remove-week" data-id="${w.id}">${icon("trash-2")} \u0423\u0434\u0430\u043B\u0438\u0442\u044C</button>
             `;
         container.appendChild(div);
         div.querySelector(".week-value-input").addEventListener("change", (e) => updateWeekValue(w.id, e.target.value));
@@ -553,17 +693,14 @@
         updatePlanFactChart(result.totals ? result.totals.growth : 0);
         updateTrendGraph();
         if (window.DashboardPhase2) {
-          DashboardPhase2.renderAll(mos, {
-            totals: result.totals,
-            previousMos: opts.previousMos || null
+          ensureDashboardPhase2().then(function() {
+            DashboardPhase2.renderAll(mos, {
+              totals: result.totals,
+              previousMos: opts.previousMos || null
+            });
           });
         }
-        if (window.MoProfile) {
-          window.MoProfile.setCurrentMos(mos);
-          if (opts.archiveReportId != null) {
-            window.MoProfile.setCurrentReportId(opts.archiveReportId);
-          }
-        }
+        setMoProfileContext(mos, opts.archiveReportId != null ? opts.archiveReportId : null);
         return result;
       });
     }
@@ -613,12 +750,12 @@
     }
     function loadArchiveReportById(reportId) {
       setStatus("\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0430\u0440\u0445\u0438\u0432\u043D\u043E\u0433\u043E \u043E\u0442\u0447\u0451\u0442\u0430...");
-      if (!gasAdapter.originalRun) {
+      if (!gasAdapter2.originalRun) {
         setStatus("Google Apps Script API \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u0410\u0440\u0445\u0438\u0432 \u0440\u0430\u0431\u043E\u0442\u0430\u0435\u0442 \u0442\u043E\u043B\u044C\u043A\u043E \u0432 \u0432\u0435\u0431-\u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u0438 Google Apps Script.", false);
         return;
       }
       if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
-      gasAdapter.call("getArchivedReportWithPrevious", { params: [reportId] }).then(function(payload) {
+      gasAdapter2.call("getArchivedReportWithPrevious", { params: [reportId] }).then(function(payload) {
         const report = payload && payload.report;
         if (!report) {
           setStatus("\u041F\u0443\u0441\u0442\u043E\u0439 \u043E\u0442\u0432\u0435\u0442 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u043F\u0440\u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0435 \u0430\u0440\u0445\u0438\u0432\u0430", false);
@@ -660,8 +797,8 @@
         period: document.getElementById("periodInput").value
       };
       setStatus("\u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u0435 \u0432 \u0430\u0440\u0445\u0438\u0432...");
-      if (gasAdapter.originalRun) {
-        gasAdapter.call("saveReportToArchive", { params: [reportData] }).then(function(result) {
+      if (gasAdapter2.originalRun) {
+        gasAdapter2.call("saveReportToArchive", { params: [reportData] }).then(function(result) {
           setStatus(result.message, true);
           loadArchiveList();
         }).catch(function(err) {
@@ -675,8 +812,8 @@
       const select = document.getElementById("archiveSelect");
       if (!select) return;
       select.innerHTML = '<option value="">\u2014 \u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430... \u2014</option>';
-      if (gasAdapter.originalRun) {
-        gasAdapter.call("getArchivedReportsList").then(function(list) {
+      if (gasAdapter2.originalRun) {
+        gasAdapter2.call("getArchivedReportsList").then(function(list) {
           archiveReportsList = list && Array.isArray(list) ? list : [];
           window.archiveReportsList = archiveReportsList;
           select.innerHTML = '<option value="">\u2014 \u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043E\u0442\u0447\u0451\u0442 \u2014</option>';
@@ -689,7 +826,9 @@
               select.appendChild(option);
             });
             if (window.DashboardPhase2) {
-              DashboardPhase2.populateCompareSelects(archiveReportsList, null);
+              ensureDashboardPhase2().then(function() {
+                DashboardPhase2.populateCompareSelects(archiveReportsList, null);
+              });
             }
             setStatus(`\u2705 \u0417\u0430\u0433\u0440\u0443\u0436\u0435\u043D\u043E ${archiveReportsList.length} \u0430\u0440\u0445\u0438\u0432\u043D\u044B\u0445 \u043E\u0442\u0447\u0451\u0442\u043E\u0432`, true);
           } else {
@@ -844,8 +983,8 @@
         
         document.getElementById('doneTextDisplay').innerHTML = renderHtmlContent(DONE_TEXT);
         document.getElementById('plansTextDisplay').innerHTML = renderHtmlContent(PLANS_TEXT);
-        document.getElementById('doneDateDisplay').innerHTML = '<i class="far fa-calendar-alt"></i> ' + CURRENT_DATE;
-        document.getElementById('plansDateDisplay').innerHTML = '<i class="far fa-calendar-alt"></i> ' + CURRENT_DATE;
+        document.getElementById('doneDateDisplay').innerHTML = icon('calendar') + ' ' + CURRENT_DATE;
+        document.getElementById('plansDateDisplay').innerHTML = icon('calendar') + ' ' + CURRENT_DATE;
         document.getElementById('nextWeekPeriodDisplay').innerHTML = NEXT_WEEK_PERIOD;
         document.getElementById('periodDisplayText').innerHTML = PERIOD_TEXT || '\u041F\u0435\u0440\u0438\u043E\u0434 \u043D\u0435 \u0443\u043A\u0430\u0437\u0430\u043D';
         
@@ -954,12 +1093,15 @@
       syncTextsToDashboard();
       syncPeriodToDashboard();
       loadArchiveList();
-      if (window.DashboardPhase2) {
-        DashboardPhase2.init({ onStatus: setStatus });
-      }
-      if (window.MoProfile) {
-        window.MoProfile.init({ gasAdapter });
-      }
+      initBundleLoader(gasAdapter2);
+      Promise.all([waitForChart(), ensureDashboardPhase2()]).then(function() {
+        if (window.DashboardPhase2) {
+          DashboardPhase2.init({ onStatus: setStatus, gasAdapter: gasAdapter2 });
+        }
+        ensureEcharts().catch(function(err) {
+          console.warn("ECharts preload:", err);
+        });
+      });
       document.getElementById("csvFile").addEventListener("change", (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -967,7 +1109,7 @@
         reader.onload = (ev) => {
           if (window.DashboardPhase1) DashboardPhase1.showLoadingState();
           currentMOSData = parseCSV(ev.target.result);
-          if (window.MoProfile) window.MoProfile.setCurrentReportId(null);
+          setMoProfileContext(null, null);
           renderMOSDashboard(currentMOSData).then(function() {
             setStatus(`\u0417\u0430\u0433\u0440\u0443\u0436\u0435\u043D CSV: ${file.name}`, true);
           });

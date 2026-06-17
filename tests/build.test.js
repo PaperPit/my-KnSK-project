@@ -12,6 +12,11 @@ const ARTIFACTS = [
   'UiPhase2.html',
   'EditorStyles.html',
   'ViewerStyles.html',
+  'UiKpiCards.html',
+  'UiIcons.html',
+  'VendorChartJs.html',
+  'VendorChartDataLabels.html',
+  'VendorEcharts.html',
   'LibBundle.html',
   'GASAdapter.html',
   'DashboardPhase1.html',
@@ -48,8 +53,17 @@ describe('build-gas.mjs', () => {
     expect(code).toContain('saveReportToArchive');
     expect(code).toContain('getArchivedReportById');
     expect(code).toContain('getMoHistoryFromArchive');
+    expect(code).toContain('getClientBundle');
     expect(code).not.toMatch(/\n;\n\}/);
     expect(() => new Function(code)).not.toThrow();
+  });
+
+  it('generates UiIcons sprite from lucide-static', () => {
+    const icons = fs.readFileSync(path.join(ROOT, 'UiIcons.html'), 'utf8');
+    expect(icons).toContain('icon-archive');
+    expect(icons).toContain('icon-trending-up');
+    expect(icons).toContain('.knsk-icon');
+    expect(icons.length).toBeLessThan(50000);
   });
 
   it('wraps dashboard scripts in script tags', () => {

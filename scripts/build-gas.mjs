@@ -26,6 +26,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import * as esbuild from 'esbuild';
+import { ICON_NAMES } from './icon-manifest.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -120,6 +121,54 @@ function stripCjsExports(src) {
   return src.slice(0, idx).trimEnd() + '\n';
 }
 
+function readVendorFile(relPath) {
+  const full = path.join(ROOT, relPath);
+  if (!fs.existsSync(full)) {
+    throw new Error('Vendor file not found: ' + relPath + ' — run npm install');
+  }
+  return fs.readFileSync(full);
+}
+
+/** Локальные копии Chart.js, ECharts — без внешних CDN. */
+function buildVendorLibs() {
+  const chartJs = readVendorFile('node_modules/chart.js/dist/chart.umd.js');
+  wrapScriptCode(chartJs.toString('utf8'), 'VendorChartJs.html');
+
+  const dataLabels = readVendorFile(
+    'node_modules/chartjs-plugin-datalabels/dist/chartjs-plugin-datalabels.min.js'
+  );
+  wrapScriptCode(dataLabels.toString('utf8'), 'VendorChartDataLabels.html');
+
+  const echarts = readVendorFile('node_modules/echarts/dist/echarts.min.js');
+  wrapScriptCode(echarts.toString('utf8'), 'VendorEcharts.html');
+}
+
+/** Lucide SVG-спрайт — только используемые иконки (~8 KB). */
+function buildUiIcons() {
+  const css = read('src/ui/icons.css').trim();
+  const symbols = ICON_NAMES.map((name) => {
+    const svgPath = path.join(ROOT, 'node_modules/lucide-static/icons', `${name}.svg`);
+    if (!fs.existsSync(svgPath)) {
+      throw new Error('Missing lucide-static icon: ' + name);
+    }
+    const svg = fs.readFileSync(svgPath, 'utf8');
+    const viewBox = svg.match(/viewBox="([^"]+)"/)?.[1] || '0 0 24 24';
+    const inner = svg
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<svg[\s\S]*?>/, '')
+      .replace(/<\/svg>\s*$/, '')
+      .trim();
+    return (
+      `<symbol id="icon-${name}" viewBox="${viewBox}" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${inner}</symbol>`
+    );
+  }).join('\n  ');
+
+  write(
+    'UiIcons.html',
+    `<style>\n${css}\n</style>\n<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">\n  ${symbols}\n</svg>\n`
+  );
+}
+
 // ───────────────────────── СБОРКА ─────────────────────────
 console.log('build-gas: styles');
 wrapStyle('src/ui/tokens.css', 'UiTokens.html');
@@ -127,6 +176,12 @@ wrapStyle('src/ui/phase2.css', 'UiPhase2.html');
 wrapStyle('src/ui/editor.css', 'EditorStyles.html');
 wrapStyle('src/ui/viewer.css', 'ViewerStyles.html');
 wrapStyle('src/ui/kpi-cards.css', 'UiKpiCards.html');
+
+console.log('build-gas: vendor libs (local, no CDN)');
+buildVendorLibs();
+
+console.log('build-gas: icon sprite (Lucide)');
+buildUiIcons();
 
 console.log('build-gas: lib bundle (esbuild)');
 const libEntry = makeEntryWrapper(

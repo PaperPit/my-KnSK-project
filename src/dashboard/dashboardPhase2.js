@@ -22,14 +22,17 @@ import {
   computeTotals,
   getPlans,
   truncateName,
+  icon,
 } from '../lib/index.js';
+
+function getBundleLoader() {
+  return typeof window !== 'undefined' ? window.KnSKBundleLoader : null;
+}
 
 const DashboardPhase2 = (function () {
   const echartsInstances = {};
-  let echartsLoadPromise = null;
-  const ECHARTS_URL =
-    (typeof CONFIG !== 'undefined' && CONFIG.ui && CONFIG.ui.cdn && CONFIG.ui.cdn.echarts) ||
-    'https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js';
+  let gasAdapter = null;
+  let statusCallback = null;
   let tableClickBound = false;
   let lastMos = [];
   let lastPreviousMos = null;
@@ -43,25 +46,17 @@ const DashboardPhase2 = (function () {
     return archiveReportCache[Number(id)] || null;
   }
 
+  function reportMoError(message, err) {
+    if (err) console.error(err);
+    if (statusCallback) statusCallback(message, false);
+  }
+
   function loadEcharts() {
-    if (typeof echarts !== 'undefined') return Promise.resolve(window.echarts);
-    if (echartsLoadPromise) return echartsLoadPromise;
-
-    echartsLoadPromise = new Promise(function (resolve, reject) {
-      const script = document.createElement('script');
-      script.src = ECHARTS_URL;
-      script.async = true;
-      script.onload = function () {
-        resolve(window.echarts);
-      };
-      script.onerror = function () {
-        echartsLoadPromise = null;
-        reject(new Error('Не удалось загрузить ECharts'));
-      };
-      document.head.appendChild(script);
-    });
-
-    return echartsLoadPromise;
+    const loader = getBundleLoader();
+    if (!loader) {
+      return Promise.reject(new Error('KnSKBundleLoader не инициализирован'));
+    }
+    return loader.ensureEcharts();
   }
 
   function getPlanYear() {
@@ -101,8 +96,9 @@ const DashboardPhase2 = (function () {
   }
 
   function renderMoDrawerChart(mo) {
-    initChart('moDrawerChart').then(function (chart) {
-      if (!chart || !mo) return;
+    initChart('moDrawerChart')
+      .then(function (chart) {
+        if (!chart || !mo) return;
 
       const fact = mo.fact || 0;
       const noDev = mo.noDev || 0;
@@ -171,7 +167,10 @@ const DashboardPhase2 = (function () {
           },
         ],
       });
-    });
+      })
+      .catch(function (err) {
+        reportMoError('Не удалось построить диаграмму МО', err);
+      });
   }
 
   function formatDeltaSmall(cur, prev, isPercent) {
@@ -227,17 +226,29 @@ const DashboardPhase2 = (function () {
       </div>
       <div id="moDrawerChart" class="mo-drawer-chart"></div>
       <button type="button" class="mo-drawer-profile-link" id="moDrawerProfileBtn">
-        <i class="fas fa-microscope"></i> Глубокий анализ МО
+        ${icon('microscope')} Глубокий анализ МО
       </button>
     `;
 
     const profileBtn = document.getElementById('moDrawerProfileBtn');
     if (profileBtn) {
       profileBtn.addEventListener('click', function () {
-        closeMoDrawer();
-        if (window.MoProfile && mo.name) {
-          window.MoProfile.open(mo.name);
+        const loader = getBundleLoader();
+        if (!loader) {
+          reportMoError('Модуль профиля МО не инициализирован');
+          return;
         }
+        closeMoDrawer();
+        loader
+          .ensureMoProfile()
+          .then(function () {
+            if (window.MoProfile && mo.name) {
+              window.MoProfile.open(mo.name);
+            }
+          })
+          .catch(function (err) {
+            reportMoError('Не удалось открыть глубокий анализ МО', err);
+          });
       });
     }
 
@@ -436,11 +447,11 @@ const DashboardPhase2 = (function () {
     const factChanges = buildMoChanges('fact');
     const colonChanges = buildMoChanges('colon');
 
-    function kpiCard(modifier, icon, label, valA, valB, earlier, later, isPct) {
+    function kpiCard(modifier, iconName, label, valA, valB, earlier, later, isPct) {
       return `
         <div class="compare-kpi compare-kpi--${modifier}">
           <div class="compare-kpi-head">
-            <span class="compare-kpi-icon"><i class="fas ${icon}"></i></span>
+            <span class="compare-kpi-icon">${icon(iconName)}</span>
             <span class="compare-kpi-label">${label}</span>
           </div>
           <div class="compare-kpi-vals">
@@ -460,7 +471,7 @@ const DashboardPhase2 = (function () {
       <div class="compare-kpi-grid">
         ${kpiCard(
           'plan',
-          'fa-chart-line',
+          'trending-up',
           '% год. плана',
           `${pctA.toFixed(1)}%`,
           `${pctB.toFixed(1)}%`,
@@ -470,7 +481,7 @@ const DashboardPhase2 = (function () {
         )}
         ${kpiCard(
           'fact',
-          'fa-vial',
+          'test-tubes',
           'КнСК (факт)',
           tA.fact.toLocaleString('ru-RU'),
           tB.fact.toLocaleString('ru-RU'),
@@ -480,7 +491,7 @@ const DashboardPhase2 = (function () {
         )}
         ${kpiCard(
           'growth',
-          'fa-arrow-trend-up',
+          'arrow-up',
           'Прирост за нед.',
           tA.growth.toLocaleString('ru-RU'),
           tB.growth.toLocaleString('ru-RU'),
@@ -490,7 +501,7 @@ const DashboardPhase2 = (function () {
         )}
         ${kpiCard(
           'colon',
-          'fa-stethoscope',
+          'stethoscope',
           'Колоноскопия',
           tA.colon.toLocaleString('ru-RU'),
           tB.colon.toLocaleString('ru-RU'),
@@ -500,7 +511,7 @@ const DashboardPhase2 = (function () {
         )}
         ${kpiCard(
           'zno',
-          'fa-biohazard',
+          'biohazard',
           'ЗНО',
           String(tA.zno),
           String(tB.zno),
@@ -597,6 +608,8 @@ const DashboardPhase2 = (function () {
   }
 
   function init(options) {
+    gasAdapter = (options && options.gasAdapter) || gasAdapter;
+    statusCallback = (options && options.onStatus) || statusCallback;
     setupDrawerClose();
     setupPresentationToggle();
     setupComparePanelClose();
