@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   normalizeMoKey,
   computeMoRankings,
+  computeTopColonCoverageGainers,
   detectMoTrend,
   buildMoInsights,
   rankBadgeClass,
@@ -60,5 +61,34 @@ describe('buildMoInsights', () => {
 describe('rankBadgeClass', () => {
   it('returns top for leading position', () => {
     expect(rankBadgeClass(1, 48)).toBe('mo-profile-rank-badge--top');
+  });
+});
+
+describe('computeTopColonCoverageGainers', () => {
+  const earlier = [
+    { name: 'МО А', colon: 15, hasDev: 100 },
+    { name: 'МО Б', colon: 30, hasDev: 100 },
+    { name: 'МО В', colon: 50, hasDev: 100 },
+  ];
+  const later = [
+    { name: 'МО А', colon: 45, hasDev: 100 },
+    { name: 'МО Б', colon: 32, hasDev: 100 },
+    { name: 'МО В', colon: 52, hasDev: 100 },
+  ];
+
+  it('ranks by relative coverage growth and rank rise', () => {
+    const top = computeTopColonCoverageGainers(earlier, later, { minHasDev: 10, limit: 5 });
+    expect(top.length).toBeGreaterThan(0);
+    expect(top[0].name).toBe('МО А');
+    expect(top[0].relativePctGrowth).toBeCloseTo(200, 0);
+    expect(top[0].rankRise).toBe(1);
+    expect(top[0].colonDelta).toBe(30);
+    expect(top[0].colonLater).toBe(45);
+  });
+
+  it('skips MO without positive coverage dynamics', () => {
+    const flat = [{ name: 'МО А', colon: 20, hasDev: 100 }];
+    const down = [{ name: 'МО А', colon: 10, hasDev: 100 }];
+    expect(computeTopColonCoverageGainers(flat, down)).toEqual([]);
   });
 });

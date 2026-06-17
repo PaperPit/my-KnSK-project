@@ -15,8 +15,89 @@ function rankPosition(sorted, moKey, valueKey, higherIsBetter) {
   return higherIsBetter ? idx + 1 : sorted.length - idx;
 }
 
-function coverageOf(mo) {
+export function coverageOf(mo) {
   return mo.hasDev > 0 ? (mo.colon / mo.hasDev) * 100 : 0;
+}
+
+/** Фиксированное число мест в рейтинге охвата колоноскопией (КнСК+). */
+export const COVERAGE_RANK_TOTAL = 47;
+
+function buildCoverageRankMap(mos, minHasDev) {
+  const eligible = (mos || []).filter((m) => m.hasDev >= minHasDev);
+  const sorted = [...eligible].sort((a, b) => coverageOf(b) - coverageOf(a));
+  const rankMap = new Map();
+  sorted.forEach((m, idx) => {
+    rankMap.set(normalizeMoKey(m.name), idx + 1);
+  });
+  return { rankMap, total: eligible.length };
+}
+
+/**
+ * Топ МО по относительному приросту охвата колоноскопией среди пациентов с положительным КнСК
+ * и росту позиции в рейтинге охвата между двумя архивными отчётами.
+ *
+ * @param {Array} mosEarlier — МО раннего отчёта
+ * @param {Array} mosLater — МО позднего отчёта
+ * @param {{ minHasDev?: number, limit?: number }} options
+ */
+export function computeTopColonCoverageGainers(mosEarlier, mosLater, options) {
+  const minHasDev = (options && options.minHasDev) ?? 10;
+  const limit = (options && options.limit) ?? 5;
+
+  const ranksEarlier = buildCoverageRankMap(mosEarlier, minHasDev);
+  const ranksLater = buildCoverageRankMap(mosLater, minHasDev);
+
+  const laterMap = new Map();
+  (mosLater || []).forEach((m) => {
+    laterMap.set(normalizeMoKey(m.name), m);
+  });
+
+  const candidates = [];
+
+  (mosEarlier || []).forEach((mA) => {
+    const key = normalizeMoKey(mA.name);
+    const mB = laterMap.get(key);
+    if (!mB || mB.hasDev < minHasDev) return;
+
+    const covA = coverageOf(mA);
+    const covB = coverageOf(mB);
+    if (covB <= covA) return;
+
+    const rankA = ranksEarlier.rankMap.get(key);
+    const rankB = ranksLater.rankMap.get(key);
+    if (!rankA || !rankB) return;
+
+    const rankRise = rankA - rankB;
+    const coverageDeltaPp = covB - covA;
+    const colonEarlier = mA.colon || 0;
+    const colonLater = mB.colon || 0;
+    const colonDelta = colonLater - colonEarlier;
+
+    candidates.push({
+      name: mA.name,
+      coverageEarlier: covA,
+      coverageLater: covB,
+      coverageDeltaPp,
+      relativePctGrowth: covA > 0 ? (coverageDeltaPp / covA) * 100 : null,
+      rankEarlier: rankA,
+      rankLater: rankB,
+      rankRise,
+      rankTotal: COVERAGE_RANK_TOTAL,
+      colonEarlier,
+      colonLater,
+      colonDelta,
+    });
+  });
+
+  candidates.sort((a, b) => {
+    const relA = a.relativePctGrowth ?? 0;
+    const relB = b.relativePctGrowth ?? 0;
+    if (relB !== relA) return relB - relA;
+    if (b.rankRise !== a.rankRise) return b.rankRise - a.rankRise;
+    return b.coverageDeltaPp - a.coverageDeltaPp;
+  });
+
+  return candidates.slice(0, limit);
 }
 
 /**

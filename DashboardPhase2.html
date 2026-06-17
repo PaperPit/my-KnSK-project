@@ -122,6 +122,73 @@
     return n.length > max ? n.slice(0, max - 1) + "\u2026" : n;
   }
 
+  // src/lib/moAnalytics.js
+  function normalizeMoKey(name) {
+    return String(name || "").trim().toLowerCase();
+  }
+  function coverageOf(mo) {
+    return mo.hasDev > 0 ? mo.colon / mo.hasDev * 100 : 0;
+  }
+  var COVERAGE_RANK_TOTAL = 47;
+  function buildCoverageRankMap(mos, minHasDev) {
+    const eligible = (mos || []).filter((m) => m.hasDev >= minHasDev);
+    const sorted = [...eligible].sort((a, b) => coverageOf(b) - coverageOf(a));
+    const rankMap = /* @__PURE__ */ new Map();
+    sorted.forEach((m, idx) => {
+      rankMap.set(normalizeMoKey(m.name), idx + 1);
+    });
+    return { rankMap, total: eligible.length };
+  }
+  function computeTopColonCoverageGainers(mosEarlier, mosLater, options) {
+    const minHasDev = (options && options.minHasDev) ?? 10;
+    const limit = (options && options.limit) ?? 5;
+    const ranksEarlier = buildCoverageRankMap(mosEarlier, minHasDev);
+    const ranksLater = buildCoverageRankMap(mosLater, minHasDev);
+    const laterMap = /* @__PURE__ */ new Map();
+    (mosLater || []).forEach((m) => {
+      laterMap.set(normalizeMoKey(m.name), m);
+    });
+    const candidates = [];
+    (mosEarlier || []).forEach((mA) => {
+      const key = normalizeMoKey(mA.name);
+      const mB = laterMap.get(key);
+      if (!mB || mB.hasDev < minHasDev) return;
+      const covA = coverageOf(mA);
+      const covB = coverageOf(mB);
+      if (covB <= covA) return;
+      const rankA = ranksEarlier.rankMap.get(key);
+      const rankB = ranksLater.rankMap.get(key);
+      if (!rankA || !rankB) return;
+      const rankRise = rankA - rankB;
+      const coverageDeltaPp = covB - covA;
+      const colonEarlier = mA.colon || 0;
+      const colonLater = mB.colon || 0;
+      const colonDelta = colonLater - colonEarlier;
+      candidates.push({
+        name: mA.name,
+        coverageEarlier: covA,
+        coverageLater: covB,
+        coverageDeltaPp,
+        relativePctGrowth: covA > 0 ? coverageDeltaPp / covA * 100 : null,
+        rankEarlier: rankA,
+        rankLater: rankB,
+        rankRise,
+        rankTotal: COVERAGE_RANK_TOTAL,
+        colonEarlier,
+        colonLater,
+        colonDelta
+      });
+    });
+    candidates.sort((a, b) => {
+      const relA = a.relativePctGrowth ?? 0;
+      const relB = b.relativePctGrowth ?? 0;
+      if (relB !== relA) return relB - relA;
+      if (b.rankRise !== a.rankRise) return b.rankRise - a.rankRise;
+      return b.coverageDeltaPp - a.coverageDeltaPp;
+    });
+    return candidates.slice(0, limit);
+  }
+
   // src/lib/icons.js
   function icon(name, options) {
     if (!name) return "";
@@ -150,6 +217,8 @@
     let lastMos = [];
     let lastPreviousMos = null;
     const archiveReportCache = /* @__PURE__ */ Object.create(null);
+    const compareInflight = /* @__PURE__ */ Object.create(null);
+    let comparePrefetchTimer = null;
     function cacheArchiveReport(id, report) {
       if (id != null && report) archiveReportCache[Number(id)] = report;
     }
@@ -180,6 +249,36 @@
     }
     function sortMosByPlanPercent(mos) {
       return [...mos || []].sort((a, b) => b.percent - a.percent);
+    }
+    function pluralRu(n, one, few, many) {
+      const abs = Math.abs(n);
+      const mod10 = abs % 10;
+      const mod100 = abs % 100;
+      if (mod10 === 1 && mod100 !== 11) return one;
+      if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+      return many;
+    }
+    function formatRankChangeText(m) {
+      const total = COVERAGE_RANK_TOTAL;
+      if (m.rankRise > 0) {
+        const word = pluralRu(m.rankRise, "\u043F\u043E\u0437\u0438\u0446\u0438\u044E", "\u043F\u043E\u0437\u0438\u0446\u0438\u0438", "\u043F\u043E\u0437\u0438\u0446\u0438\u0439");
+        return `\u041F\u043E\u0434\u043D\u044F\u043B\u0438\u0441\u044C \u043D\u0430 ${m.rankRise} ${word} \u0432 \u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0435 (\u0441 ${m.rankEarlier}-\u0433\u043E \u043D\u0430 ${m.rankLater}-\u0435 \u043C\u0435\u0441\u0442\u043E \u0438\u0437 ${total})`;
+      }
+      if (m.rankRise < 0) {
+        const drop = Math.abs(m.rankRise);
+        const word = pluralRu(drop, "\u043F\u043E\u0437\u0438\u0446\u0438\u044E", "\u043F\u043E\u0437\u0438\u0446\u0438\u0438", "\u043F\u043E\u0437\u0438\u0446\u0438\u0439");
+        return `\u041E\u043F\u0443\u0441\u0442\u0438\u043B\u0438\u0441\u044C \u043D\u0430 ${drop} ${word} \u0432 \u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0435 (\u0441 ${m.rankEarlier}-\u0433\u043E \u043D\u0430 ${m.rankLater}-\u0435 \u043C\u0435\u0441\u0442\u043E \u0438\u0437 ${total})`;
+      }
+      return `\u041C\u0435\u0441\u0442\u043E \u0432 \u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0435 \u043D\u0435 \u0438\u0437\u043C\u0435\u043D\u0438\u043B\u043E\u0441\u044C (${m.rankLater}-\u0435 \u0438\u0437 ${total})`;
+    }
+    function formatColonPeriodText(m) {
+      const word = pluralRu(m.colonLater, "\u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u044F", "\u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0438", "\u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0439");
+      if (m.colonDelta === 0) {
+        return `\u0417\u0430 \u043F\u0435\u0440\u0438\u043E\u0434: ${m.colonLater.toLocaleString("ru-RU")} ${word} (\u0431\u0435\u0437 \u043F\u0440\u0438\u0440\u043E\u0441\u0442\u0430)`;
+      }
+      const deltaWord = pluralRu(Math.abs(m.colonDelta), "\u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u044E", "\u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0438", "\u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0439");
+      const sign = m.colonDelta > 0 ? "+" : "\u2212";
+      return `\u0417\u0430 \u043F\u0435\u0440\u0438\u043E\u0434: ${sign}${Math.abs(m.colonDelta).toLocaleString("ru-RU")} ${deltaWord} (\u0432\u0441\u0435\u0433\u043E ${m.colonLater.toLocaleString("ru-RU")} ${word}, \u0431\u044B\u043B\u043E ${m.colonEarlier.toLocaleString("ru-RU")})`;
     }
     function disposeChart(id) {
       if (echartsInstances[id]) {
@@ -445,6 +544,7 @@
         const sorted = [...list].sort((a, b) => a.id - b.id);
         selA.value = String(sorted[sorted.length - 2].id);
         selB.value = String(sorted[sorted.length - 1].id);
+        setTimeout(prefetchCompareReports, 100);
       } else if (currentId) {
         selB.value = String(currentId);
       }
@@ -480,26 +580,29 @@
         const text = isPct ? `${sign}${d.toFixed(1)} \u043F.\u043F.` : `${sign}${Math.round(d).toLocaleString("ru-RU")}`;
         return `<span class="delta ${cls}">${text}</span>`;
       }
-      const mapLater = {};
-      mosB.forEach((m) => {
-        mapLater[String(m.name).trim().toLowerCase()] = m;
-      });
-      function buildMoChanges(field) {
-        return mosA.map((m) => {
-          const laterMo = mapLater[String(m.name).trim().toLowerCase()];
-          return { name: m.name, delta: laterMo ? laterMo[field] - m[field] : 0 };
-        }).filter((m) => m.delta !== 0).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 5);
-      }
-      function renderMoChangeList(items) {
+      function renderColonCoverageLeaderList(items) {
         if (!items.length) {
-          return '<li class="compare-mo-empty">\u041D\u0435\u0442 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0439 \u0437\u0430 \u043F\u0435\u0440\u0438\u043E\u0434</li>';
+          return '<li class="compare-mo-empty">\u041D\u0435\u0442 \u041C\u041E \u0441 \u0440\u043E\u0441\u0442\u043E\u043C \u043E\u0445\u0432\u0430\u0442\u0430 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439 \u0441\u0440\u0435\u0434\u0438 \u041A\u043D\u0421\u041A+ \u0437\u0430 \u043F\u0435\u0440\u0438\u043E\u0434</li>';
         }
-        return items.map(
-          (m) => `<li><span>${escapeHtml(truncateName(m.name, 36))}</span><strong class="compare-mo-delta ${m.delta > 0 ? "up" : m.delta < 0 ? "down" : "neutral"}">${m.delta > 0 ? "+" : ""}${m.delta.toLocaleString("ru-RU")}</strong></li>`
-        ).join("");
+        return items.map((m) => {
+          const rel = m.relativePctGrowth != null ? `+${m.relativePctGrowth.toFixed(0)}% \u043A \u0441\u0432\u043E\u0435\u043C\u0443 \u0443\u0440\u043E\u0432\u043D\u044E \u043E\u0445\u0432\u0430\u0442\u0430` : `\u0441 0% \u0434\u043E ${m.coverageLater.toFixed(1)}% \u043E\u0445\u0432\u0430\u0442\u0430`;
+          return `<li class="compare-mo-list-item--rich">
+            <span class="compare-mo-list-main">
+              <strong>${escapeHtml(truncateName(m.name, 40))}</strong>
+              <span class="compare-mo-list-sub">\u041E\u0445\u0432\u0430\u0442 \u041A\u043D\u0421\u041A+: ${m.coverageEarlier.toFixed(1)}% \u2192 ${m.coverageLater.toFixed(1)}%</span>
+              <span class="compare-mo-list-sub compare-mo-list-sub--meta">${formatRankChangeText(m)}</span>
+              <span class="compare-mo-list-sub compare-mo-list-sub--meta">${formatColonPeriodText(m)}</span>
+            </span>
+            <span class="compare-mo-list-badges">
+              <strong class="compare-mo-delta up">${rel}</strong>
+            </span>
+          </li>`;
+        }).join("");
       }
-      const factChanges = buildMoChanges("fact");
-      const colonChanges = buildMoChanges("colon");
+      const colonCoverageLeaders = computeTopColonCoverageGainers(mosA, mosB, {
+        minHasDev: 10,
+        limit: 5
+      });
       function kpiCard(modifier, iconName, label, valA, valB, earlier, later, isPct) {
         return `
         <div class="compare-kpi compare-kpi--${modifier}">
@@ -542,16 +645,6 @@
         false
       )}
         ${kpiCard(
-        "growth",
-        "arrow-up",
-        "\u041F\u0440\u0438\u0440\u043E\u0441\u0442 \u0437\u0430 \u043D\u0435\u0434.",
-        tA.growth.toLocaleString("ru-RU"),
-        tB.growth.toLocaleString("ru-RU"),
-        tA.growth,
-        tB.growth,
-        false
-      )}
-        ${kpiCard(
         "colon",
         "stethoscope",
         "\u041A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u044F",
@@ -560,6 +653,16 @@
         tA.colon,
         tB.colon,
         false
+      )}
+        ${kpiCard(
+        "coverage",
+        "line-chart",
+        "\u041E\u0445\u0432\u0430\u0442 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439",
+        `${tA.colonPercent.toFixed(1)}%`,
+        `${tB.colonPercent.toFixed(1)}%`,
+        tA.colonPercent,
+        tB.colonPercent,
+        true
       )}
         ${kpiCard(
         "zno",
@@ -572,19 +675,12 @@
         false
       )}
       </div>
-      <div class="compare-mo-lists-grid">
-        <div class="compare-mo-block">
-          <h4>\u0422\u043E\u043F-5 \u041C\u041E \u043F\u043E \u043F\u0440\u0438\u0440\u043E\u0441\u0442\u0443 \u041A\u043D\u0421\u041A \u2014 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435 \u0444\u0430\u043A\u0442\u0430 (\u043F\u043E\u0437\u0434\u043D\u0438\u0439 \u2212 \u0440\u0430\u043D\u043D\u0438\u0439)</h4>
-          <ul class="compare-mo-list">
-            ${renderMoChangeList(factChanges)}
-          </ul>
-        </div>
-        <div class="compare-mo-block">
-          <h4>\u0422\u043E\u043F-5 \u041C\u041E \u043F\u043E \u043F\u0440\u0438\u0440\u043E\u0441\u0442\u0443 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0439 \u2014 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435 \u0444\u0430\u043A\u0442\u0430 (\u043F\u043E\u0437\u0434\u043D\u0438\u0439 \u2212 \u0440\u0430\u043D\u043D\u0438\u0439)</h4>
-          <ul class="compare-mo-list">
-            ${renderMoChangeList(colonChanges)}
-          </ul>
-        </div>
+      <div class="compare-mo-block compare-mo-block--full">
+        <h4>\u0422\u043E\u043F-5 \u041C\u041E \u043F\u043E \u043E\u0442\u043D\u043E\u0441\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u043C\u0443 \u043F\u0440\u0438\u0440\u043E\u0441\u0442\u0443 \u043E\u0445\u0432\u0430\u0442\u0430 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439 (\u041A\u043D\u0421\u041A+)</h4>
+        <p class="compare-mo-block-note">\u0421\u043E\u0440\u0442\u0438\u0440\u043E\u0432\u043A\u0430 \u2014 \u043F\u043E \u043E\u0442\u043D\u043E\u0441\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u043C\u0443 \u043F\u0440\u0438\u0440\u043E\u0441\u0442\u0443 % \u043E\u0445\u0432\u0430\u0442\u0430 \u041A\u043D\u0421\u041A+. \u0423\u0447\u0438\u0442\u044B\u0432\u0430\u044E\u0442\u0441\u044F \u041C\u041E \u0441 \u226510 \u043F\u043E\u043B\u043E\u0436\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u043C\u0438 \u041A\u043D\u0421\u041A \u0432 \u043F\u043E\u0437\u0434\u043D\u0435\u043C \u043F\u0435\u0440\u0438\u043E\u0434\u0435. \u0420\u0435\u0439\u0442\u0438\u043D\u0433 \u043E\u0445\u0432\u0430\u0442\u0430 \u2014 \u0438\u0437 ${COVERAGE_RANK_TOTAL} \u043C\u0435\u0441\u0442.</p>
+        <ul class="compare-mo-list compare-mo-list--rich">
+          ${renderColonCoverageLeaderList(colonCoverageLeaders)}
+        </ul>
       </div>
     `;
       openComparePanel();
@@ -595,15 +691,30 @@
       if (cachedA && cachedB) {
         return Promise.resolve({ reportA: cachedA, reportB: cachedB });
       }
+      const inflightKey = `${idA}_${idB}`;
+      if (compareInflight[inflightKey]) {
+        return compareInflight[inflightKey];
+      }
       if (typeof google === "undefined" || !google.script?.run) {
         return Promise.reject(new Error("\u0421\u0440\u0430\u0432\u043D\u0435\u043D\u0438\u0435 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E \u0442\u043E\u043B\u044C\u043A\u043E \u0432 \u0432\u0435\u0431-\u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u0438 GAS"));
       }
-      return new Promise(function(resolve, reject) {
+      const promise = new Promise(function(resolve, reject) {
         google.script.run.withSuccessHandler(function(result) {
           if (result && result.reportA) cacheArchiveReport(idA, result.reportA);
           if (result && result.reportB) cacheArchiveReport(idB, result.reportB);
           resolve(result);
         }).withFailureHandler(reject).getArchivedReportsForCompare(idA, idB);
+      }).finally(function() {
+        delete compareInflight[inflightKey];
+      });
+      compareInflight[inflightKey] = promise;
+      return promise;
+    }
+    function prefetchCompareReports() {
+      const idA = parseInt(document.getElementById("compareSelectA")?.value, 10);
+      const idB = parseInt(document.getElementById("compareSelectB")?.value, 10);
+      if (!idA || !idB || idA === idB) return;
+      fetchReportsForCompare(idA, idB).catch(function() {
       });
     }
     function runArchiveComparison(onStatus) {
@@ -622,8 +733,10 @@
       fetchReportsForCompare(idA, idB).then(function(result) {
         const metaA = (window.archiveReportsList || []).find((r) => r.id === idA)?.dateStr || `ID ${idA}`;
         const metaB = (window.archiveReportsList || []).find((r) => r.id === idB)?.dateStr || `ID ${idB}`;
-        renderComparisonPanel(result.reportA, result.reportB, metaA, metaB);
-        if (onStatus) onStatus("\u0421\u0440\u0430\u0432\u043D\u0435\u043D\u0438\u0435 \u043F\u043E\u0441\u0442\u0440\u043E\u0435\u043D\u043E", true);
+        requestAnimationFrame(function() {
+          renderComparisonPanel(result.reportA, result.reportB, metaA, metaB);
+          if (onStatus) onStatus("\u0421\u0440\u0430\u0432\u043D\u0435\u043D\u0438\u0435 \u043F\u043E\u0441\u0442\u0440\u043E\u0435\u043D\u043E", true);
+        });
       }).catch(function(err) {
         const content = document.getElementById("comparePanelContent");
         if (content) {
@@ -636,6 +749,14 @@
     function setupCompareUI(onStatus) {
       const btn = document.getElementById("compareReportsBtn");
       if (btn) btn.addEventListener("click", () => runArchiveComparison(onStatus));
+      ["compareSelectA", "compareSelectB"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener("change", () => {
+          clearTimeout(comparePrefetchTimer);
+          comparePrefetchTimer = setTimeout(prefetchCompareReports, 350);
+        });
+      });
     }
     function onResize() {
       Object.keys(echartsInstances).forEach((id) => {

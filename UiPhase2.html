@@ -181,6 +181,10 @@
   background: linear-gradient(145deg, #0d9488, #0f766e);
 }
 
+.compare-kpi--coverage {
+  background: linear-gradient(145deg, #2c7da0, #1e5f7a);
+}
+
 .compare-kpi--zno {
   background: linear-gradient(145deg, #c0392b, #9f1239);
 }
@@ -377,6 +381,70 @@
   color: #1e4663;
   margin-bottom: 8px;
   line-height: 1.35;
+}
+
+.compare-mo-block--full {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.compare-mo-block-note {
+  font-size: 0.75rem;
+  color: #5b6e8c;
+  margin: -4px 0 10px;
+  line-height: 1.4;
+}
+
+.compare-mo-list--rich .compare-mo-list-item--rich {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+@media (min-width: 640px) {
+  .compare-mo-list--rich .compare-mo-list-item--rich {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.compare-mo-list-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.compare-mo-list-main strong {
+  color: #1e4663;
+  font-weight: 600;
+}
+
+.compare-mo-list-sub {
+  font-size: 0.75rem;
+  color: #5b6e8c;
+}
+
+.compare-mo-list-sub--meta {
+  color: #3d5a73;
+  line-height: 1.45;
+}
+
+.compare-mo-list-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.compare-mo-rank-rise {
+  font-size: 0.75rem;
+  color: #2c7da0;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .compare-mo-list .compare-mo-empty {

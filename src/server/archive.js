@@ -51,7 +51,7 @@ function saveReportToArchive(reportData) {
     const newId = dataRows + 1;
 
     archiveSheet.appendRow([newId, now, json, reportData.period || '']);
-    invalidateArchiveListCache_();
+    bumpArchiveDataVersion_();
 
     return {
       message: `✅ Отчёт сохранён в архив с ID ${newId}`,
@@ -67,6 +67,8 @@ function saveReportToArchive(reportData) {
 /** Кэш списка архива на 5 минут — меньше обращений к таблице */
 var ARCHIVE_LIST_CACHE_KEY = 'knsk_archive_list_v1';
 var ARCHIVE_LIST_CACHE_TTL = 300;
+var ARCHIVE_DATA_VERSION_KEY = 'knsk_archive_data_ver';
+var ARCHIVE_COMPARE_CACHE_TTL = 300;
 
 function getArchiveSheet_() {
   return SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Архив');
@@ -158,6 +160,55 @@ function invalidateArchiveListCache_() {
   }
 }
 
+function getArchiveDataVersion_() {
+  try {
+    var v = CacheService.getScriptCache().get(ARCHIVE_DATA_VERSION_KEY);
+    return v || '0';
+  } catch (e) {
+    return '0';
+  }
+}
+
+function bumpArchiveDataVersion_() {
+  try {
+    var next = String(Number(getArchiveDataVersion_()) + 1);
+    CacheService.getScriptCache().put(ARCHIVE_DATA_VERSION_KEY, next, 21600);
+  } catch (e) {
+    console.warn('archive: bump version не удался', e && e.message);
+  }
+  invalidateArchiveListCache_();
+}
+
+function slimReportForCompare_(report) {
+  return {
+    mosData: report.mosData || [],
+    period: report.period || '',
+    timestamp: report.timestamp || '',
+  };
+}
+
+function readArchiveReportRows_(sheet, rowNums) {
+  if (!rowNums || !rowNums.length) return [];
+  if (rowNums.length === 1) {
+    var r0 = rowNums[0];
+    return [sheet.getRange(r0, 1, r0, 4).getValues()[0]];
+  }
+
+  var sorted = rowNums.slice().sort(function (a, b) {
+    return a - b;
+  });
+  var minR = sorted[0];
+  var maxR = sorted[sorted.length - 1];
+  var block = sheet.getRange(minR, 1, maxR, 4).getValues();
+  var byRow = {};
+  for (var i = 0; i < block.length; i++) {
+    byRow[minR + i] = block[i];
+  }
+  return rowNums.map(function (rowNum) {
+    return byRow[rowNum];
+  });
+}
+
 function getArchiveList_(sheet) {
   var cached = getCachedArchiveList_();
   if (cached) return cached;
@@ -178,7 +229,7 @@ function getPreviousArchiveIdFromList_(list, currentId) {
 }
 
 function readArchiveReportAtRow_(sheet, rowNum) {
-  var row = sheet.getRange(rowNum, 1, 1, 4).getValues()[0];
+  var row = sheet.getRange(rowNum, 1, rowNum, 4).getValues()[0];
   return parseArchiveReportRow_(row);
 }
 
@@ -282,16 +333,35 @@ function getArchivedReportsForCompare(idA, idB) {
   var numB = Number(idB);
   if (isNaN(numA) || isNaN(numB)) throw new Error('Некорректный ID отчёта');
 
+  var lo = Math.min(numA, numB);
+  var hi = Math.max(numA, numB);
+  var cacheKey = 'knsk_cmp_v2_' + getArchiveDataVersion_() + '_' + lo + '_' + hi;
+  try {
+    var cached = CacheService.getScriptCache().get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch (cacheReadErr) {
+    console.warn('archive: compare cache read', cacheReadErr && cacheReadErr.message);
+  }
+
   var index = buildArchiveIndex_(sheet);
   var rowA = index.idToRow[numA];
   var rowB = index.idToRow[numB];
   if (!rowA) throw new Error('Отчёт не найден (ID ' + numA + ')');
   if (!rowB) throw new Error('Отчёт не найден (ID ' + numB + ')');
 
-  return {
-    reportA: readArchiveReportAtRow_(sheet, rowA),
-    reportB: readArchiveReportAtRow_(sheet, rowB),
+  var rows = readArchiveReportRows_(sheet, [rowA, rowB]);
+  var result = {
+    reportA: slimReportForCompare_(parseArchiveReportRow_(rows[0])),
+    reportB: slimReportForCompare_(parseArchiveReportRow_(rows[1])),
   };
+
+  try {
+    CacheService.getScriptCache().put(cacheKey, JSON.stringify(result), ARCHIVE_COMPARE_CACHE_TTL);
+  } catch (cacheWriteErr) {
+    console.warn('archive: compare cache write', cacheWriteErr && cacheWriteErr.message);
+  }
+
+  return result;
 }
 
 var MO_HISTORY_CACHE_TTL = 300;

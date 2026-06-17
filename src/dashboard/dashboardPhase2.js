@@ -20,6 +20,8 @@ import {
   escapeHtml,
   buildMosFromData,
   computeTotals,
+  computeTopColonCoverageGainers,
+  COVERAGE_RANK_TOTAL,
   getPlans,
   truncateName,
   icon,
@@ -37,6 +39,8 @@ const DashboardPhase2 = (function () {
   let lastMos = [];
   let lastPreviousMos = null;
   const archiveReportCache = Object.create(null);
+  const compareInflight = Object.create(null);
+  let comparePrefetchTimer = null;
 
   function cacheArchiveReport(id, report) {
     if (id != null && report) archiveReportCache[Number(id)] = report;
@@ -75,6 +79,39 @@ const DashboardPhase2 = (function () {
 
   function sortMosByPlanPercent(mos) {
     return [...(mos || [])].sort((a, b) => b.percent - a.percent);
+  }
+
+  function pluralRu(n, one, few, many) {
+    const abs = Math.abs(n);
+    const mod10 = abs % 10;
+    const mod100 = abs % 100;
+    if (mod10 === 1 && mod100 !== 11) return one;
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+    return many;
+  }
+
+  function formatRankChangeText(m) {
+    const total = COVERAGE_RANK_TOTAL;
+    if (m.rankRise > 0) {
+      const word = pluralRu(m.rankRise, 'позицию', 'позиции', 'позиций');
+      return `Поднялись на ${m.rankRise} ${word} в рейтинге (с ${m.rankEarlier}-го на ${m.rankLater}-е место из ${total})`;
+    }
+    if (m.rankRise < 0) {
+      const drop = Math.abs(m.rankRise);
+      const word = pluralRu(drop, 'позицию', 'позиции', 'позиций');
+      return `Опустились на ${drop} ${word} в рейтинге (с ${m.rankEarlier}-го на ${m.rankLater}-е место из ${total})`;
+    }
+    return `Место в рейтинге не изменилось (${m.rankLater}-е из ${total})`;
+  }
+
+  function formatColonPeriodText(m) {
+    const word = pluralRu(m.colonLater, 'колоноскопия', 'колоноскопии', 'колоноскопий');
+    if (m.colonDelta === 0) {
+      return `За период: ${m.colonLater.toLocaleString('ru-RU')} ${word} (без прироста)`;
+    }
+    const deltaWord = pluralRu(Math.abs(m.colonDelta), 'колоноскопию', 'колоноскопии', 'колоноскопий');
+    const sign = m.colonDelta > 0 ? '+' : '−';
+    return `За период: ${sign}${Math.abs(m.colonDelta).toLocaleString('ru-RU')} ${deltaWord} (всего ${m.colonLater.toLocaleString('ru-RU')} ${word}, было ${m.colonEarlier.toLocaleString('ru-RU')})`;
   }
 
   function disposeChart(id) {
@@ -375,6 +412,7 @@ const DashboardPhase2 = (function () {
       const sorted = [...list].sort((a, b) => a.id - b.id);
       selA.value = String(sorted[sorted.length - 2].id);
       selB.value = String(sorted[sorted.length - 1].id);
+      setTimeout(prefetchCompareReports, 100);
     } else if (currentId) {
       selB.value = String(currentId);
     }
@@ -416,36 +454,35 @@ const DashboardPhase2 = (function () {
       return `<span class="delta ${cls}">${text}</span>`;
     }
 
-    const mapLater = {};
-    mosB.forEach((m) => {
-      mapLater[String(m.name).trim().toLowerCase()] = m;
-    });
-
-    function buildMoChanges(field) {
-      return mosA
-        .map((m) => {
-          const laterMo = mapLater[String(m.name).trim().toLowerCase()];
-          return { name: m.name, delta: laterMo ? laterMo[field] - m[field] : 0 };
-        })
-        .filter((m) => m.delta !== 0)
-        .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-        .slice(0, 5);
-    }
-
-    function renderMoChangeList(items) {
+    function renderColonCoverageLeaderList(items) {
       if (!items.length) {
-        return '<li class="compare-mo-empty">Нет изменений за период</li>';
+        return '<li class="compare-mo-empty">Нет МО с ростом охвата колоноскопией среди КнСК+ за период</li>';
       }
       return items
-        .map(
-          (m) =>
-            `<li><span>${escapeHtml(truncateName(m.name, 36))}</span><strong class="compare-mo-delta ${m.delta > 0 ? 'up' : m.delta < 0 ? 'down' : 'neutral'}">${m.delta > 0 ? '+' : ''}${m.delta.toLocaleString('ru-RU')}</strong></li>`
-        )
+        .map((m) => {
+          const rel =
+            m.relativePctGrowth != null
+              ? `+${m.relativePctGrowth.toFixed(0)}% к своему уровню охвата`
+              : `с 0% до ${m.coverageLater.toFixed(1)}% охвата`;
+          return `<li class="compare-mo-list-item--rich">
+            <span class="compare-mo-list-main">
+              <strong>${escapeHtml(truncateName(m.name, 40))}</strong>
+              <span class="compare-mo-list-sub">Охват КнСК+: ${m.coverageEarlier.toFixed(1)}% → ${m.coverageLater.toFixed(1)}%</span>
+              <span class="compare-mo-list-sub compare-mo-list-sub--meta">${formatRankChangeText(m)}</span>
+              <span class="compare-mo-list-sub compare-mo-list-sub--meta">${formatColonPeriodText(m)}</span>
+            </span>
+            <span class="compare-mo-list-badges">
+              <strong class="compare-mo-delta up">${rel}</strong>
+            </span>
+          </li>`;
+        })
         .join('');
     }
 
-    const factChanges = buildMoChanges('fact');
-    const colonChanges = buildMoChanges('colon');
+    const colonCoverageLeaders = computeTopColonCoverageGainers(mosA, mosB, {
+      minHasDev: 10,
+      limit: 5,
+    });
 
     function kpiCard(modifier, iconName, label, valA, valB, earlier, later, isPct) {
       return `
@@ -490,16 +527,6 @@ const DashboardPhase2 = (function () {
           false
         )}
         ${kpiCard(
-          'growth',
-          'arrow-up',
-          'Прирост за нед.',
-          tA.growth.toLocaleString('ru-RU'),
-          tB.growth.toLocaleString('ru-RU'),
-          tA.growth,
-          tB.growth,
-          false
-        )}
-        ${kpiCard(
           'colon',
           'stethoscope',
           'Колоноскопия',
@@ -508,6 +535,16 @@ const DashboardPhase2 = (function () {
           tA.colon,
           tB.colon,
           false
+        )}
+        ${kpiCard(
+          'coverage',
+          'line-chart',
+          'Охват колоноскопией',
+          `${tA.colonPercent.toFixed(1)}%`,
+          `${tB.colonPercent.toFixed(1)}%`,
+          tA.colonPercent,
+          tB.colonPercent,
+          true
         )}
         ${kpiCard(
           'zno',
@@ -520,19 +557,12 @@ const DashboardPhase2 = (function () {
           false
         )}
       </div>
-      <div class="compare-mo-lists-grid">
-        <div class="compare-mo-block">
-          <h4>Топ-5 МО по приросту КнСК — изменение факта (поздний − ранний)</h4>
-          <ul class="compare-mo-list">
-            ${renderMoChangeList(factChanges)}
-          </ul>
-        </div>
-        <div class="compare-mo-block">
-          <h4>Топ-5 МО по приросту колоноскопий — изменение факта (поздний − ранний)</h4>
-          <ul class="compare-mo-list">
-            ${renderMoChangeList(colonChanges)}
-          </ul>
-        </div>
+      <div class="compare-mo-block compare-mo-block--full">
+        <h4>Топ-5 МО по относительному приросту охвата колоноскопией (КнСК+)</h4>
+        <p class="compare-mo-block-note">Сортировка — по относительному приросту % охвата КнСК+. Учитываются МО с ≥10 положительными КнСК в позднем периоде. Рейтинг охвата — из ${COVERAGE_RANK_TOTAL} мест.</p>
+        <ul class="compare-mo-list compare-mo-list--rich">
+          ${renderColonCoverageLeaderList(colonCoverageLeaders)}
+        </ul>
       </div>
     `;
     openComparePanel();
@@ -545,11 +575,16 @@ const DashboardPhase2 = (function () {
       return Promise.resolve({ reportA: cachedA, reportB: cachedB });
     }
 
+    const inflightKey = `${idA}_${idB}`;
+    if (compareInflight[inflightKey]) {
+      return compareInflight[inflightKey];
+    }
+
     if (typeof google === 'undefined' || !google.script?.run) {
       return Promise.reject(new Error('Сравнение доступно только в веб-приложении GAS'));
     }
 
-    return new Promise(function (resolve, reject) {
+    const promise = new Promise(function (resolve, reject) {
       google.script.run
         .withSuccessHandler(function (result) {
           if (result && result.reportA) cacheArchiveReport(idA, result.reportA);
@@ -558,7 +593,19 @@ const DashboardPhase2 = (function () {
         })
         .withFailureHandler(reject)
         .getArchivedReportsForCompare(idA, idB);
+    }).finally(function () {
+      delete compareInflight[inflightKey];
     });
+
+    compareInflight[inflightKey] = promise;
+    return promise;
+  }
+
+  function prefetchCompareReports() {
+    const idA = parseInt(document.getElementById('compareSelectA')?.value, 10);
+    const idB = parseInt(document.getElementById('compareSelectB')?.value, 10);
+    if (!idA || !idB || idA === idB) return;
+    fetchReportsForCompare(idA, idB).catch(function () {});
   }
 
   function runArchiveComparison(onStatus) {
@@ -583,8 +630,10 @@ const DashboardPhase2 = (function () {
           (window.archiveReportsList || []).find((r) => r.id === idA)?.dateStr || `ID ${idA}`;
         const metaB =
           (window.archiveReportsList || []).find((r) => r.id === idB)?.dateStr || `ID ${idB}`;
-        renderComparisonPanel(result.reportA, result.reportB, metaA, metaB);
-        if (onStatus) onStatus('Сравнение построено', true);
+        requestAnimationFrame(function () {
+          renderComparisonPanel(result.reportA, result.reportB, metaA, metaB);
+          if (onStatus) onStatus('Сравнение построено', true);
+        });
       })
       .catch(function (err) {
         const content = document.getElementById('comparePanelContent');
@@ -599,6 +648,15 @@ const DashboardPhase2 = (function () {
   function setupCompareUI(onStatus) {
     const btn = document.getElementById('compareReportsBtn');
     if (btn) btn.addEventListener('click', () => runArchiveComparison(onStatus));
+
+    ['compareSelectA', 'compareSelectB'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('change', () => {
+        clearTimeout(comparePrefetchTimer);
+        comparePrefetchTimer = setTimeout(prefetchCompareReports, 350);
+      });
+    });
   }
 
   function onResize() {
