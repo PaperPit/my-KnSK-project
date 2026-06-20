@@ -46,6 +46,101 @@ export function getNextWeekPeriod() {
 /**
  * Короткая подпись периода: одна конечная дата (например 17.04.2026).
  */
+export function parseArchiveReportDate(dateStr) {
+  if (!dateStr) return null;
+  const s = String(dateStr).trim();
+  const dmY = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s);
+  if (dmY) {
+    return new Date(Number(dmY[3]), Number(dmY[2]) - 1, Number(dmY[1])).getTime();
+  }
+  const parsed = Date.parse(s);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+/**
+ * Первый отчёт должен быть хронологически раньше второго.
+ * @param {number} idEarlier — compareSelectA
+ * @param {number} idLater — compareSelectB
+ * @param {Array<{id: number, dateStr?: string}>} reportsList
+ */
+export function isEarlierArchiveReport(idEarlier, idLater, reportsList) {
+  const a = Number(idEarlier);
+  const b = Number(idLater);
+  if (!a || !b || a === b) return false;
+
+  const list = reportsList || [];
+  const metaA = list.find((r) => r.id === a);
+  const metaB = list.find((r) => r.id === b);
+  const timeA = metaA && parseArchiveReportDate(metaA.dateStr);
+  const timeB = metaB && parseArchiveReportDate(metaB.dateStr);
+  if (timeA != null && timeB != null) return timeA < timeB;
+  return a < b;
+}
+
+/**
+ * Календарная неделя Пн–Вс для даты отчёта.
+ * @returns {{ startIso: string, endIso: string, period: string }|null}
+ */
+export function getCalendarWeekMonSun(anchor) {
+  let d;
+  if (anchor instanceof Date) {
+    d = new Date(anchor.getTime());
+  } else if (typeof anchor === 'number') {
+    d = new Date(anchor);
+  } else if (typeof anchor === 'string') {
+    const parsed = parseArchiveReportDate(anchor);
+    d = parsed != null ? new Date(parsed) : new Date(anchor);
+  } else {
+    return null;
+  }
+  if (isNaN(d.getTime())) return null;
+
+  const day = d.getDay();
+  const daysToMonday = day === 0 ? 6 : day - 1;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - daysToMonday);
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const pad = (n) => String(n).padStart(2, '0');
+  const iso = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+  const ddmm = (dt) => `${pad(dt.getDate())}.${pad(dt.getMonth() + 1)}`;
+
+  return {
+    startIso: iso(monday),
+    endIso: iso(sunday),
+    period: `${ddmm(monday)}-${ddmm(sunday)}`,
+    monday,
+    sunday,
+  };
+}
+
+/**
+ * Неделя Пн–Вс, за которую в отчёте указана «Динамика» (всегда прошлая к дате отчёта).
+ */
+export function getDynamicsWeekMonSun(anchor) {
+  const week = getCalendarWeekMonSun(anchor);
+  if (!week) return null;
+
+  const monday = new Date(week.monday);
+  monday.setDate(monday.getDate() - 7);
+  const sunday = new Date(week.sunday);
+  sunday.setDate(sunday.getDate() - 7);
+
+  const pad = (n) => String(n).padStart(2, '0');
+  const iso = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+  const ddmm = (dt) => `${pad(dt.getDate())}.${pad(dt.getMonth() + 1)}`;
+
+  return {
+    startIso: iso(monday),
+    endIso: iso(sunday),
+    period: `${ddmm(monday)}-${ddmm(sunday)}`,
+    monday,
+    sunday,
+  };
+}
+
 export function formatPeriodLabel(period) {
   if (!period) return '';
   let s = String(period).trim();

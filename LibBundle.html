@@ -10,10 +10,19 @@
   // src/lib/index.js
   var lib_exports = {};
   __export(lib_exports, {
+    COLON_COVERAGE_LOW_THRESHOLD: () => COLON_COVERAGE_LOW_THRESHOLD,
     COVERAGE_RANK_TOTAL: () => COVERAGE_RANK_TOTAL,
+    DEFAULT_POPULATION_GROUP: () => DEFAULT_POPULATION_GROUP,
+    KNSK_HIGH_VOLUME_MIN_FACT: () => KNSK_HIGH_VOLUME_MIN_FACT,
+    KNSK_POSITIVE_RATE_Z_THRESHOLD: () => KNSK_POSITIVE_RATE_Z_THRESHOLD,
+    MO_POPULATION_GROUPS_DATA: () => mo_population_groups_default,
+    POPULATION_GROUP_IDS: () => POPULATION_GROUP_IDS,
     buildMoHistoryPoint: () => buildMoHistoryPoint,
     buildMoInsights: () => buildMoInsights,
     buildMosFromData: () => buildMosFromData,
+    computeHighCoverageTopDynamicsMOs: () => computeHighCoverageTopDynamicsMOs,
+    computeHighVolumeLowPositiveOutliers: () => computeHighVolumeLowPositiveOutliers,
+    computeLowCoverageStagnantMOs: () => computeLowCoverageStagnantMOs,
     computeMoRankings: () => computeMoRankings,
     computePeriodDeltas: () => computePeriodDeltas,
     computeTopColonCoverageGainers: () => computeTopColonCoverageGainers,
@@ -25,21 +34,37 @@
     escapeHtml: () => escapeHtml,
     extractFact: () => extractFact,
     extractNumber: () => extractNumber,
+    filterMosByPopulationGroup: () => filterMosByPopulationGroup,
+    focusFirst: () => focusFirst,
     formatPeriodLabel: () => formatPeriodLabel,
     formatShortDate: () => formatShortDate,
+    getCalendarWeekMonSun: () => getCalendarWeekMonSun,
+    getDynamicsWeekMonSun: () => getDynamicsWeekMonSun,
+    getFocusableElements: () => getFocusableElements,
+    getMoPeerPool: () => getMoPeerPool,
+    getMoPopulationGroup: () => getMoPopulationGroup,
     getNextWeekPeriod: () => getNextWeekPeriod,
     getPlans: () => getPlans,
+    getPopulationGroupDefinition: () => getPopulationGroupDefinition,
+    getPopulationGroupLabel: () => getPopulationGroupLabel,
     hasAllowedMarkup: () => hasAllowedMarkup,
     icon: () => icon,
+    isEarlierArchiveReport: () => isEarlierArchiveReport,
+    isMinimalCoverageDynamics: () => isMinimalCoverageDynamics,
     mergeDisplayedMoPoint: () => mergeDisplayedMoPoint,
+    normMoName: () => normMoName,
     normalizeArchiveReport: () => normalizeArchiveReport,
     normalizeMoKey: () => normalizeMoKey,
+    parseArchiveReportDate: () => parseArchiveReportDate,
     parseCSV: () => parseCSV,
+    positiveRateOf: () => positiveRateOf,
     rankBadgeClass: () => rankBadgeClass,
     renderHtmlContent: () => renderHtmlContent,
+    restoreFocus: () => restoreFocus,
     sanitizeHtmlFragment: () => sanitizeHtmlFragment,
     sortMoHistoryPoints: () => sortMoHistoryPoints,
     toNum: () => toNum,
+    trapFocus: () => trapFocus,
     truncateName: () => truncateName
   });
 
@@ -281,6 +306,77 @@
       end: nextFriday
     };
   }
+  function parseArchiveReportDate(dateStr) {
+    if (!dateStr) return null;
+    const s = String(dateStr).trim();
+    const dmY = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s);
+    if (dmY) {
+      return new Date(Number(dmY[3]), Number(dmY[2]) - 1, Number(dmY[1])).getTime();
+    }
+    const parsed = Date.parse(s);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  function isEarlierArchiveReport(idEarlier, idLater, reportsList) {
+    const a = Number(idEarlier);
+    const b = Number(idLater);
+    if (!a || !b || a === b) return false;
+    const list = reportsList || [];
+    const metaA = list.find((r) => r.id === a);
+    const metaB = list.find((r) => r.id === b);
+    const timeA = metaA && parseArchiveReportDate(metaA.dateStr);
+    const timeB = metaB && parseArchiveReportDate(metaB.dateStr);
+    if (timeA != null && timeB != null) return timeA < timeB;
+    return a < b;
+  }
+  function getCalendarWeekMonSun(anchor) {
+    let d;
+    if (anchor instanceof Date) {
+      d = new Date(anchor.getTime());
+    } else if (typeof anchor === "number") {
+      d = new Date(anchor);
+    } else if (typeof anchor === "string") {
+      const parsed = parseArchiveReportDate(anchor);
+      d = parsed != null ? new Date(parsed) : new Date(anchor);
+    } else {
+      return null;
+    }
+    if (isNaN(d.getTime())) return null;
+    const day = d.getDay();
+    const daysToMonday = day === 0 ? 6 : day - 1;
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - daysToMonday);
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const pad = (n) => String(n).padStart(2, "0");
+    const iso = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+    const ddmm = (dt) => `${pad(dt.getDate())}.${pad(dt.getMonth() + 1)}`;
+    return {
+      startIso: iso(monday),
+      endIso: iso(sunday),
+      period: `${ddmm(monday)}-${ddmm(sunday)}`,
+      monday,
+      sunday
+    };
+  }
+  function getDynamicsWeekMonSun(anchor) {
+    const week = getCalendarWeekMonSun(anchor);
+    if (!week) return null;
+    const monday = new Date(week.monday);
+    monday.setDate(monday.getDate() - 7);
+    const sunday = new Date(week.sunday);
+    sunday.setDate(sunday.getDate() - 7);
+    const pad = (n) => String(n).padStart(2, "0");
+    const iso = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+    const ddmm = (dt) => `${pad(dt.getDate())}.${pad(dt.getMonth() + 1)}`;
+    return {
+      startIso: iso(monday),
+      endIso: iso(sunday),
+      period: `${ddmm(monday)}-${ddmm(sunday)}`,
+      monday,
+      sunday
+    };
+  }
   function formatPeriodLabel(period) {
     if (!period) return "";
     let s = String(period).trim();
@@ -315,6 +411,18 @@
     return mo.hasDev > 0 ? mo.colon / mo.hasDev * 100 : 0;
   }
   var COVERAGE_RANK_TOTAL = 47;
+  var COLON_COVERAGE_LOW_THRESHOLD = 50;
+  function medianOf(values) {
+    if (!values.length) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  }
+  function isMinimalCoverageDynamics(coverageDeltaPp, poolDeltas) {
+    if (coverageDeltaPp <= 0) return true;
+    if (!poolDeltas.length) return false;
+    return coverageDeltaPp <= medianOf(poolDeltas);
+  }
   function buildCoverageRankMap(mos, minHasDev) {
     const eligible = (mos || []).filter((m) => m.hasDev >= minHasDev);
     const sorted = [...eligible].sort((a, b) => coverageOf(b) - coverageOf(a));
@@ -370,6 +478,95 @@
       if (relB !== relA) return relB - relA;
       if (b.rankRise !== a.rankRise) return b.rankRise - a.rankRise;
       return b.coverageDeltaPp - a.coverageDeltaPp;
+    });
+    return candidates.slice(0, limit);
+  }
+  function computeLowCoverageStagnantMOs(mosEarlier, mosLater, options) {
+    const minHasDev = (options && options.minHasDev) ?? 10;
+    const limit = (options && options.limit) ?? 5;
+    const maxCoverage = (options && options.maxCoverage) ?? COLON_COVERAGE_LOW_THRESHOLD;
+    const earlierMap = /* @__PURE__ */ new Map();
+    (mosEarlier || []).forEach((m) => {
+      earlierMap.set(normalizeMoKey(m.name), m);
+    });
+    const lowCoveragePool = [];
+    (mosLater || []).forEach((mB) => {
+      if (mB.hasDev < minHasDev) return;
+      const key = normalizeMoKey(mB.name);
+      const mA = earlierMap.get(key);
+      if (!mA || mA.hasDev < minHasDev) return;
+      const covA = coverageOf(mA);
+      const covB = coverageOf(mB);
+      if (covB >= maxCoverage) return;
+      const coverageDeltaPp = covB - covA;
+      const hasDevEarlier = mA.hasDev || 0;
+      const hasDevLater = mB.hasDev || 0;
+      const colonEarlier = mA.colon || 0;
+      const colonLater = mB.colon || 0;
+      lowCoveragePool.push({
+        name: mB.name,
+        coverageEarlier: covA,
+        coverageLater: covB,
+        coverageDeltaPp,
+        hasDevEarlier,
+        hasDevLater,
+        hasDevDelta: hasDevLater - hasDevEarlier,
+        colonEarlier,
+        colonLater,
+        colonDelta: colonLater - colonEarlier
+      });
+    });
+    const poolDeltas = lowCoveragePool.map((m) => m.coverageDeltaPp);
+    const candidates = lowCoveragePool.filter(
+      (m) => isMinimalCoverageDynamics(m.coverageDeltaPp, poolDeltas)
+    );
+    candidates.sort((a, b) => {
+      if (a.coverageLater !== b.coverageLater) return a.coverageLater - b.coverageLater;
+      if (a.coverageDeltaPp !== b.coverageDeltaPp) return a.coverageDeltaPp - b.coverageDeltaPp;
+      return normalizeMoKey(a.name).localeCompare(normalizeMoKey(b.name), "ru");
+    });
+    return candidates.slice(0, limit);
+  }
+  function computeHighCoverageTopDynamicsMOs(mosEarlier, mosLater, options) {
+    const minHasDev = (options && options.minHasDev) ?? 10;
+    const limit = (options && options.limit) ?? 5;
+    const minCoverage = (options && options.minCoverage) ?? COLON_COVERAGE_LOW_THRESHOLD;
+    const earlierMap = /* @__PURE__ */ new Map();
+    (mosEarlier || []).forEach((m) => {
+      earlierMap.set(normalizeMoKey(m.name), m);
+    });
+    const candidates = [];
+    (mosLater || []).forEach((mB) => {
+      if (mB.hasDev < minHasDev) return;
+      const key = normalizeMoKey(mB.name);
+      const mA = earlierMap.get(key);
+      if (!mA || mA.hasDev < minHasDev) return;
+      const covA = coverageOf(mA);
+      const covB = coverageOf(mB);
+      if (covB < minCoverage) return;
+      const coverageDeltaPp = covB - covA;
+      if (coverageDeltaPp <= 0) return;
+      const hasDevEarlier = mA.hasDev || 0;
+      const hasDevLater = mB.hasDev || 0;
+      const colonEarlier = mA.colon || 0;
+      const colonLater = mB.colon || 0;
+      candidates.push({
+        name: mB.name,
+        coverageEarlier: covA,
+        coverageLater: covB,
+        coverageDeltaPp,
+        hasDevEarlier,
+        hasDevLater,
+        hasDevDelta: hasDevLater - hasDevEarlier,
+        colonEarlier,
+        colonLater,
+        colonDelta: colonLater - colonEarlier
+      });
+    });
+    candidates.sort((a, b) => {
+      if (b.coverageDeltaPp !== a.coverageDeltaPp) return b.coverageDeltaPp - a.coverageDeltaPp;
+      if (b.coverageLater !== a.coverageLater) return b.coverageLater - a.coverageLater;
+      return normalizeMoKey(a.name).localeCompare(normalizeMoKey(b.name), "ru");
     });
     return candidates.slice(0, limit);
   }
@@ -495,12 +692,1398 @@
     }
     return insights.slice(0, 6);
   }
+  var KNSK_HIGH_VOLUME_MIN_FACT = 500;
+  var KNSK_POSITIVE_RATE_Z_THRESHOLD = -1.5;
+  function positiveRateOf(mo) {
+    return mo.fact > 0 ? (mo.hasDev || 0) / mo.fact * 100 : 0;
+  }
+  function meanOf(values) {
+    if (!values.length) return 0;
+    return values.reduce((sum, v) => sum + v, 0) / values.length;
+  }
+  function sampleStd(values) {
+    const n = values.length;
+    if (n < 2) return 0;
+    const mean = meanOf(values);
+    const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / (n - 1);
+    return Math.sqrt(variance);
+  }
+  function computeHighVolumeLowPositiveOutliers(mos, options) {
+    const minFact = (options && options.minFact) ?? KNSK_HIGH_VOLUME_MIN_FACT;
+    const limit = (options && options.limit) ?? 5;
+    const zThreshold = (options && options.zThreshold) ?? KNSK_POSITIVE_RATE_Z_THRESHOLD;
+    const withFact = (mos || []).filter((m) => m.fact > 0);
+    const rates = withFact.map(positiveRateOf);
+    const hasDevCounts = withFact.map((m) => m.hasDev || 0);
+    const meanRate = meanOf(rates);
+    const stdRate = sampleStd(rates);
+    const medianRate = medianOf(rates);
+    const meanHasDev = meanOf(hasDevCounts);
+    const totalFact = withFact.reduce((sum, m) => sum + m.fact, 0);
+    const totalHasDev = withFact.reduce((sum, m) => sum + (m.hasDev || 0), 0);
+    const networkPositiveRate = totalFact > 0 ? totalHasDev / totalFact * 100 : 0;
+    const highVolume = withFact.filter((m) => m.fact >= minFact);
+    const enriched = highVolume.map((m) => {
+      const positiveRate = positiveRateOf(m);
+      const zScore = stdRate > 0 ? (positiveRate - meanRate) / stdRate : 0;
+      const expectedHasDev = meanRate / 100 * m.fact;
+      const deviationCount = (m.hasDev || 0) - expectedHasDev;
+      return {
+        name: m.name,
+        fact: m.fact,
+        hasDev: m.hasDev || 0,
+        noDev: m.noDev || 0,
+        positiveRate,
+        zScore,
+        deviationPp: positiveRate - meanRate,
+        expectedHasDev,
+        deviationCount
+      };
+    });
+    let candidates = enriched.filter(
+      (m) => m.positiveRate < meanRate && (stdRate > 0 ? m.zScore <= zThreshold : m.deviationPp < -0.5)
+    );
+    if (!candidates.length) {
+      candidates = enriched.filter((m) => m.positiveRate < meanRate);
+    }
+    candidates.sort((a, b) => {
+      if (a.positiveRate !== b.positiveRate) return a.positiveRate - b.positiveRate;
+      if (b.fact !== a.fact) return b.fact - a.fact;
+      return normalizeMoKey(a.name).localeCompare(normalizeMoKey(b.name), "ru");
+    });
+    return {
+      benchmark: {
+        moCount: withFact.length,
+        highVolumeCount: highVolume.length,
+        meanPositiveRate: meanRate,
+        stdPositiveRate: stdRate,
+        medianPositiveRate: medianRate,
+        meanHasDev,
+        networkPositiveRate,
+        totalFact,
+        totalHasDev
+      },
+      minFact,
+      zThreshold,
+      items: candidates.slice(0, limit)
+    };
+  }
   function rankBadgeClass(position, total) {
     if (!position || !total) return "mo-profile-rank-badge--mid";
     const ratio = position / total;
     if (ratio <= 0.2) return "mo-profile-rank-badge--top";
     if (ratio <= 0.5) return "mo-profile-rank-badge--mid";
     return "mo-profile-rank-badge--low";
+  }
+
+  // data/mo-population-groups.json
+  var mo_population_groups_default = {
+    source: "\u041F\u0440\u0438\u043A\u0440\u0435\u043F\u043B\u0435\u043D\u0438\u0435 \u0441 \u043A\u0430\u0442\u0435\u0433\u043E\u0440\u0438\u044F\u043C\u0438.xlsx",
+    generatedAt: "2026-06-20",
+    groupDefinitions: {
+      \u043C\u0430\u043B\u0430\u044F: {
+        label: "\u041C\u0430\u043B\u0430\u044F",
+        populationRange: "\u043C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441."
+      },
+      \u0441\u0440\u0435\u0434\u043D\u044F\u044F: {
+        label: "\u0421\u0440\u0435\u0434\u043D\u044F\u044F",
+        populationRange: "\u043E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441."
+      },
+      \u0431\u043E\u043B\u044C\u0448\u0430\u044F: {
+        label: "\u0411\u043E\u043B\u044C\u0448\u0430\u044F",
+        populationRange: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441."
+      }
+    },
+    groups: {
+      \u043C\u0430\u043B\u0430\u044F: [
+        "\u0412\u043E\u043B\u043E\u043A\u043E\u043B\u0430\u043C\u0441\u043A\u0430\u044F \u0411",
+        "\u0414\u0443\u0431\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        "\u0415\u0433\u043E\u0440\u044C\u0435\u0432\u0441\u043A\u0430\u044F \u0411",
+        "\u0416\u0443\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u041E\u041A\u0411",
+        "\u0417\u0430\u0440\u0430\u0439\u0441\u043A\u0430\u044F \u0411",
+        "\u041A\u0430\u0448\u0438\u0440\u0441\u043A\u0430\u044F \u0411",
+        "\u041A\u043E\u0442\u0435\u043B\u044C\u043D\u0438\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u041F",
+        "\u041A\u0440\u0430\u0441\u043D\u043E\u0437\u043D\u0430\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u041F",
+        "\u041B\u043E\u0442\u043E\u0448\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        "\u041B\u0443\u0445\u043E\u0432\u0438\u0446\u043A\u0430\u044F \u0411",
+        "\u041B\u044B\u0442\u043A\u0430\u0440\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        "\u041C\u043E\u0436\u0430\u0439\u0441\u043A\u0430\u044F \u0411",
+        "\u041F \u0433.\u043E. \u0412\u043B\u0430\u0441\u0438\u0445\u0430",
+        "\u041F\u043E\u0434\u043E\u043B\u044C\u0441\u043A\u0430\u044F \u0414\u0435\u0442\u0441\u043A\u0430\u044F \u0411",
+        "\u0420\u0435\u0443\u0442\u043E\u0432\u0441\u043A\u0430\u044F \u041A\u0411",
+        "\u0420\u0443\u0437\u0441\u043A\u0430\u044F \u0411",
+        "\u0421\u0435\u0440\u0435\u0431\u0440\u044F\u043D\u043E-\u041F\u0440\u0443\u0434\u0441\u043A\u0430\u044F \u0411",
+        "\u0428\u0430\u0442\u0443\u0440\u0441\u043A\u0430\u044F \u0411",
+        "\u0428\u0430\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411"
+      ],
+      \u0441\u0440\u0435\u0434\u043D\u044F\u044F: [
+        "\u0412\u043E\u0441\u043A\u0440\u0435\u0441\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        "\u0414\u043C\u0438\u0442\u0440\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        "\u0414\u043E\u043B\u0433\u043E\u043F\u0440\u0443\u0434\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        "\u0418\u0441\u0442\u0440\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        "\u041A\u043B\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        "\u041B\u043E\u0431\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        "\u041D\u0430\u0440\u043E-\u0424\u043E\u043C\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        "\u041E\u0440\u0435\u0445\u043E\u0432\u043E-\u0417\u0443\u0435\u0432\u0441\u043A\u0430\u044F \u0411",
+        "\u041F\u0430\u0432\u043B\u043E\u0432\u043E-\u041F\u043E\u0441\u0430\u0434\u0441\u043A\u0430\u044F \u0411",
+        "\u0421\u0435\u0440\u0433\u0438\u0435\u0432\u043E-\u041F\u043E\u0441\u0430\u0434\u0441\u043A\u0430\u044F \u0411",
+        "\u0421\u0435\u0440\u043F\u0443\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        "\u0421\u043E\u043B\u043D\u0435\u0447\u043D\u043E\u0433\u043E\u0440\u0441\u043A\u0430\u044F \u0411",
+        "\u0421\u0442\u0443\u043F\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        "\u0427\u0435\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        "\u042D\u043B\u0435\u043A\u0442\u0440\u043E\u0441\u0442\u0430\u043B\u044C\u0441\u043A\u0430\u044F \u0411"
+      ],
+      \u0431\u043E\u043B\u044C\u0448\u0430\u044F: [
+        "\u0411\u0430\u043B\u0430\u0448\u0438\u0445\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        "\u0412\u0438\u0434\u043D\u043E\u0432\u0441\u043A\u0430\u044F \u041A\u0411",
+        "\u0414\u043E\u043C\u043E\u0434\u0435\u0434\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        "\u041A\u043E\u043B\u043E\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        "\u041A\u043E\u0440\u043E\u043B\u0451\u0432\u0441\u043A\u0430\u044F \u0411",
+        "\u041A\u0440\u0430\u0441\u043D\u043E\u0433\u043E\u0440\u0441\u043A\u0430\u044F \u041A\u0411",
+        "\u041B\u044E\u0431\u0435\u0440\u0435\u0446\u043A\u0430\u044F \u041E\u041A\u0411",
+        "\u041C\u044B\u0442\u0438\u0449\u0438\u043D\u0441\u043A\u0430\u044F \u041E\u041A\u0411",
+        "\u041D\u043E\u0433\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        "\u041E\u0434\u0438\u043D\u0446\u043E\u0432\u0441\u043A\u0430\u044F \u041E\u0411",
+        "\u041F\u041A\u0411 \u0438\u043C. \u0420\u043E\u0437\u0430\u043D\u043E\u0432\u0430 \u0412.\u041D.",
+        "\u041F\u043E\u0434\u043E\u043B\u044C\u0441\u043A\u0430\u044F \u041E\u041A\u0411",
+        "\u0420\u0430\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        "\u0425\u0438\u043C\u043A\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        "\u0429\u0451\u043B\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u0411"
+      ]
+    },
+    byName: {
+      "\u0411\u0430\u043B\u0430\u0448\u0438\u0445\u0438\u043D\u0441\u043A\u0430\u044F \u0411": {
+        code: "010101",
+        name: "\u0411\u0430\u043B\u0430\u0448\u0438\u0445\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0411\u0410\u041B\u0410\u0428\u0418\u0425\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 472302,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u0412\u043E\u043B\u043E\u043A\u043E\u043B\u0430\u043C\u0441\u043A\u0430\u044F \u0411": {
+        code: "020101",
+        name: "\u0412\u043E\u043B\u043E\u043A\u043E\u043B\u0430\u043C\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0412\u041E\u041B\u041E\u041A\u041E\u041B\u0410\u041C\u0421\u041A\u0410\u042F \u0411",
+        population: 41924,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u0412\u043E\u0441\u043A\u0440\u0435\u0441\u0435\u043D\u0441\u043A\u0430\u044F \u0411": {
+        code: "031801",
+        name: "\u0412\u043E\u0441\u043A\u0440\u0435\u0441\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0412\u041E\u0421\u041A\u0420\u0415\u0421\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 144089,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u0414\u043C\u0438\u0442\u0440\u043E\u0432\u0441\u043A\u0430\u044F \u0411": {
+        code: "041601",
+        name: "\u0414\u043C\u0438\u0442\u0440\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0414\u041C\u0418\u0422\u0420\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 165866,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u0414\u043E\u043B\u0433\u043E\u043F\u0440\u0443\u0434\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u041A\u0411": {
+        code: "050101",
+        name: "\u0414\u043E\u043B\u0433\u043E\u043F\u0440\u0443\u0434\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u0414\u041E\u041B\u0413\u041E\u041F\u0420\u0423\u0414\u041D\u0415\u041D\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 103311,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u0414\u043E\u043C\u043E\u0434\u0435\u0434\u043E\u0432\u0441\u043A\u0430\u044F \u0411": {
+        code: "060101",
+        name: "\u0414\u043E\u043C\u043E\u0434\u0435\u0434\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0414\u041E\u041C\u041E\u0414\u0415\u0414\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 210481,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u0414\u0443\u0431\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u0411": {
+        code: "070101",
+        name: "\u0414\u0443\u0431\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0414\u0423\u0411\u041D\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 96809,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u0415\u0433\u043E\u0440\u044C\u0435\u0432\u0441\u043A\u0430\u044F \u0411": {
+        code: "080101",
+        name: "\u0415\u0433\u043E\u0440\u044C\u0435\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0415\u0413\u041E\u0420\u042C\u0415\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 91681,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u0416\u0443\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u041E\u041A\u0411": {
+        code: "100101",
+        name: "\u0416\u0443\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u041E\u041A\u0411",
+        nameExcel: "\u0416\u0423\u041A\u041E\u0412\u0421\u041A\u0410\u042F \u041E\u041A\u0411",
+        population: 97647,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u0417\u0430\u0440\u0430\u0439\u0441\u043A\u0430\u044F \u0411": {
+        code: "110101",
+        name: "\u0417\u0430\u0440\u0430\u0439\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0417\u0410\u0420\u0410\u0419\u0421\u041A\u0410\u042F \u0411",
+        population: 32250,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u0418\u0441\u0442\u0440\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411": {
+        code: "141101",
+        name: "\u0418\u0441\u0442\u0440\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u0418\u0421\u0422\u0420\u0418\u041D\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 146593,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u041A\u043E\u0440\u043E\u043B\u0451\u0432\u0441\u043A\u0430\u044F \u0411": {
+        code: "150101",
+        name: "\u041A\u043E\u0440\u043E\u043B\u0451\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041A\u041E\u0420\u041E\u041B\u0401\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 220264,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u041A\u0430\u0448\u0438\u0440\u0441\u043A\u0430\u044F \u0411": {
+        code: "160101",
+        name: "\u041A\u0430\u0448\u0438\u0440\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041A\u0410\u0428\u0418\u0420\u0421\u041A\u0410\u042F \u0411",
+        population: 49840,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u041A\u043B\u0438\u043D\u0441\u043A\u0430\u044F \u0411": {
+        code: "170101",
+        name: "\u041A\u043B\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041A\u041B\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 125691,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u041A\u043E\u043B\u043E\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u0411": {
+        code: "191901",
+        name: "\u041A\u043E\u043B\u043E\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041A\u041E\u041B\u041E\u041C\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 208755,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u041A\u0440\u0430\u0441\u043D\u043E\u0433\u043E\u0440\u0441\u043A\u0430\u044F \u041A\u0411": {
+        code: "202401",
+        name: "\u041A\u0440\u0430\u0441\u043D\u043E\u0433\u043E\u0440\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u041A\u0420\u0410\u0421\u041D\u041E\u0413\u041E\u0420\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 318611,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u0412\u0438\u0434\u043D\u043E\u0432\u0441\u043A\u0430\u044F \u041A\u0411": {
+        code: "210101",
+        name: "\u0412\u0438\u0434\u043D\u043E\u0432\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u0412\u0418\u0414\u041D\u041E\u0412\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 224879,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u041B\u043E\u0442\u043E\u0448\u0438\u043D\u0441\u043A\u0430\u044F \u0411": {
+        code: "220101",
+        name: "\u041B\u043E\u0442\u043E\u0448\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041B\u041E\u0422\u041E\u0428\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 15455,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u041B\u043E\u0431\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u0411": {
+        code: "230101",
+        name: "\u041B\u043E\u0431\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041B\u041E\u0411\u041D\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 109058,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u041B\u0443\u0445\u043E\u0432\u0438\u0446\u043A\u0430\u044F \u0411": {
+        code: "240101",
+        name: "\u041B\u0443\u0445\u043E\u0432\u0438\u0446\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041B\u0423\u0425\u041E\u0412\u0418\u0426\u041A\u0410\u042F \u0411",
+        population: 57942,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u041B\u044B\u0442\u043A\u0430\u0440\u0438\u043D\u0441\u043A\u0430\u044F \u0411": {
+        code: "250101",
+        name: "\u041B\u044B\u0442\u043A\u0430\u0440\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041B\u042B\u0422\u041A\u0410\u0420\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 50349,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u041A\u043E\u0442\u0435\u043B\u044C\u043D\u0438\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u041F": {
+        code: "261501",
+        name: "\u041A\u043E\u0442\u0435\u043B\u044C\u043D\u0438\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u041F",
+        nameExcel: "\u041A\u041E\u0422\u0415\u041B\u042C\u041D\u0418\u041A\u041E\u0412\u0421\u041A\u0410\u042F \u041F\u041E\u041B\u0418\u041A\u041B\u0418\u041D\u0418\u041A\u0410",
+        population: 54927,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u041B\u044E\u0431\u0435\u0440\u0435\u0446\u043A\u0430\u044F \u041E\u041A\u0411": {
+        code: "263001",
+        name: "\u041B\u044E\u0431\u0435\u0440\u0435\u0446\u043A\u0430\u044F \u041E\u041A\u0411",
+        nameExcel: "\u041B\u042E\u0411\u0415\u0420\u0415\u0426\u041A\u0410\u042F \u041E\u041A\u0411",
+        population: 347706,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u041C\u043E\u0436\u0430\u0439\u0441\u043A\u0430\u044F \u0411": {
+        code: "270101",
+        name: "\u041C\u043E\u0436\u0430\u0439\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041C\u041E\u0416\u0410\u0419\u0421\u041A\u0410\u042F \u0411",
+        population: 60747,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u041C\u044B\u0442\u0438\u0449\u0438\u043D\u0441\u043A\u0430\u044F \u041E\u041A\u0411": {
+        code: "280101",
+        name: "\u041C\u044B\u0442\u0438\u0449\u0438\u043D\u0441\u043A\u0430\u044F \u041E\u041A\u0411",
+        nameExcel: "\u041C\u042B\u0422\u0418\u0429\u0418\u041D\u0421\u041A\u0410\u042F \u041E\u041A\u0411",
+        population: 302312,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u041D\u0430\u0440\u043E-\u0424\u043E\u043C\u0438\u043D\u0441\u043A\u0430\u044F \u0411": {
+        code: "291601",
+        name: "\u041D\u0430\u0440\u043E-\u0424\u043E\u043C\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041D\u0410\u0420\u041E-\u0424\u041E\u041C\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 158094,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u041D\u043E\u0433\u0438\u043D\u0441\u043A\u0430\u044F \u0411": {
+        code: "300101",
+        name: "\u041D\u043E\u0433\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041D\u041E\u0413\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 212837,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u041F \u0433.\u043E. \u0412\u043B\u0430\u0441\u0438\u0445\u0430": {
+        code: "311301",
+        name: "\u041F \u0433.\u043E. \u0412\u043B\u0430\u0441\u0438\u0445\u0430",
+        nameExcel: "\u041F\u041E\u041B\u0418\u041A\u041B\u0418\u041D\u0418\u041A\u0410 \u0413.\u041E. \u0412\u041B\u0410\u0421\u0418\u0425\u0410",
+        population: 3879,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u041E\u0434\u0438\u043D\u0446\u043E\u0432\u0441\u043A\u0430\u044F \u041E\u0411": {
+        code: "313301",
+        name: "\u041E\u0434\u0438\u043D\u0446\u043E\u0432\u0441\u043A\u0430\u044F \u041E\u0411",
+        nameExcel: "\u041E\u0414\u0418\u041D\u0426\u041E\u0412\u0421\u041A\u0410\u042F \u041E\u0411",
+        population: 374132,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u041E\u0440\u0435\u0445\u043E\u0432\u043E-\u0417\u0443\u0435\u0432\u0441\u043A\u0430\u044F \u0411": {
+        code: "334801",
+        name: "\u041E\u0440\u0435\u0445\u043E\u0432\u043E-\u0417\u0443\u0435\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041E\u0420\u0415\u0425\u041E\u0412\u041E-\u0417\u0423\u0415\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 194722,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u041F\u0430\u0432\u043B\u043E\u0432\u043E-\u041F\u043E\u0441\u0430\u0434\u0441\u043A\u0430\u044F \u0411": {
+        code: "340101",
+        name: "\u041F\u0430\u0432\u043B\u043E\u0432\u043E-\u041F\u043E\u0441\u0430\u0434\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041F\u0410\u0412\u041B\u041E\u0412\u041E-\u041F\u041E\u0421\u0410\u0414\u0421\u041A\u0410\u042F \u0411",
+        population: 102570,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u041F\u043E\u0434\u043E\u043B\u044C\u0441\u043A\u0430\u044F \u0414\u0435\u0442\u0441\u043A\u0430\u044F \u0411": {
+        code: "360201",
+        name: "\u041F\u043E\u0434\u043E\u043B\u044C\u0441\u043A\u0430\u044F \u0414\u0435\u0442\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041F\u041E\u0414\u041E\u041B\u042C\u0421\u041A\u0410\u042F \u0414\u0415\u0422\u0421\u041A\u0410\u042F \u0411",
+        population: 75370,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u041F\u043E\u0434\u043E\u043B\u044C\u0441\u043A\u0430\u044F \u041E\u041A\u0411": {
+        code: "363001",
+        name: "\u041F\u043E\u0434\u043E\u043B\u044C\u0441\u043A\u0430\u044F \u041E\u041A\u0411",
+        nameExcel: "\u041F\u041E\u0414\u041E\u041B\u042C\u0421\u041A\u0410\u042F \u041E\u041A\u0411",
+        population: 287139,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u041F\u041A\u0411 \u0438\u043C. \u0420\u043E\u0437\u0430\u043D\u043E\u0432\u0430 \u0412.\u041D.": {
+        code: "371702",
+        name: "\u041F\u041A\u0411 \u0438\u043C. \u0420\u043E\u0437\u0430\u043D\u043E\u0432\u0430 \u0412.\u041D.",
+        nameExcel: "\u041F\u041A\u0411 \u0418\u041C. \u041F\u0420\u041E\u0424. \u0420\u041E\u0417\u0410\u041D\u041E\u0412\u0410 \u0412.\u041D.",
+        population: 264251,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u0420\u0430\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u0411": {
+        code: "381401",
+        name: "\u0420\u0430\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0420\u0410\u041C\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 308142,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u0420\u0435\u0443\u0442\u043E\u0432\u0441\u043A\u0430\u044F \u041A\u0411": {
+        code: "390101",
+        name: "\u0420\u0435\u0443\u0442\u043E\u0432\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u0420\u0415\u0423\u0422\u041E\u0412\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 89194,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u0420\u0443\u0437\u0441\u043A\u0430\u044F \u0411": {
+        code: "400601",
+        name: "\u0420\u0443\u0437\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0420\u0423\u0417\u0421\u041A\u0410\u042F \u0411",
+        population: 60992,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u0421\u0435\u0440\u0433\u0438\u0435\u0432\u043E-\u041F\u043E\u0441\u0430\u0434\u0441\u043A\u0430\u044F \u0411": {
+        code: "410101",
+        name: "\u0421\u0435\u0440\u0433\u0438\u0435\u0432\u043E-\u041F\u043E\u0441\u0430\u0434\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0421\u0415\u0420\u0413\u0418\u0415\u0412\u041E-\u041F\u041E\u0421\u0410\u0414\u0421\u041A\u0410\u042F \u0411",
+        population: 198310,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u0421\u0435\u0440\u0435\u0431\u0440\u044F\u043D\u043E-\u041F\u0440\u0443\u0434\u0441\u043A\u0430\u044F \u0411": {
+        code: "420101",
+        name: "\u0421\u0435\u0440\u0435\u0431\u0440\u044F\u043D\u043E-\u041F\u0440\u0443\u0434\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0421\u0415\u0420\u0415\u0411\u0420\u042F\u041D\u041E-\u041F\u0420\u0423\u0414\u0421\u041A\u0410\u042F \u0411",
+        population: 19743,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u0421\u0435\u0440\u043F\u0443\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411": {
+        code: "440101",
+        name: "\u0421\u0435\u0440\u043F\u0443\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0421\u0415\u0420\u041F\u0423\u0425\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 173347,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u0421\u043E\u043B\u043D\u0435\u0447\u043D\u043E\u0433\u043E\u0440\u0441\u043A\u0430\u044F \u0411": {
+        code: "450701",
+        name: "\u0421\u043E\u043B\u043D\u0435\u0447\u043D\u043E\u0433\u043E\u0440\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0421\u041E\u041B\u041D\u0415\u0427\u041D\u041E\u0413\u041E\u0420\u0421\u041A\u0410\u042F \u0411",
+        population: 138533,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u0421\u0442\u0443\u043F\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411": {
+        code: "461501",
+        name: "\u0421\u0442\u0443\u043F\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u0421\u0422\u0423\u041F\u0418\u041D\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 107777,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u0425\u0438\u043C\u043A\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411": {
+        code: "500101",
+        name: "\u0425\u0438\u043C\u043A\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u0425\u0418\u041C\u041A\u0418\u041D\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 258777,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u0427\u0435\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411": {
+        code: "510112",
+        name: "\u0427\u0435\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0427\u0415\u0425\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 125729,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u0428\u0430\u0442\u0443\u0440\u0441\u043A\u0430\u044F \u0411": {
+        code: "521301",
+        name: "\u0428\u0430\u0442\u0443\u0440\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0428\u0410\u0422\u0423\u0420\u0421\u041A\u0410\u042F \u0411",
+        population: 73544,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u0428\u0430\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411": {
+        code: "530101",
+        name: "\u0428\u0430\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0428\u0410\u0425\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 22012,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u0429\u0451\u043B\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u0411": {
+        code: "543001",
+        name: "\u0429\u0451\u043B\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0429\u0415\u041B\u041A\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 316974,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "\u042D\u043B\u0435\u043A\u0442\u0440\u043E\u0441\u0442\u0430\u043B\u044C\u0441\u043A\u0430\u044F \u0411": {
+        code: "550101",
+        name: "\u042D\u043B\u0435\u043A\u0442\u0440\u043E\u0441\u0442\u0430\u043B\u044C\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u042D\u041B\u0415\u041A\u0422\u0420\u041E\u0421\u0422\u0410\u041B\u042C\u0421\u041A\u0410\u042F \u0411",
+        population: 104772,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "\u041A\u0440\u0430\u0441\u043D\u043E\u0437\u043D\u0430\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u041F": {
+        code: "580401",
+        name: "\u041A\u0440\u0430\u0441\u043D\u043E\u0437\u043D\u0430\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u041F",
+        nameExcel: "\u041A\u0420\u0410\u0421\u041D\u041E\u0417\u041D\u0410\u041C\u0415\u041D\u0421\u041A\u0410\u042F \u041F\u041E\u041B\u0418\u041A\u041B\u0418\u041D\u0418\u041A\u0410",
+        population: 38389,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "\u041F\u041A\u0411 \u0438\u043C. \u043F\u0440\u043E\u0444. \u0420\u043E\u0437\u0430\u043D\u043E\u0432\u0430 \u0412.\u041D.": {
+        code: "371702",
+        name: "\u041F\u041A\u0411 \u0438\u043C. \u043F\u0440\u043E\u0444. \u0420\u043E\u0437\u0430\u043D\u043E\u0432\u0430 \u0412.\u041D.",
+        nameExcel: "\u041F\u041A\u0411 \u0418\u041C. \u041F\u0420\u041E\u0424. \u0420\u041E\u0417\u0410\u041D\u041E\u0412\u0410 \u0412.\u041D.",
+        population: 264251,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F",
+        aliasOf: "\u041F\u041A\u0411 \u0438\u043C. \u0420\u043E\u0437\u0430\u043D\u043E\u0432\u0430 \u0412.\u041D."
+      }
+    },
+    byCode: {
+      "010101": {
+        code: "010101",
+        name: "\u0411\u0430\u043B\u0430\u0448\u0438\u0445\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0411\u0410\u041B\u0410\u0428\u0418\u0425\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 472302,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "020101": {
+        code: "020101",
+        name: "\u0412\u043E\u043B\u043E\u043A\u043E\u043B\u0430\u043C\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0412\u041E\u041B\u041E\u041A\u041E\u041B\u0410\u041C\u0421\u041A\u0410\u042F \u0411",
+        population: 41924,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "031801": {
+        code: "031801",
+        name: "\u0412\u043E\u0441\u043A\u0440\u0435\u0441\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0412\u041E\u0421\u041A\u0420\u0415\u0421\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 144089,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "041601": {
+        code: "041601",
+        name: "\u0414\u043C\u0438\u0442\u0440\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0414\u041C\u0418\u0422\u0420\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 165866,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "050101": {
+        code: "050101",
+        name: "\u0414\u043E\u043B\u0433\u043E\u043F\u0440\u0443\u0434\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u0414\u041E\u041B\u0413\u041E\u041F\u0420\u0423\u0414\u041D\u0415\u041D\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 103311,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "060101": {
+        code: "060101",
+        name: "\u0414\u043E\u043C\u043E\u0434\u0435\u0434\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0414\u041E\u041C\u041E\u0414\u0415\u0414\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 210481,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "070101": {
+        code: "070101",
+        name: "\u0414\u0443\u0431\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0414\u0423\u0411\u041D\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 96809,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "080101": {
+        code: "080101",
+        name: "\u0415\u0433\u043E\u0440\u044C\u0435\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0415\u0413\u041E\u0420\u042C\u0415\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 91681,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "100101": {
+        code: "100101",
+        name: "\u0416\u0443\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u041E\u041A\u0411",
+        nameExcel: "\u0416\u0423\u041A\u041E\u0412\u0421\u041A\u0410\u042F \u041E\u041A\u0411",
+        population: 97647,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "110101": {
+        code: "110101",
+        name: "\u0417\u0430\u0440\u0430\u0439\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0417\u0410\u0420\u0410\u0419\u0421\u041A\u0410\u042F \u0411",
+        population: 32250,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "141101": {
+        code: "141101",
+        name: "\u0418\u0441\u0442\u0440\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u0418\u0421\u0422\u0420\u0418\u041D\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 146593,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "150101": {
+        code: "150101",
+        name: "\u041A\u043E\u0440\u043E\u043B\u0451\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041A\u041E\u0420\u041E\u041B\u0401\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 220264,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "160101": {
+        code: "160101",
+        name: "\u041A\u0430\u0448\u0438\u0440\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041A\u0410\u0428\u0418\u0420\u0421\u041A\u0410\u042F \u0411",
+        population: 49840,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "170101": {
+        code: "170101",
+        name: "\u041A\u043B\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041A\u041B\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 125691,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "191901": {
+        code: "191901",
+        name: "\u041A\u043E\u043B\u043E\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041A\u041E\u041B\u041E\u041C\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 208755,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "202401": {
+        code: "202401",
+        name: "\u041A\u0440\u0430\u0441\u043D\u043E\u0433\u043E\u0440\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u041A\u0420\u0410\u0421\u041D\u041E\u0413\u041E\u0420\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 318611,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "210101": {
+        code: "210101",
+        name: "\u0412\u0438\u0434\u043D\u043E\u0432\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u0412\u0418\u0414\u041D\u041E\u0412\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 224879,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "220101": {
+        code: "220101",
+        name: "\u041B\u043E\u0442\u043E\u0448\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041B\u041E\u0422\u041E\u0428\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 15455,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "230101": {
+        code: "230101",
+        name: "\u041B\u043E\u0431\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041B\u041E\u0411\u041D\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 109058,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "240101": {
+        code: "240101",
+        name: "\u041B\u0443\u0445\u043E\u0432\u0438\u0446\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041B\u0423\u0425\u041E\u0412\u0418\u0426\u041A\u0410\u042F \u0411",
+        population: 57942,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "250101": {
+        code: "250101",
+        name: "\u041B\u044B\u0442\u043A\u0430\u0440\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041B\u042B\u0422\u041A\u0410\u0420\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 50349,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "261501": {
+        code: "261501",
+        name: "\u041A\u043E\u0442\u0435\u043B\u044C\u043D\u0438\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u041F",
+        nameExcel: "\u041A\u041E\u0422\u0415\u041B\u042C\u041D\u0418\u041A\u041E\u0412\u0421\u041A\u0410\u042F \u041F\u041E\u041B\u0418\u041A\u041B\u0418\u041D\u0418\u041A\u0410",
+        population: 54927,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "263001": {
+        code: "263001",
+        name: "\u041B\u044E\u0431\u0435\u0440\u0435\u0446\u043A\u0430\u044F \u041E\u041A\u0411",
+        nameExcel: "\u041B\u042E\u0411\u0415\u0420\u0415\u0426\u041A\u0410\u042F \u041E\u041A\u0411",
+        population: 347706,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "270101": {
+        code: "270101",
+        name: "\u041C\u043E\u0436\u0430\u0439\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041C\u041E\u0416\u0410\u0419\u0421\u041A\u0410\u042F \u0411",
+        population: 60747,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "280101": {
+        code: "280101",
+        name: "\u041C\u044B\u0442\u0438\u0449\u0438\u043D\u0441\u043A\u0430\u044F \u041E\u041A\u0411",
+        nameExcel: "\u041C\u042B\u0422\u0418\u0429\u0418\u041D\u0421\u041A\u0410\u042F \u041E\u041A\u0411",
+        population: 302312,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "291601": {
+        code: "291601",
+        name: "\u041D\u0430\u0440\u043E-\u0424\u043E\u043C\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041D\u0410\u0420\u041E-\u0424\u041E\u041C\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 158094,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "300101": {
+        code: "300101",
+        name: "\u041D\u043E\u0433\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041D\u041E\u0413\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 212837,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "311301": {
+        code: "311301",
+        name: "\u041F \u0433.\u043E. \u0412\u043B\u0430\u0441\u0438\u0445\u0430",
+        nameExcel: "\u041F\u041E\u041B\u0418\u041A\u041B\u0418\u041D\u0418\u041A\u0410 \u0413.\u041E. \u0412\u041B\u0410\u0421\u0418\u0425\u0410",
+        population: 3879,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "313301": {
+        code: "313301",
+        name: "\u041E\u0434\u0438\u043D\u0446\u043E\u0432\u0441\u043A\u0430\u044F \u041E\u0411",
+        nameExcel: "\u041E\u0414\u0418\u041D\u0426\u041E\u0412\u0421\u041A\u0410\u042F \u041E\u0411",
+        population: 374132,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "334801": {
+        code: "334801",
+        name: "\u041E\u0440\u0435\u0445\u043E\u0432\u043E-\u0417\u0443\u0435\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041E\u0420\u0415\u0425\u041E\u0412\u041E-\u0417\u0423\u0415\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 194722,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "340101": {
+        code: "340101",
+        name: "\u041F\u0430\u0432\u043B\u043E\u0432\u043E-\u041F\u043E\u0441\u0430\u0434\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041F\u0410\u0412\u041B\u041E\u0412\u041E-\u041F\u041E\u0421\u0410\u0414\u0421\u041A\u0410\u042F \u0411",
+        population: 102570,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "360201": {
+        code: "360201",
+        name: "\u041F\u043E\u0434\u043E\u043B\u044C\u0441\u043A\u0430\u044F \u0414\u0435\u0442\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u041F\u041E\u0414\u041E\u041B\u042C\u0421\u041A\u0410\u042F \u0414\u0415\u0422\u0421\u041A\u0410\u042F \u0411",
+        population: 75370,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "363001": {
+        code: "363001",
+        name: "\u041F\u043E\u0434\u043E\u043B\u044C\u0441\u043A\u0430\u044F \u041E\u041A\u0411",
+        nameExcel: "\u041F\u041E\u0414\u041E\u041B\u042C\u0421\u041A\u0410\u042F \u041E\u041A\u0411",
+        population: 287139,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "371702": {
+        code: "371702",
+        name: "\u041F\u041A\u0411 \u0438\u043C. \u0420\u043E\u0437\u0430\u043D\u043E\u0432\u0430 \u0412.\u041D.",
+        nameExcel: "\u041F\u041A\u0411 \u0418\u041C. \u041F\u0420\u041E\u0424. \u0420\u041E\u0417\u0410\u041D\u041E\u0412\u0410 \u0412.\u041D.",
+        population: 264251,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "381401": {
+        code: "381401",
+        name: "\u0420\u0430\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0420\u0410\u041C\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 308142,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "390101": {
+        code: "390101",
+        name: "\u0420\u0435\u0443\u0442\u043E\u0432\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u0420\u0415\u0423\u0422\u041E\u0412\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 89194,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "400601": {
+        code: "400601",
+        name: "\u0420\u0443\u0437\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0420\u0423\u0417\u0421\u041A\u0410\u042F \u0411",
+        population: 60992,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "410101": {
+        code: "410101",
+        name: "\u0421\u0435\u0440\u0433\u0438\u0435\u0432\u043E-\u041F\u043E\u0441\u0430\u0434\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0421\u0415\u0420\u0413\u0418\u0415\u0412\u041E-\u041F\u041E\u0421\u0410\u0414\u0421\u041A\u0410\u042F \u0411",
+        population: 198310,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "420101": {
+        code: "420101",
+        name: "\u0421\u0435\u0440\u0435\u0431\u0440\u044F\u043D\u043E-\u041F\u0440\u0443\u0434\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0421\u0415\u0420\u0415\u0411\u0420\u042F\u041D\u041E-\u041F\u0420\u0423\u0414\u0421\u041A\u0410\u042F \u0411",
+        population: 19743,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "440101": {
+        code: "440101",
+        name: "\u0421\u0435\u0440\u043F\u0443\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0421\u0415\u0420\u041F\u0423\u0425\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 173347,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "450701": {
+        code: "450701",
+        name: "\u0421\u043E\u043B\u043D\u0435\u0447\u043D\u043E\u0433\u043E\u0440\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0421\u041E\u041B\u041D\u0415\u0427\u041D\u041E\u0413\u041E\u0420\u0421\u041A\u0410\u042F \u0411",
+        population: 138533,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "461501": {
+        code: "461501",
+        name: "\u0421\u0442\u0443\u043F\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u0421\u0422\u0423\u041F\u0418\u041D\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 107777,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "500101": {
+        code: "500101",
+        name: "\u0425\u0438\u043C\u043A\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        nameExcel: "\u0425\u0418\u041C\u041A\u0418\u041D\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 258777,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "510112": {
+        code: "510112",
+        name: "\u0427\u0435\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0427\u0415\u0425\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 125729,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "521301": {
+        code: "521301",
+        name: "\u0428\u0430\u0442\u0443\u0440\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0428\u0410\u0422\u0423\u0420\u0421\u041A\u0410\u042F \u0411",
+        population: 73544,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "530101": {
+        code: "530101",
+        name: "\u0428\u0430\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0428\u0410\u0425\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 22012,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      "543001": {
+        code: "543001",
+        name: "\u0429\u0451\u043B\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u0429\u0415\u041B\u041A\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 316974,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      "550101": {
+        code: "550101",
+        name: "\u042D\u043B\u0435\u043A\u0442\u0440\u043E\u0441\u0442\u0430\u043B\u044C\u0441\u043A\u0430\u044F \u0411",
+        nameExcel: "\u042D\u041B\u0415\u041A\u0422\u0420\u041E\u0421\u0422\u0410\u041B\u042C\u0421\u041A\u0410\u042F \u0411",
+        population: 104772,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      "580401": {
+        code: "580401",
+        name: "\u041A\u0440\u0430\u0441\u043D\u043E\u0437\u043D\u0430\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u041F",
+        nameExcel: "\u041A\u0420\u0410\u0421\u041D\u041E\u0417\u041D\u0410\u041C\u0415\u041D\u0421\u041A\u0410\u042F \u041F\u041E\u041B\u0418\u041A\u041B\u0418\u041D\u0418\u041A\u0410",
+        population: 38389,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      }
+    },
+    byNormalizedName: {
+      \u0431\u0430\u043B\u0430\u0448\u0438\u0445\u0438\u043D\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0411\u0430\u043B\u0430\u0448\u0438\u0445\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        code: "010101",
+        nameExcel: "\u0411\u0410\u041B\u0410\u0428\u0418\u0425\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 472302,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u0432\u043E\u043B\u043E\u043A\u043E\u043B\u0430\u043C\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0412\u043E\u043B\u043E\u043A\u043E\u043B\u0430\u043C\u0441\u043A\u0430\u044F \u0411",
+        code: "020101",
+        nameExcel: "\u0412\u041E\u041B\u041E\u041A\u041E\u041B\u0410\u041C\u0421\u041A\u0410\u042F \u0411",
+        population: 41924,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u0432\u043E\u0441\u043A\u0440\u0435\u0441\u0435\u043D\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0412\u043E\u0441\u043A\u0440\u0435\u0441\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        code: "031801",
+        nameExcel: "\u0412\u041E\u0421\u041A\u0420\u0415\u0421\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 144089,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u0434\u043C\u0438\u0442\u0440\u043E\u0432\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0414\u043C\u0438\u0442\u0440\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        code: "041601",
+        nameExcel: "\u0414\u041C\u0418\u0422\u0420\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 165866,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u0434\u043E\u043B\u0433\u043E\u043F\u0440\u0443\u0434\u043D\u0435\u043D\u0441\u043A\u0430\u044F\u043A\u0431: {
+        name: "\u0414\u043E\u043B\u0433\u043E\u043F\u0440\u0443\u0434\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        code: "050101",
+        nameExcel: "\u0414\u041E\u041B\u0413\u041E\u041F\u0420\u0423\u0414\u041D\u0415\u041D\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 103311,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u0434\u043E\u043C\u043E\u0434\u0435\u0434\u043E\u0432\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0414\u043E\u043C\u043E\u0434\u0435\u0434\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        code: "060101",
+        nameExcel: "\u0414\u041E\u041C\u041E\u0414\u0415\u0414\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 210481,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u0434\u0443\u0431\u043D\u0435\u043D\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0414\u0443\u0431\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        code: "070101",
+        nameExcel: "\u0414\u0423\u0411\u041D\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 96809,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u0435\u0433\u043E\u0440\u044C\u0435\u0432\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0415\u0433\u043E\u0440\u044C\u0435\u0432\u0441\u043A\u0430\u044F \u0411",
+        code: "080101",
+        nameExcel: "\u0415\u0413\u041E\u0420\u042C\u0415\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 91681,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u0436\u0443\u043A\u043E\u0432\u0441\u043A\u0430\u044F\u043E\u043A\u0431: {
+        name: "\u0416\u0443\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u041E\u041A\u0411",
+        code: "100101",
+        nameExcel: "\u0416\u0423\u041A\u041E\u0412\u0421\u041A\u0410\u042F \u041E\u041A\u0411",
+        population: 97647,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u0437\u0430\u0440\u0430\u0439\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0417\u0430\u0440\u0430\u0439\u0441\u043A\u0430\u044F \u0411",
+        code: "110101",
+        nameExcel: "\u0417\u0410\u0420\u0410\u0419\u0421\u041A\u0410\u042F \u0411",
+        population: 32250,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u0438\u0441\u0442\u0440\u0438\u043D\u0441\u043A\u0430\u044F\u043A\u0431: {
+        name: "\u0418\u0441\u0442\u0440\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        code: "141101",
+        nameExcel: "\u0418\u0421\u0422\u0420\u0418\u041D\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 146593,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u043A\u043E\u0440\u043E\u043B\u0435\u0432\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u041A\u043E\u0440\u043E\u043B\u0451\u0432\u0441\u043A\u0430\u044F \u0411",
+        code: "150101",
+        nameExcel: "\u041A\u041E\u0420\u041E\u041B\u0401\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 220264,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u043A\u0430\u0448\u0438\u0440\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u041A\u0430\u0448\u0438\u0440\u0441\u043A\u0430\u044F \u0411",
+        code: "160101",
+        nameExcel: "\u041A\u0410\u0428\u0418\u0420\u0421\u041A\u0410\u042F \u0411",
+        population: 49840,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u043A\u043B\u0438\u043D\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u041A\u043B\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        code: "170101",
+        nameExcel: "\u041A\u041B\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 125691,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u043A\u043E\u043B\u043E\u043C\u0435\u043D\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u041A\u043E\u043B\u043E\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        code: "191901",
+        nameExcel: "\u041A\u041E\u041B\u041E\u041C\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 208755,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u043A\u0440\u0430\u0441\u043D\u043E\u0433\u043E\u0440\u0441\u043A\u0430\u044F\u043A\u0431: {
+        name: "\u041A\u0440\u0430\u0441\u043D\u043E\u0433\u043E\u0440\u0441\u043A\u0430\u044F \u041A\u0411",
+        code: "202401",
+        nameExcel: "\u041A\u0420\u0410\u0421\u041D\u041E\u0413\u041E\u0420\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 318611,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u0432\u0438\u0434\u043D\u043E\u0432\u0441\u043A\u0430\u044F\u043A\u0431: {
+        name: "\u0412\u0438\u0434\u043D\u043E\u0432\u0441\u043A\u0430\u044F \u041A\u0411",
+        code: "210101",
+        nameExcel: "\u0412\u0418\u0414\u041D\u041E\u0412\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 224879,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u043B\u043E\u0442\u043E\u0448\u0438\u043D\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u041B\u043E\u0442\u043E\u0448\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        code: "220101",
+        nameExcel: "\u041B\u041E\u0422\u041E\u0428\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 15455,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u043B\u043E\u0431\u043D\u0435\u043D\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u041B\u043E\u0431\u043D\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        code: "230101",
+        nameExcel: "\u041B\u041E\u0411\u041D\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 109058,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u043B\u0443\u0445\u043E\u0432\u0438\u0446\u043A\u0430\u044F\u0431: {
+        name: "\u041B\u0443\u0445\u043E\u0432\u0438\u0446\u043A\u0430\u044F \u0411",
+        code: "240101",
+        nameExcel: "\u041B\u0423\u0425\u041E\u0412\u0418\u0426\u041A\u0410\u042F \u0411",
+        population: 57942,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u043B\u044B\u0442\u043A\u0430\u0440\u0438\u043D\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u041B\u044B\u0442\u043A\u0430\u0440\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        code: "250101",
+        nameExcel: "\u041B\u042B\u0422\u041A\u0410\u0420\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 50349,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u043A\u043E\u0442\u0435\u043B\u044C\u043D\u0438\u043A\u043E\u0432\u0441\u043A\u0430\u044F\u043F: {
+        name: "\u041A\u043E\u0442\u0435\u043B\u044C\u043D\u0438\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u041F",
+        code: "261501",
+        nameExcel: "\u041A\u041E\u0422\u0415\u041B\u042C\u041D\u0418\u041A\u041E\u0412\u0421\u041A\u0410\u042F \u041F\u041E\u041B\u0418\u041A\u041B\u0418\u041D\u0418\u041A\u0410",
+        population: 54927,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u043B\u044E\u0431\u0435\u0440\u0435\u0446\u043A\u0430\u044F\u043E\u043A\u0431: {
+        name: "\u041B\u044E\u0431\u0435\u0440\u0435\u0446\u043A\u0430\u044F \u041E\u041A\u0411",
+        code: "263001",
+        nameExcel: "\u041B\u042E\u0411\u0415\u0420\u0415\u0426\u041A\u0410\u042F \u041E\u041A\u0411",
+        population: 347706,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u043C\u043E\u0436\u0430\u0439\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u041C\u043E\u0436\u0430\u0439\u0441\u043A\u0430\u044F \u0411",
+        code: "270101",
+        nameExcel: "\u041C\u041E\u0416\u0410\u0419\u0421\u041A\u0410\u042F \u0411",
+        population: 60747,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u043C\u044B\u0442\u0438\u0449\u0438\u043D\u0441\u043A\u0430\u044F\u043E\u043A\u0431: {
+        name: "\u041C\u044B\u0442\u0438\u0449\u0438\u043D\u0441\u043A\u0430\u044F \u041E\u041A\u0411",
+        code: "280101",
+        nameExcel: "\u041C\u042B\u0422\u0418\u0429\u0418\u041D\u0421\u041A\u0410\u042F \u041E\u041A\u0411",
+        population: 302312,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u043D\u0430\u0440\u043E\u0444\u043E\u043C\u0438\u043D\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u041D\u0430\u0440\u043E-\u0424\u043E\u043C\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        code: "291601",
+        nameExcel: "\u041D\u0410\u0420\u041E-\u0424\u041E\u041C\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 158094,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u043D\u043E\u0433\u0438\u043D\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u041D\u043E\u0433\u0438\u043D\u0441\u043A\u0430\u044F \u0411",
+        code: "300101",
+        nameExcel: "\u041D\u041E\u0413\u0418\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 212837,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u043F\u0433\u043E\u0432\u043B\u0430\u0441\u0438\u0445\u0430: {
+        name: "\u041F \u0433.\u043E. \u0412\u043B\u0430\u0441\u0438\u0445\u0430",
+        code: "311301",
+        nameExcel: "\u041F\u041E\u041B\u0418\u041A\u041B\u0418\u041D\u0418\u041A\u0410 \u0413.\u041E. \u0412\u041B\u0410\u0421\u0418\u0425\u0410",
+        population: 3879,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u043E\u0434\u0438\u043D\u0446\u043E\u0432\u0441\u043A\u0430\u044F\u043E\u0431: {
+        name: "\u041E\u0434\u0438\u043D\u0446\u043E\u0432\u0441\u043A\u0430\u044F \u041E\u0411",
+        code: "313301",
+        nameExcel: "\u041E\u0414\u0418\u041D\u0426\u041E\u0412\u0421\u041A\u0410\u042F \u041E\u0411",
+        population: 374132,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u043E\u0440\u0435\u0445\u043E\u0432\u043E\u0437\u0443\u0435\u0432\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u041E\u0440\u0435\u0445\u043E\u0432\u043E-\u0417\u0443\u0435\u0432\u0441\u043A\u0430\u044F \u0411",
+        code: "334801",
+        nameExcel: "\u041E\u0420\u0415\u0425\u041E\u0412\u041E-\u0417\u0423\u0415\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 194722,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u043F\u0430\u0432\u043B\u043E\u0432\u043E\u043F\u043E\u0441\u0430\u0434\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u041F\u0430\u0432\u043B\u043E\u0432\u043E-\u041F\u043E\u0441\u0430\u0434\u0441\u043A\u0430\u044F \u0411",
+        code: "340101",
+        nameExcel: "\u041F\u0410\u0412\u041B\u041E\u0412\u041E-\u041F\u041E\u0421\u0410\u0414\u0421\u041A\u0410\u042F \u0411",
+        population: 102570,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u043F\u043E\u0434\u043E\u043B\u044C\u0441\u043A\u0430\u044F\u0434\u0435\u0442\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u041F\u043E\u0434\u043E\u043B\u044C\u0441\u043A\u0430\u044F \u0414\u0435\u0442\u0441\u043A\u0430\u044F \u0411",
+        code: "360201",
+        nameExcel: "\u041F\u041E\u0414\u041E\u041B\u042C\u0421\u041A\u0410\u042F \u0414\u0415\u0422\u0421\u041A\u0410\u042F \u0411",
+        population: 75370,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u043F\u043E\u0434\u043E\u043B\u044C\u0441\u043A\u0430\u044F\u043E\u043A\u0431: {
+        name: "\u041F\u043E\u0434\u043E\u043B\u044C\u0441\u043A\u0430\u044F \u041E\u041A\u0411",
+        code: "363001",
+        nameExcel: "\u041F\u041E\u0414\u041E\u041B\u042C\u0421\u041A\u0410\u042F \u041E\u041A\u0411",
+        population: 287139,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u043F\u043A\u0431\u0438\u043C\u0440\u043E\u0437\u0430\u043D\u043E\u0432\u0430\u0432\u043D: {
+        name: "\u041F\u041A\u0411 \u0438\u043C. \u0420\u043E\u0437\u0430\u043D\u043E\u0432\u0430 \u0412.\u041D.",
+        code: "371702",
+        nameExcel: "\u041F\u041A\u0411 \u0418\u041C. \u041F\u0420\u041E\u0424. \u0420\u041E\u0417\u0410\u041D\u041E\u0412\u0410 \u0412.\u041D.",
+        population: 264251,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u0440\u0430\u043C\u0435\u043D\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0420\u0430\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u0411",
+        code: "381401",
+        nameExcel: "\u0420\u0410\u041C\u0415\u041D\u0421\u041A\u0410\u042F \u0411",
+        population: 308142,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u0440\u0435\u0443\u0442\u043E\u0432\u0441\u043A\u0430\u044F\u043A\u0431: {
+        name: "\u0420\u0435\u0443\u0442\u043E\u0432\u0441\u043A\u0430\u044F \u041A\u0411",
+        code: "390101",
+        nameExcel: "\u0420\u0415\u0423\u0422\u041E\u0412\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 89194,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u0440\u0443\u0437\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0420\u0443\u0437\u0441\u043A\u0430\u044F \u0411",
+        code: "400601",
+        nameExcel: "\u0420\u0423\u0417\u0421\u041A\u0410\u042F \u0411",
+        population: 60992,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u0441\u0435\u0440\u0433\u0438\u0435\u0432\u043E\u043F\u043E\u0441\u0430\u0434\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0421\u0435\u0440\u0433\u0438\u0435\u0432\u043E-\u041F\u043E\u0441\u0430\u0434\u0441\u043A\u0430\u044F \u0411",
+        code: "410101",
+        nameExcel: "\u0421\u0415\u0420\u0413\u0418\u0415\u0412\u041E-\u041F\u041E\u0421\u0410\u0414\u0421\u041A\u0410\u042F \u0411",
+        population: 198310,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u0441\u0435\u0440\u0435\u0431\u0440\u044F\u043D\u043E\u043F\u0440\u0443\u0434\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0421\u0435\u0440\u0435\u0431\u0440\u044F\u043D\u043E-\u041F\u0440\u0443\u0434\u0441\u043A\u0430\u044F \u0411",
+        code: "420101",
+        nameExcel: "\u0421\u0415\u0420\u0415\u0411\u0420\u042F\u041D\u041E-\u041F\u0420\u0423\u0414\u0421\u041A\u0410\u042F \u0411",
+        population: 19743,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u0441\u0435\u0440\u043F\u0443\u0445\u043E\u0432\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0421\u0435\u0440\u043F\u0443\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        code: "440101",
+        nameExcel: "\u0421\u0415\u0420\u041F\u0423\u0425\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 173347,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u0441\u043E\u043B\u043D\u0435\u0447\u043D\u043E\u0433\u043E\u0440\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0421\u043E\u043B\u043D\u0435\u0447\u043D\u043E\u0433\u043E\u0440\u0441\u043A\u0430\u044F \u0411",
+        code: "450701",
+        nameExcel: "\u0421\u041E\u041B\u041D\u0415\u0427\u041D\u041E\u0413\u041E\u0420\u0421\u041A\u0410\u042F \u0411",
+        population: 138533,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u0441\u0442\u0443\u043F\u0438\u043D\u0441\u043A\u0430\u044F\u043A\u0431: {
+        name: "\u0421\u0442\u0443\u043F\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        code: "461501",
+        nameExcel: "\u0421\u0422\u0423\u041F\u0418\u041D\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 107777,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u0445\u0438\u043C\u043A\u0438\u043D\u0441\u043A\u0430\u044F\u043A\u0431: {
+        name: "\u0425\u0438\u043C\u043A\u0438\u043D\u0441\u043A\u0430\u044F \u041A\u0411",
+        code: "500101",
+        nameExcel: "\u0425\u0418\u041C\u041A\u0418\u041D\u0421\u041A\u0410\u042F \u041A\u0411",
+        population: 258777,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u0447\u0435\u0445\u043E\u0432\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0427\u0435\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        code: "510112",
+        nameExcel: "\u0427\u0415\u0425\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 125729,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u0448\u0430\u0442\u0443\u0440\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0428\u0430\u0442\u0443\u0440\u0441\u043A\u0430\u044F \u0411",
+        code: "521301",
+        nameExcel: "\u0428\u0410\u0422\u0423\u0420\u0421\u041A\u0410\u042F \u0411",
+        population: 73544,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u0448\u0430\u0445\u043E\u0432\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0428\u0430\u0445\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        code: "530101",
+        nameExcel: "\u0428\u0410\u0425\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 22012,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u0449\u0435\u043B\u043A\u043E\u0432\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u0429\u0451\u043B\u043A\u043E\u0432\u0441\u043A\u0430\u044F \u0411",
+        code: "543001",
+        nameExcel: "\u0429\u0415\u041B\u041A\u041E\u0412\u0421\u041A\u0410\u042F \u0411",
+        population: 316974,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"
+      },
+      \u044D\u043B\u0435\u043A\u0442\u0440\u043E\u0441\u0442\u0430\u043B\u044C\u0441\u043A\u0430\u044F\u0431: {
+        name: "\u042D\u043B\u0435\u043A\u0442\u0440\u043E\u0441\u0442\u0430\u043B\u044C\u0441\u043A\u0430\u044F \u0411",
+        code: "550101",
+        nameExcel: "\u042D\u041B\u0415\u041A\u0422\u0420\u041E\u0421\u0422\u0410\u041B\u042C\u0421\u041A\u0410\u042F \u0411",
+        population: 104772,
+        categoryRaw: "\u041E\u0442 100 \u0442\u044B\u0441. \u0434\u043E 200 \u0442\u044B\u0441.",
+        group: "\u0441\u0440\u0435\u0434\u043D\u044F\u044F"
+      },
+      \u043A\u0440\u0430\u0441\u043D\u043E\u0437\u043D\u0430\u043C\u0435\u043D\u0441\u043A\u0430\u044F\u043F: {
+        name: "\u041A\u0440\u0430\u0441\u043D\u043E\u0437\u043D\u0430\u043C\u0435\u043D\u0441\u043A\u0430\u044F \u041F",
+        code: "580401",
+        nameExcel: "\u041A\u0420\u0410\u0421\u041D\u041E\u0417\u041D\u0410\u041C\u0415\u041D\u0421\u041A\u0410\u042F \u041F\u041E\u041B\u0418\u041A\u041B\u0418\u041D\u0418\u041A\u0410",
+        population: 38389,
+        categoryRaw: "\u041C\u0435\u043D\u0435\u0435 100 \u0442\u044B\u0441.",
+        group: "\u043C\u0430\u043B\u0430\u044F"
+      },
+      \u043F\u043A\u0431\u0438\u043C\u043F\u0440\u043E\u0444\u0440\u043E\u0437\u0430\u043D\u043E\u0432\u0430\u0432\u043D: {
+        name: "\u041F\u041A\u0411 \u0438\u043C. \u043F\u0440\u043E\u0444. \u0420\u043E\u0437\u0430\u043D\u043E\u0432\u0430 \u0412.\u041D.",
+        code: "371702",
+        nameExcel: "\u041F\u041A\u0411 \u0418\u041C. \u041F\u0420\u041E\u0424. \u0420\u041E\u0417\u0410\u041D\u041E\u0412\u0410 \u0412.\u041D.",
+        population: 264251,
+        categoryRaw: "\u0441\u0432\u044B\u0448\u0435 200 \u0442\u044B\u0441.",
+        group: "\u0431\u043E\u043B\u044C\u0448\u0430\u044F",
+        aliasOf: "\u041F\u041A\u0411 \u0438\u043C. \u0420\u043E\u0437\u0430\u043D\u043E\u0432\u0430 \u0412.\u041D."
+      }
+    },
+    moCount: 49
+  };
+
+  // src/lib/moPopulationGroups.js
+  var POPULATION_GROUP_IDS = ["\u043C\u0430\u043B\u0430\u044F", "\u0441\u0440\u0435\u0434\u043D\u044F\u044F", "\u0431\u043E\u043B\u044C\u0448\u0430\u044F"];
+  var DEFAULT_POPULATION_GROUP = "\u0441\u0440\u0435\u0434\u043D\u044F\u044F";
+  function normMoName(name) {
+    return String(name || "").toLowerCase().replace(/ё/g, "\u0435").replace(/[^a-zа-я0-9]+/g, "");
+  }
+  function getMoPopulationGroup(moName) {
+    const key = normMoName(moName);
+    if (!key) return null;
+    const entry = mo_population_groups_default.byNormalizedName[key];
+    return entry && entry.group ? entry.group : null;
+  }
+  function getPopulationGroupDefinition(groupId) {
+    const def = mo_population_groups_default.groupDefinitions[groupId];
+    if (!def) return null;
+    return { label: def.label, populationRange: def.populationRange };
+  }
+  function getPopulationGroupLabel(groupId) {
+    const def = getPopulationGroupDefinition(groupId);
+    return def ? def.label : groupId;
+  }
+  function filterMosByPopulationGroup(mos, groupId) {
+    if (!groupId || !Array.isArray(mos)) return mos || [];
+    return mos.filter((mo) => getMoPopulationGroup(mo.name) === groupId);
+  }
+  function getMoPeerPool(moName, allMos) {
+    const groupId = getMoPopulationGroup(moName);
+    if (!groupId) return allMos || [];
+    const peers = filterMosByPopulationGroup(allMos, groupId);
+    return peers.length ? peers : allMos || [];
   }
 
   // src/lib/moHistory.js
@@ -570,6 +2153,51 @@
     const cls = ["knsk-icon", className].filter(Boolean).join(" ");
     const styleAttr = style ? ` style="${style}"` : "";
     return `<svg class="${cls}"${styleAttr} aria-hidden="true"><use href="#icon-${name}"/></svg>`;
+  }
+
+  // src/lib/dialogA11y.js
+  var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  function getFocusableElements(root) {
+    if (!root) return [];
+    return Array.from(root.querySelectorAll(FOCUSABLE)).filter(
+      (el) => el.getAttribute("aria-hidden") !== "true" && !el.closest('[aria-hidden="true"]')
+    );
+  }
+  function trapFocus(panel) {
+    if (!panel) return () => {
+    };
+    function onKeyDown(e) {
+      if (e.key !== "Tab") return;
+      const nodes = getFocusableElements(panel);
+      if (!nodes.length) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    panel.addEventListener("keydown", onKeyDown);
+    return () => panel.removeEventListener("keydown", onKeyDown);
+  }
+  function focusFirst(panel, selector) {
+    if (!panel) return;
+    requestAnimationFrame(() => {
+      const target = selector ? panel.querySelector(selector) : getFocusableElements(panel)[0];
+      if (target) target.focus();
+    });
+  }
+  function restoreFocus(el) {
+    if (el && typeof el.focus === "function") {
+      try {
+        el.focus({ preventScroll: true });
+      } catch (_) {
+        el.focus();
+      }
+    }
   }
 
   // .build-tmp/lib.entry.js

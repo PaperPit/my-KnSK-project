@@ -30,6 +30,14 @@ import {
   computeTotalsFromMosData,
   truncateName,
   icon,
+  DEFAULT_POPULATION_GROUP,
+  filterMosByPopulationGroup,
+  getPopulationGroupDefinition,
+  getPopulationGroupLabel,
+  computeHighVolumeLowPositiveOutliers,
+  positiveRateOf,
+  KNSK_HIGH_VOLUME_MIN_FACT,
+  KNSK_POSITIVE_RATE_Z_THRESHOLD,
 } from '../lib/index.js';
 
 function getBundleLoader() {
@@ -48,6 +56,28 @@ function ensureDataLabelsReady() {
   return Promise.reject(new Error('ChartDataLabels не загружен'));
 }
 
+function ensureChartsReady() {
+  const loader = getBundleLoader();
+  if (loader && typeof loader.ensureChartsReadyLocal === 'function') {
+    return loader.ensureChartsReadyLocal();
+  }
+  if (loader && typeof loader.ensureChartsReadyBundle === 'function') {
+    return loader.ensureChartsReadyBundle();
+  }
+  if (typeof Chart !== 'undefined') {
+    return ensureDataLabelsReady().catch(function () {
+      return Promise.resolve();
+    });
+  }
+  return Promise.reject(new Error('Chart.js не загружен'));
+}
+
+function perfMark(name, detail) {
+  if (typeof window !== 'undefined' && window.KnSKPerf) {
+    window.KnSKPerf.perfMark(name, detail);
+  }
+}
+
 const DashboardPhase1 = (function () {
   const plans = getPlans(typeof CONFIG !== 'undefined' ? CONFIG : null);
   const PLAN_YEAR = plans.year;
@@ -55,6 +85,10 @@ const DashboardPhase1 = (function () {
   const PLAN_THRESHOLD = plans.threshold;
   const rankCharts = {};
   const MIN_POSITIVE_KNSK_FOR_COVERAGE_ANTITOP = 10;
+  const RANK_CHART_LAYOUT = { padding: { top: 8, bottom: 8, left: 4, right: 108 } };
+  let lastRankMosAll = null;
+  let selectedRankGroup = DEFAULT_POPULATION_GROUP;
+  let rankGroupNavBound = false;
 
   function getPreviousArchiveId(reportsList, currentId) {
     if (!reportsList || !reportsList.length || currentId == null) return null;
@@ -199,7 +233,7 @@ const DashboardPhase1 = (function () {
     signals.push({
       className: weekClass,
       icon: 'calendar-days',
-      text: `Недельный прирост ${totals.growth.toLocaleString('ru-RU')} исследований — ${weekPct}% от плана ${PLAN_WEEKLY.toLocaleString('ru-RU')}/нед.`,
+      text: `${weekPct}% недельного плана (норма ${PLAN_WEEKLY.toLocaleString('ru-RU')}/нед.) — прирост ${totals.growth.toLocaleString('ru-RU')} исследований`,
     });
 
     const COLON_THRESHOLD = 50;
@@ -256,6 +290,27 @@ const DashboardPhase1 = (function () {
       .join('');
   }
 
+  function getChartOnCanvas(canvas) {
+    if (!canvas || typeof Chart === 'undefined' || typeof Chart.getChart !== 'function') return null;
+    return Chart.getChart(canvas);
+  }
+
+  function releaseCanvasChart(canvas) {
+    const onCanvas = getChartOnCanvas(canvas);
+    if (onCanvas) onCanvas.destroy();
+  }
+
+  function syncRankChartRef(canvasId, canvas) {
+    const onCanvas = getChartOnCanvas(canvas);
+    const tracked = rankCharts[canvasId];
+    if (onCanvas && onCanvas !== tracked) {
+      if (tracked && tracked !== onCanvas) tracked.destroy();
+      rankCharts[canvasId] = onCanvas;
+      return onCanvas;
+    }
+    return tracked || null;
+  }
+
   function destroyRankCharts() {
     Object.keys(rankCharts).forEach((key) => {
       if (rankCharts[key]) {
@@ -263,18 +318,96 @@ const DashboardPhase1 = (function () {
         rankCharts[key] = null;
       }
     });
+    ['top5PlanChart', 'bottom5PlanChart', 'top5CoverageChart', 'bottom5CoverageChart'].forEach(
+      function (id) {
+        const canvas = document.getElementById(id);
+        if (canvas) releaseCanvasChart(canvas);
+      }
+    );
   }
 
-  function renderHorizontalRankChart(canvasId, items, valueKey, color, label, xScaleOptions) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas || typeof Chart === 'undefined') return;
+  function resizeRankCharts() {
+    requestAnimationFrame(function () {
+      Object.keys(rankCharts).forEach(function (id) {
+        if (rankCharts[id]) rankCharts[id].resize();
+      });
+    });
+  }
 
-    if (rankCharts[canvasId]) {
-      rankCharts[canvasId].destroy();
+  function getRankMeta(canvas) {
+    if (!canvas._knskRankMeta) {
+      canvas._knskRankMeta = { items: [], valueKey: '' };
     }
+    return canvas._knskRankMeta;
+  }
 
-    const labels = items.map((m) => truncateName(m.name, 32));
+  function rankChartRatioLabel(m, valueKey) {
+    if (!m) return '';
+    if (valueKey === 'percent') {
+      return `(${m.fact.toLocaleString('ru-RU')} / ${m.plan.toLocaleString('ru-RU')})`;
+    }
+    if (valueKey === 'coverage') {
+      return `(${m.colon.toLocaleString('ru-RU')} / ${m.hasDev.toLocaleString('ru-RU')})`;
+    }
+    return '';
+  }
+
+  /** Подпись справа от конца столбца: только дробь в скобках. */
+  function rankChartDatalabelsOptions(showRatio) {
+    if (!showRatio) {
+      return {
+        display: true,
+        anchor: 'end',
+        align: 'right',
+        offset: 10,
+        clip: false,
+        color: '#0f172a',
+        font: { weight: '700', size: 10 },
+        formatter: (v) => v,
+      };
+    }
+    return {
+      display: true,
+      anchor: 'end',
+      align: 'right',
+      offset: 12,
+      clip: false,
+      color: '#0f172a',
+      font: { weight: '700', size: 10 },
+      textAlign: 'center',
+      textStrokeColor: 'rgba(255,255,255,0.92)',
+      textStrokeWidth: 2,
+      formatter: (_v, ctx) => {
+        const m = ctx.chart.canvas._knskRankMeta;
+        return m ? rankChartRatioLabel(m.items[ctx.dataIndex], m.valueKey) : '';
+      },
+    };
+  }
+
+  function rankTooltipLabelFromMeta(meta, ctx) {
+    const m = meta.items[ctx.dataIndex];
+    if (!m) return String(ctx.raw);
+    const valueKey = meta.valueKey;
+    if (valueKey === 'coverage') {
+      return `${ctx.raw.toFixed(1)}% — ${m.colon} из ${m.hasDev} положит. КнСК`;
+    }
+    if (valueKey === 'percent') {
+      return `${ctx.raw.toFixed(1)}% — ${m.fact.toLocaleString('ru-RU')} / ${m.plan.toLocaleString('ru-RU')}`;
+    }
+    return String(ctx.raw);
+  }
+
+  function renderVerticalRankChart(canvasId, items, valueKey, color, label, xScaleOptions) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || typeof Chart === 'undefined' || !items || !items.length) return;
+
+    const meta = getRankMeta(canvas);
+    meta.items = items;
+    meta.valueKey = valueKey;
+
+    const labels = items.map((m) => truncateName(m.name, 28));
     const values = items.map((m) => m[valueKey]);
+    const showRatio = valueKey === 'percent' || valueKey === 'coverage';
 
     const defaultXScale = {
       beginAtZero: true,
@@ -284,10 +417,40 @@ const DashboardPhase1 = (function () {
       ticks: {
         callback: (v) => (valueKey === 'percent' || valueKey === 'coverage' ? `${v}%` : v),
       },
+      grid: { color: 'rgba(148, 163, 184, 0.25)' },
     };
     const xScale = Object.assign({}, defaultXScale, xScaleOptions || {});
 
-    rankCharts[canvasId] = new Chart(canvas.getContext('2d'), {
+    const existing = syncRankChartRef(canvasId, canvas);
+    const canUpdate =
+      existing &&
+      typeof existing.update === 'function' &&
+      existing.canvas === canvas &&
+      existing.config &&
+      existing.config.type === 'bar' &&
+      existing.options &&
+      existing.options.indexAxis === 'y' &&
+      existing.data &&
+      existing.data.datasets &&
+      existing.data.datasets[0];
+
+    if (canUpdate) {
+      existing.data.labels = labels;
+      existing.data.datasets[0].data = values;
+      existing.data.datasets[0].backgroundColor = color;
+      existing.data.datasets[0].label = label;
+      Object.assign(existing.options.scales.x, xScale);
+      existing.options.plugins.datalabels = rankChartDatalabelsOptions(showRatio);
+      existing.options.layout = RANK_CHART_LAYOUT;
+      existing.update('none');
+      resizeRankCharts();
+      return;
+    }
+
+    if (existing) existing.destroy();
+    releaseCanvasChart(canvas);
+
+    const chart = new Chart(canvas.getContext('2d'), {
       type: 'bar',
       data: {
         labels,
@@ -296,8 +459,8 @@ const DashboardPhase1 = (function () {
             label,
             data: values,
             backgroundColor: color,
-            borderRadius: 6,
-            barThickness: 18,
+            borderRadius: 4,
+            maxBarThickness: 30,
           },
         ],
       },
@@ -305,53 +468,39 @@ const DashboardPhase1 = (function () {
         indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
-        layout: { padding: { left: 8, right: 16 } },
+        animation: false,
+        layout: RANK_CHART_LAYOUT,
         plugins: {
           legend: { display: false },
-          datalabels: {
-            display: true,
-            anchor: 'end',
-            align: 'end',
-            clip: valueKey !== 'coverage',
-            color: '#1e293b',
-            font: { weight: '700', size: valueKey === 'coverage' ? 9 : 10 },
-            formatter: (v, ctx) => {
-              if (valueKey === 'coverage') {
-                const m = items[ctx.dataIndex];
-                return `${v.toFixed(1)}% (${m.colon}/${m.hasDev})`;
-              }
-              if (valueKey === 'percent') return `${v.toFixed(1)}%`;
-              return v;
-            },
-          },
+          datalabels: rankChartDatalabelsOptions(showRatio),
           tooltip: {
             callbacks: {
               label(ctx) {
-                const m = items[ctx.dataIndex];
-                if (valueKey === 'coverage') {
-                  return `${ctx.raw.toFixed(1)}% — ${m.colon} из ${m.hasDev} положит. КнСК`;
-                }
-                if (valueKey === 'percent') {
-                  return `${ctx.raw.toFixed(1)}% — ${m.fact.toLocaleString('ru-RU')} / ${m.plan.toLocaleString('ru-RU')}`;
-                }
-                return String(ctx.raw);
+                const m = ctx.chart.canvas._knskRankMeta;
+                return m ? rankTooltipLabelFromMeta(m, ctx) : String(ctx.raw);
               },
             },
           },
         },
         scales: {
           x: xScale,
-          y: { ticks: { font: { size: 10 } } },
+          y: {
+            ticks: {
+              autoSkip: false,
+              font: { size: 10, weight: '500' },
+              color: '#334155',
+            },
+            grid: { display: false },
+          },
         },
       },
     });
+    rankCharts[canvasId] = chart;
 
-    requestAnimationFrame(function () {
-      if (rankCharts[canvasId]) rankCharts[canvasId].resize();
-    });
+    resizeRankCharts();
   }
 
-  function renderRankCharts(mos) {
+  function renderPlanRankCharts(mos) {
     const sortedByPlan = [...mos].sort((a, b) => b.percent - a.percent);
     const top5 = sortedByPlan.slice(0, 5);
 
@@ -359,13 +508,15 @@ const DashboardPhase1 = (function () {
     const sortedByPlanActive = [...mosWithKnsk].sort((a, b) => b.percent - a.percent);
     const bottom5 = sortedByPlanActive.slice(-5).reverse();
 
-    renderHorizontalRankChart('top5PlanChart', top5, 'percent', '#1f8a4c', '% плана', {
+    renderVerticalRankChart('top5PlanChart', top5, 'percent', '#1f8a4c', '% плана', {
       min: 0,
       max: 150,
       beginAtZero: true,
     });
-    renderHorizontalRankChart('bottom5PlanChart', bottom5, 'percent', '#e67e22', '% плана');
+    renderVerticalRankChart('bottom5PlanChart', bottom5, 'percent', '#e67e22', '% плана');
+  }
 
+  function renderCoverageRankCharts(mos) {
     const withCoverage = mos
       .filter((m) => m.fact > 0)
       .map((mo) => ({
@@ -373,10 +524,146 @@ const DashboardPhase1 = (function () {
         coverage: mo.hasDev > 0 ? (mo.colon / mo.hasDev) * 100 : 0,
       }));
     const sortedCov = [...withCoverage].sort((a, b) => b.coverage - a.coverage);
-    const coverageXScale = { min: 0, max: 100, grace: 0, beginAtZero: true };
+    const coverageYScale = { min: 0, max: 100, grace: 0, beginAtZero: true };
     const bottomCovPool = sortedCov.filter((m) => m.hasDev >= MIN_POSITIVE_KNSK_FOR_COVERAGE_ANTITOP);
-    renderHorizontalRankChart('top5CoverageChart', sortedCov.slice(0, 5), 'coverage', '#2c7da0', '% охвата', coverageXScale);
-    renderHorizontalRankChart('bottom5CoverageChart', bottomCovPool.slice(-5).reverse(), 'coverage', '#c0392b', '% охвата', coverageXScale);
+    renderVerticalRankChart(
+      'top5CoverageChart',
+      sortedCov.slice(0, 5),
+      'coverage',
+      '#2c7da0',
+      '% охвата',
+      coverageYScale
+    );
+    renderVerticalRankChart(
+      'bottom5CoverageChart',
+      bottomCovPool.slice(-5).reverse(),
+      'coverage',
+      '#c0392b',
+      '% охвата',
+      coverageYScale
+    );
+  }
+
+  function updateRankGroupHint(filteredCount) {
+    const hint = document.getElementById('rankGroupHint');
+    if (!hint) return;
+    const def = getPopulationGroupDefinition(selectedRankGroup);
+    if (!def) {
+      hint.textContent = '';
+      return;
+    }
+    hint.textContent = `Топы и антитопы среди ${filteredCount} МО категории «${def.label}» (${def.populationRange})`;
+  }
+
+  function setRankPopulationGroup(groupId) {
+    if (!groupId || groupId === selectedRankGroup) return;
+    selectedRankGroup = groupId;
+    const nav = document.getElementById('rankPopulationGroupNav');
+    if (nav) {
+      nav.querySelectorAll('[data-rank-group]').forEach(function (btn) {
+        const active = btn.getAttribute('data-rank-group') === groupId;
+        btn.classList.toggle('rank-tab--active', active);
+        btn.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+    }
+    if (lastRankMosAll) renderRankCharts(lastRankMosAll);
+  }
+
+  function setupRankGroupNav() {
+    const nav = document.getElementById('rankPopulationGroupNav');
+    if (!nav || rankGroupNavBound) return;
+    rankGroupNavBound = true;
+    nav.addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-rank-group]');
+      if (!btn || !nav.contains(btn)) return;
+      setRankPopulationGroup(btn.getAttribute('data-rank-group'));
+    });
+  }
+
+  function getFilteredRankMos(mos) {
+    return filterMosByPopulationGroup(mos, selectedRankGroup);
+  }
+
+  function renderRankCharts(mos) {
+    lastRankMosAll = mos;
+    setupRankGroupNav();
+    const filtered = getFilteredRankMos(mos);
+    updateRankGroupHint(filtered.length);
+    renderPlanRankCharts(filtered);
+    renderCoverageRankCharts(filtered);
+  }
+
+  function formatOutlierRate(value) {
+    return value.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
+
+  function renderOutlierRateBar(positiveRate, meanRate, scaleMax) {
+    const rate = Number(positiveRate) || 0;
+    const mean = Number(meanRate) || 0;
+    const max = Math.max(Number(scaleMax) || 0, rate, mean, 1);
+    const moW = Math.min(100, Math.max(rate > 0 ? 1 : 0, (rate / max) * 100));
+    const meanW = Math.min(100, Math.max(0, (mean / max) * 100));
+    return `<div class="knsk-outlier-rate-bar" role="img" aria-label="Доля КнСК+ ${formatOutlierRate(rate)}% при среднем ${formatOutlierRate(mean)}%">
+      <div class="knsk-outlier-rate-track">
+        <div class="knsk-outlier-rate-fill" style="width:${moW.toFixed(1)}%"></div>
+        <div class="knsk-outlier-rate-mean" style="left:${meanW.toFixed(1)}%" title="Среднее по всем МО"></div>
+      </div>
+      <div class="knsk-outlier-rate-footer">
+        <span class="knsk-outlier-rate-value">${formatOutlierRate(rate)}%</span>
+        <span class="knsk-outlier-rate-scale">шкала 0–${formatOutlierRate(max)}%</span>
+      </div>
+    </div>`;
+  }
+
+  function renderKnskVolumeOutlierBlock(mos) {
+    const panel = document.getElementById('knskOutlierPanel');
+    const benchmarkEl = document.getElementById('knskOutlierBenchmark');
+    const listEl = document.getElementById('knskOutlierList');
+    const noteEl = document.getElementById('knskOutlierNote');
+    if (!panel || !benchmarkEl || !listEl || !noteEl) return;
+
+    const result = computeHighVolumeLowPositiveOutliers(mos, { limit: 5 });
+    const bench = result.benchmark;
+
+    if (!result.items.length) {
+      panel.hidden = true;
+      return;
+    }
+
+    panel.hidden = false;
+
+    benchmarkEl.className = 'knsk-outlier-subtitle';
+    benchmarkEl.textContent = `Средняя доля КнСК+ по МО — ${formatOutlierRate(bench.meanPositiveRate)}% (σ = ${formatOutlierRate(bench.stdPositiveRate)} п.п.)`;
+
+    const scaleMax = Math.max(
+      bench.meanPositiveRate + bench.stdPositiveRate * 2,
+      bench.networkPositiveRate,
+      ...result.items.map((m) => m.positiveRate),
+      5
+    );
+
+    listEl.innerHTML = result.items
+      .map(function (m, idx) {
+        const expected = Math.round(m.expectedHasDev);
+        const belowExpected = Math.max(0, Math.round(m.expectedHasDev - m.hasDev));
+        const deltaText = `на ${belowExpected.toLocaleString('ru-RU')} меньше ожидаемого среднего`;
+
+        return `<li class="compare-mo-rank-item knsk-outlier-item" style="--stagger:${idx}">
+          <span class="compare-mo-rank-num" aria-hidden="true">${idx + 1}</span>
+          <div class="compare-mo-rank-body">
+            <div class="compare-mo-rank-title-row">
+              <strong>${escapeHtml(truncateName(m.name, 44))}</strong>
+              <span class="compare-mo-delta down">${deltaText}</span>
+            </div>
+            <span class="compare-mo-list-sub">КнСК: ${m.fact.toLocaleString('ru-RU')} · КнСК+: ${m.hasDev.toLocaleString('ru-RU')} (${formatOutlierRate(m.positiveRate)}%)</span>
+            <span class="compare-mo-list-sub compare-mo-list-sub--meta">При средней доле ${formatOutlierRate(bench.meanPositiveRate)}% ожидалось ~${expected.toLocaleString('ru-RU')} положит.</span>
+            ${renderOutlierRateBar(m.positiveRate, bench.meanPositiveRate, scaleMax)}
+          </div>
+        </li>`;
+      })
+      .join('');
+
+    noteEl.textContent = `Показаны МО с ≥${result.minFact.toLocaleString('ru-RU')} исследованиями КнСК (${bench.highVolumeCount} в выборке), у которых доля положительных результатов КнСК ниже статистически среднего по всем МО`;
   }
 
   function heatClass(percent) {
@@ -408,7 +695,7 @@ const DashboardPhase1 = (function () {
         const bClass = badgeClass(m.percent);
         const growthCls = m.growth >= 0 ? 'growth-positive' : 'growth-negative';
 
-        return `<tr class="${match ? 'mo-row-clickable' : 'table-row-hidden'}" data-mo-idx="${i}" data-mo-name="${escapeHtml(m.name)}">
+        return `<tr class="${match ? 'mo-row-clickable' : 'table-row-hidden'}" data-mo-idx="${i}" data-mo-name="${escapeHtml(m.name)}"${match ? ` tabindex="0" role="button" aria-label="Открыть детали МО ${escapeHtml(m.name)}"` : ''}>
         <td>${i + 1}</td>
         <td style="text-align:left;font-weight:600;">${escapeHtml(m.name)}</td>
         <td>${m.plan.toLocaleString('ru-RU')}</td>
@@ -469,12 +756,21 @@ const DashboardPhase1 = (function () {
   let coverageChartInstance = null;
   let lastCoverageMos = null;
   let coverageResizeBound = false;
+  let coverageObserverBound = false;
+  let coveragePainted = false;
 
   function getCoverageChartWidth(moCount) {
     const scroll = document.getElementById('coverageChartScroll');
     const containerWidth = scroll && scroll.clientWidth > 0 ? scroll.clientWidth : 480;
     const barWidth = 56;
     return Math.max(moCount * barWidth, containerWidth);
+  }
+
+  function isCoverageChartNearViewport() {
+    const scroll = document.getElementById('coverageChartScroll');
+    if (!scroll) return true;
+    const rect = scroll.getBoundingClientRect();
+    return rect.top < window.innerHeight + 120 && rect.bottom > -120;
   }
 
   function bindCoverageResize() {
@@ -485,18 +781,43 @@ const DashboardPhase1 = (function () {
       if (!lastCoverageMos || !lastCoverageMos.length) return;
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(function () {
-        buildCoverageChart(lastCoverageMos);
+        if (coveragePainted) paintCoverageChart(lastCoverageMos);
       }, 150);
     });
   }
 
-  function buildCoverageChart(mosData) {
+  function observeCoverageChart() {
+    if (coverageObserverBound) return;
+    const scroll = document.getElementById('coverageChartScroll');
+    if (!scroll) return;
+    coverageObserverBound = true;
+
+    if (typeof IntersectionObserver === 'undefined') {
+      if (lastCoverageMos && isCoverageChartNearViewport()) paintCoverageChart(lastCoverageMos);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting && lastCoverageMos && lastCoverageMos.length) {
+            paintCoverageChart(lastCoverageMos);
+          }
+        });
+      },
+      { rootMargin: '120px 0px' }
+    );
+    observer.observe(scroll);
+
+    if (lastCoverageMos && isCoverageChartNearViewport()) {
+      paintCoverageChart(lastCoverageMos);
+    }
+  }
+
+  function paintCoverageChart(mosData) {
     const canvas = document.getElementById('coverageChart');
     const inner = document.getElementById('coverageChartInner');
-    if (!canvas || !mosData || !mosData.length) return;
-
-    lastCoverageMos = mosData;
-    bindCoverageResize();
+    if (!canvas || !mosData || !mosData.length || typeof Chart === 'undefined') return;
 
     const withCoverage = mosData.map((mo) => {
       const coverage = mo.hasDev > 0 ? (mo.colon / mo.hasDev) * 100 : 0;
@@ -508,17 +829,53 @@ const DashboardPhase1 = (function () {
       };
     });
     const sorted = [...withCoverage].sort((a, b) => b.coverage - a.coverage);
+    const rankTotal = sorted.length;
+    sorted.forEach(function (m, idx) {
+      m.rank = idx + 1;
+      m.rankTotal = rankTotal;
+    });
     const chartWidth = getCoverageChartWidth(sorted.length);
+    const labels = sorted.map((m) => truncateName(m.name, 26));
+    const data = sorted.map((m) => m.coverage);
+    canvas._knskCoverageSorted = sorted;
+
+    let existing = coverageChartInstance || getChartOnCanvas(canvas);
+    if (existing && existing.canvas !== canvas) {
+      existing.destroy();
+      existing = null;
+      coverageChartInstance = null;
+    }
+
+    if (
+      existing &&
+      typeof existing.update === 'function' &&
+      existing.canvas === canvas &&
+      existing.config &&
+      existing.config.type === 'bar' &&
+      existing.data &&
+      existing.data.datasets &&
+      existing.data.datasets[0]
+    ) {
+      existing.data.labels = labels;
+      existing.data.datasets[0].data = data;
+      if (inner) inner.style.width = `${chartWidth}px`;
+      existing.resize();
+      existing.update('none');
+      coverageChartInstance = existing;
+      coveragePainted = true;
+      return;
+    }
+
+    if (existing) existing.destroy();
+    releaseCanvasChart(canvas);
+    coverageChartInstance = null;
+
     if (inner) inner.style.width = `${chartWidth}px`;
     canvas.width = chartWidth;
     canvas.height = 280;
     canvas.style.width = `${chartWidth}px`;
     canvas.style.height = '280px';
 
-    const labels = sorted.map((m) => truncateName(m.name, 26));
-    const data = sorted.map((m) => m.coverage);
-
-    if (coverageChartInstance) coverageChartInstance.destroy();
     coverageChartInstance = new Chart(canvas.getContext('2d'), {
       type: 'bar',
       data: {
@@ -537,12 +894,26 @@ const DashboardPhase1 = (function () {
       options: {
         responsive: false,
         maintainAspectRatio: false,
+        animation: false,
+        layout: {
+          padding: { top: 28, bottom: 4, left: 4, right: 4 },
+        },
         plugins: {
           tooltip: {
             callbacks: {
+              title: (items) => {
+                const sortedRows = items[0] && items[0].chart.canvas._knskCoverageSorted;
+                const m = sortedRows && sortedRows[items[0].dataIndex];
+                return m ? m.name : '';
+              },
               label: (ctx) => {
-                const m = sorted[ctx.dataIndex];
-                return `${ctx.raw.toFixed(1)}% (колоноскопий: ${m.colon} из ${m.hasDev} положит.)`;
+                const sortedRows = ctx.chart.canvas._knskCoverageSorted;
+                const m = sortedRows && sortedRows[ctx.dataIndex];
+                if (!m) return `${ctx.raw}%`;
+                return [
+                  `Место ${m.rank} из ${m.rankTotal}`,
+                  `${ctx.raw.toFixed(1)}% (колоноскопий: ${m.colon} из ${m.hasDev} положит.)`,
+                ];
               },
             },
           },
@@ -551,8 +922,12 @@ const DashboardPhase1 = (function () {
             color: '#1e293b',
             anchor: 'end',
             align: 'top',
-            formatter: (val) => `${val.toFixed(1)}%`,
-            font: { weight: 'bold', size: 10 },
+            formatter: (val, ctx) => {
+              const rank = ctx.dataIndex + 1;
+              return `${rank} место\n${val.toFixed(1)}%`;
+            },
+            font: { weight: '700', size: 9 },
+            lineHeight: 1.25,
           },
         },
         scales: {
@@ -568,6 +943,16 @@ const DashboardPhase1 = (function () {
         },
       },
     });
+    coveragePainted = true;
+  }
+
+  function buildCoverageChart(mosData) {
+    lastCoverageMos = mosData;
+    bindCoverageResize();
+    observeCoverageChart();
+    if (mosData && mosData.length && isCoverageChartNearViewport()) {
+      paintCoverageChart(mosData);
+    }
   }
 
   const KPI_SKELETON_IDS = [
@@ -633,23 +1018,35 @@ const DashboardPhase1 = (function () {
     }
   }
 
+  let chartsPaintToken = 0;
+
   function renderChartsDeferred(mos) {
+    const token = ++chartsPaintToken;
+
     function paintCharts() {
+      if (token !== chartsPaintToken) return;
+      if (typeof Chart === 'undefined') {
+        console.error('Chart.js недоступен — рейтинги и охват не отрисованы');
+        return;
+      }
       try {
         renderRankCharts(mos);
         buildCoverageChart(mos);
+        perfMark('charts-painted');
       } catch (err) {
         console.error('Ошибка отрисовки графиков рейтингов:', err);
       }
     }
 
-    ensureDataLabelsReady()
-      .then(function () {
-        scheduleIdle(paintCharts);
-      })
+    function schedulePaint() {
+      requestAnimationFrame(paintCharts);
+    }
+
+    ensureChartsReady()
+      .then(schedulePaint)
       .catch(function (err) {
-        console.error('ChartDataLabels:', err);
-        scheduleIdle(paintCharts);
+        console.error('Chart.js / DataLabels:', err);
+        if (typeof Chart !== 'undefined') schedulePaint();
       });
   }
 
@@ -677,14 +1074,16 @@ const DashboardPhase1 = (function () {
     if (!mos.length) return Promise.resolve({ mos: [], totals: null });
 
     hideLoadingState();
-    destroyRankCharts();
+    perfMark('render-all-start');
 
     const totals = renderKpis(mos, opts.previousTotals);
+    perfMark('kpi-rendered');
     renderSignals(mos, totals, opts.previousMos || null);
+    renderKnskVolumeOutlierBlock(mos);
 
     if (opts.progressive === false) {
       renderTable(mos);
-      return ensureDataLabelsReady().then(function () {
+      return ensureChartsReady().then(function () {
         renderRankCharts(mos);
         buildCoverageChart(mos);
         return finishRender(mos, totals);
@@ -694,6 +1093,7 @@ const DashboardPhase1 = (function () {
     return new Promise(function (resolve) {
       requestAnimationFrame(function () {
         renderTable(mos);
+        perfMark('table-rendered');
         resolve(finishRender(mos, totals));
         renderChartsDeferred(mos);
       });
@@ -719,6 +1119,12 @@ const DashboardPhase1 = (function () {
     renderKpis,
     renderSignals,
     renderRankCharts,
+    renderKnskVolumeOutlierBlock,
+    setRankPopulationGroup,
+    getRankPopulationGroup: function () {
+      return selectedRankGroup;
+    },
+    getPopulationGroupLabel,
     renderTable,
     destroyRankCharts,
     resetTableSearchBinding,
@@ -728,7 +1134,6 @@ const DashboardPhase1 = (function () {
   };
 })();
 
-// Регистрация в window для include-порядка между <script>-бандлами GAS
 if (typeof window !== 'undefined') {
   window.DashboardPhase1 = DashboardPhase1;
 }

@@ -9,6 +9,8 @@ import {
   formatArchiveDate_,
   buildMoHistoryFromRows_,
   normalizeMoKey_,
+  slimReportForBootstrap_,
+  assembleBootstrapResponse_,
 } from '../src/server/archive.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -210,5 +212,53 @@ describe('buildMoHistoryFromRows_', () => {
 
   it('normalizeMoKey_ matches case-insensitively', () => {
     expect(normalizeMoKey_('  ГКБ №1 ')).toBe('гкб №1');
+  });
+});
+
+describe('slimReportForBootstrap_', () => {
+  it('keeps only mosData and timestamp', () => {
+    const full = {
+      mosData: [{ name: 'A', plan: 1, fact: 1 }],
+      doneText: 'long text',
+      plansText: 'plans',
+      period: 'Q1',
+      timestamp: '01.01.2026',
+    };
+    expect(slimReportForBootstrap_(full)).toEqual({
+      mosData: full.mosData,
+      timestamp: '01.01.2026',
+    });
+  });
+});
+
+describe('assembleBootstrapResponse_', () => {
+  it('builds payload without weeksTrend and slims previous', () => {
+    const index = {
+      list: [
+        { id: 2, dateStr: '02.01.2026' },
+        { id: 1, dateStr: '01.01.2026' },
+      ],
+      idToRow: { 1: 2, 2: 3 },
+    };
+    const current = {
+      mosData: [{ name: 'Current', plan: 10, fact: 5 }],
+      doneText: 'done',
+      timestamp: '02.01.2026',
+    };
+    const previous = {
+      mosData: [{ name: 'Prev', plan: 8, fact: 4 }],
+      doneText: 'old done',
+      plansText: 'old plans',
+      timestamp: '01.01.2026',
+    };
+    const result = assembleBootstrapResponse_(index, 2, current, previous);
+    expect(result.report).toBe(current);
+    expect(result.previous).toEqual({
+      mosData: previous.mosData,
+      timestamp: '01.01.2026',
+    });
+    expect(result.reportId).toBe(2);
+    expect(result.list).toBe(index.list);
+    expect(result.weeksTrend).toBeUndefined();
   });
 });

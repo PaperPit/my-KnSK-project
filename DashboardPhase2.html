@@ -116,6 +116,30 @@
     return t;
   }
 
+  // src/lib/dateUtils.js
+  function parseArchiveReportDate(dateStr) {
+    if (!dateStr) return null;
+    const s = String(dateStr).trim();
+    const dmY = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s);
+    if (dmY) {
+      return new Date(Number(dmY[3]), Number(dmY[2]) - 1, Number(dmY[1])).getTime();
+    }
+    const parsed = Date.parse(s);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  function isEarlierArchiveReport(idEarlier, idLater, reportsList) {
+    const a = Number(idEarlier);
+    const b = Number(idLater);
+    if (!a || !b || a === b) return false;
+    const list = reportsList || [];
+    const metaA = list.find((r) => r.id === a);
+    const metaB = list.find((r) => r.id === b);
+    const timeA = metaA && parseArchiveReportDate(metaA.dateStr);
+    const timeB = metaB && parseArchiveReportDate(metaB.dateStr);
+    if (timeA != null && timeB != null) return timeA < timeB;
+    return a < b;
+  }
+
   // src/lib/moUtils.js
   function truncateName(name, max) {
     const n = String(name || "");
@@ -129,62 +153,104 @@
   function coverageOf(mo) {
     return mo.hasDev > 0 ? mo.colon / mo.hasDev * 100 : 0;
   }
-  var COVERAGE_RANK_TOTAL = 47;
-  function buildCoverageRankMap(mos, minHasDev) {
-    const eligible = (mos || []).filter((m) => m.hasDev >= minHasDev);
-    const sorted = [...eligible].sort((a, b) => coverageOf(b) - coverageOf(a));
-    const rankMap = /* @__PURE__ */ new Map();
-    sorted.forEach((m, idx) => {
-      rankMap.set(normalizeMoKey(m.name), idx + 1);
-    });
-    return { rankMap, total: eligible.length };
+  var COLON_COVERAGE_LOW_THRESHOLD = 50;
+  function medianOf(values) {
+    if (!values.length) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
   }
-  function computeTopColonCoverageGainers(mosEarlier, mosLater, options) {
+  function isMinimalCoverageDynamics(coverageDeltaPp, poolDeltas) {
+    if (coverageDeltaPp <= 0) return true;
+    if (!poolDeltas.length) return false;
+    return coverageDeltaPp <= medianOf(poolDeltas);
+  }
+  function computeLowCoverageStagnantMOs(mosEarlier, mosLater, options) {
     const minHasDev = (options && options.minHasDev) ?? 10;
     const limit = (options && options.limit) ?? 5;
-    const ranksEarlier = buildCoverageRankMap(mosEarlier, minHasDev);
-    const ranksLater = buildCoverageRankMap(mosLater, minHasDev);
-    const laterMap = /* @__PURE__ */ new Map();
-    (mosLater || []).forEach((m) => {
-      laterMap.set(normalizeMoKey(m.name), m);
+    const maxCoverage = (options && options.maxCoverage) ?? COLON_COVERAGE_LOW_THRESHOLD;
+    const earlierMap = /* @__PURE__ */ new Map();
+    (mosEarlier || []).forEach((m) => {
+      earlierMap.set(normalizeMoKey(m.name), m);
     });
-    const candidates = [];
-    (mosEarlier || []).forEach((mA) => {
-      const key = normalizeMoKey(mA.name);
-      const mB = laterMap.get(key);
-      if (!mB || mB.hasDev < minHasDev) return;
+    const lowCoveragePool = [];
+    (mosLater || []).forEach((mB) => {
+      if (mB.hasDev < minHasDev) return;
+      const key = normalizeMoKey(mB.name);
+      const mA = earlierMap.get(key);
+      if (!mA || mA.hasDev < minHasDev) return;
       const covA = coverageOf(mA);
       const covB = coverageOf(mB);
-      if (covB <= covA) return;
-      const rankA = ranksEarlier.rankMap.get(key);
-      const rankB = ranksLater.rankMap.get(key);
-      if (!rankA || !rankB) return;
-      const rankRise = rankA - rankB;
+      if (covB >= maxCoverage) return;
       const coverageDeltaPp = covB - covA;
+      const hasDevEarlier = mA.hasDev || 0;
+      const hasDevLater = mB.hasDev || 0;
       const colonEarlier = mA.colon || 0;
       const colonLater = mB.colon || 0;
-      const colonDelta = colonLater - colonEarlier;
-      candidates.push({
-        name: mA.name,
+      lowCoveragePool.push({
+        name: mB.name,
         coverageEarlier: covA,
         coverageLater: covB,
         coverageDeltaPp,
-        relativePctGrowth: covA > 0 ? coverageDeltaPp / covA * 100 : null,
-        rankEarlier: rankA,
-        rankLater: rankB,
-        rankRise,
-        rankTotal: COVERAGE_RANK_TOTAL,
+        hasDevEarlier,
+        hasDevLater,
+        hasDevDelta: hasDevLater - hasDevEarlier,
         colonEarlier,
         colonLater,
-        colonDelta
+        colonDelta: colonLater - colonEarlier
+      });
+    });
+    const poolDeltas = lowCoveragePool.map((m) => m.coverageDeltaPp);
+    const candidates = lowCoveragePool.filter(
+      (m) => isMinimalCoverageDynamics(m.coverageDeltaPp, poolDeltas)
+    );
+    candidates.sort((a, b) => {
+      if (a.coverageLater !== b.coverageLater) return a.coverageLater - b.coverageLater;
+      if (a.coverageDeltaPp !== b.coverageDeltaPp) return a.coverageDeltaPp - b.coverageDeltaPp;
+      return normalizeMoKey(a.name).localeCompare(normalizeMoKey(b.name), "ru");
+    });
+    return candidates.slice(0, limit);
+  }
+  function computeHighCoverageTopDynamicsMOs(mosEarlier, mosLater, options) {
+    const minHasDev = (options && options.minHasDev) ?? 10;
+    const limit = (options && options.limit) ?? 5;
+    const minCoverage = (options && options.minCoverage) ?? COLON_COVERAGE_LOW_THRESHOLD;
+    const earlierMap = /* @__PURE__ */ new Map();
+    (mosEarlier || []).forEach((m) => {
+      earlierMap.set(normalizeMoKey(m.name), m);
+    });
+    const candidates = [];
+    (mosLater || []).forEach((mB) => {
+      if (mB.hasDev < minHasDev) return;
+      const key = normalizeMoKey(mB.name);
+      const mA = earlierMap.get(key);
+      if (!mA || mA.hasDev < minHasDev) return;
+      const covA = coverageOf(mA);
+      const covB = coverageOf(mB);
+      if (covB < minCoverage) return;
+      const coverageDeltaPp = covB - covA;
+      if (coverageDeltaPp <= 0) return;
+      const hasDevEarlier = mA.hasDev || 0;
+      const hasDevLater = mB.hasDev || 0;
+      const colonEarlier = mA.colon || 0;
+      const colonLater = mB.colon || 0;
+      candidates.push({
+        name: mB.name,
+        coverageEarlier: covA,
+        coverageLater: covB,
+        coverageDeltaPp,
+        hasDevEarlier,
+        hasDevLater,
+        hasDevDelta: hasDevLater - hasDevEarlier,
+        colonEarlier,
+        colonLater,
+        colonDelta: colonLater - colonEarlier
       });
     });
     candidates.sort((a, b) => {
-      const relA = a.relativePctGrowth ?? 0;
-      const relB = b.relativePctGrowth ?? 0;
-      if (relB !== relA) return relB - relA;
-      if (b.rankRise !== a.rankRise) return b.rankRise - a.rankRise;
-      return b.coverageDeltaPp - a.coverageDeltaPp;
+      if (b.coverageDeltaPp !== a.coverageDeltaPp) return b.coverageDeltaPp - a.coverageDeltaPp;
+      if (b.coverageLater !== a.coverageLater) return b.coverageLater - a.coverageLater;
+      return normalizeMoKey(a.name).localeCompare(normalizeMoKey(b.name), "ru");
     });
     return candidates.slice(0, limit);
   }
@@ -205,6 +271,51 @@
     return `<svg class="${cls}"${styleAttr} aria-hidden="true"><use href="#icon-${name}"/></svg>`;
   }
 
+  // src/lib/dialogA11y.js
+  var FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  function getFocusableElements(root) {
+    if (!root) return [];
+    return Array.from(root.querySelectorAll(FOCUSABLE)).filter(
+      (el) => el.getAttribute("aria-hidden") !== "true" && !el.closest('[aria-hidden="true"]')
+    );
+  }
+  function trapFocus(panel) {
+    if (!panel) return () => {
+    };
+    function onKeyDown(e) {
+      if (e.key !== "Tab") return;
+      const nodes = getFocusableElements(panel);
+      if (!nodes.length) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    panel.addEventListener("keydown", onKeyDown);
+    return () => panel.removeEventListener("keydown", onKeyDown);
+  }
+  function focusFirst(panel, selector) {
+    if (!panel) return;
+    requestAnimationFrame(() => {
+      const target = selector ? panel.querySelector(selector) : getFocusableElements(panel)[0];
+      if (target) target.focus();
+    });
+  }
+  function restoreFocus(el) {
+    if (el && typeof el.focus === "function") {
+      try {
+        el.focus({ preventScroll: true });
+      } catch (_) {
+        el.focus();
+      }
+    }
+  }
+
   // src/dashboard/dashboardPhase2.js
   function getBundleLoader() {
     return typeof window !== "undefined" ? window.KnSKBundleLoader : null;
@@ -219,6 +330,13 @@
     const archiveReportCache = /* @__PURE__ */ Object.create(null);
     const compareInflight = /* @__PURE__ */ Object.create(null);
     let comparePrefetchTimer = null;
+    let compareFocusRelease = null;
+    let compareTriggerEl = null;
+    let compareMoListMode = "low";
+    let lastCompareContext = null;
+    let compareMoModeBound = false;
+    let drawerFocusRelease = null;
+    let drawerTriggerEl = null;
     function cacheArchiveReport(id, report) {
       if (id != null && report) archiveReportCache[Number(id)] = report;
     }
@@ -249,36 +367,6 @@
     }
     function sortMosByPlanPercent(mos) {
       return [...mos || []].sort((a, b) => b.percent - a.percent);
-    }
-    function pluralRu(n, one, few, many) {
-      const abs = Math.abs(n);
-      const mod10 = abs % 10;
-      const mod100 = abs % 100;
-      if (mod10 === 1 && mod100 !== 11) return one;
-      if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
-      return many;
-    }
-    function formatRankChangeText(m) {
-      const total = COVERAGE_RANK_TOTAL;
-      if (m.rankRise > 0) {
-        const word = pluralRu(m.rankRise, "\u043F\u043E\u0437\u0438\u0446\u0438\u044E", "\u043F\u043E\u0437\u0438\u0446\u0438\u0438", "\u043F\u043E\u0437\u0438\u0446\u0438\u0439");
-        return `\u041F\u043E\u0434\u043D\u044F\u043B\u0438\u0441\u044C \u043D\u0430 ${m.rankRise} ${word} \u0432 \u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0435 (\u0441 ${m.rankEarlier}-\u0433\u043E \u043D\u0430 ${m.rankLater}-\u0435 \u043C\u0435\u0441\u0442\u043E \u0438\u0437 ${total})`;
-      }
-      if (m.rankRise < 0) {
-        const drop = Math.abs(m.rankRise);
-        const word = pluralRu(drop, "\u043F\u043E\u0437\u0438\u0446\u0438\u044E", "\u043F\u043E\u0437\u0438\u0446\u0438\u0438", "\u043F\u043E\u0437\u0438\u0446\u0438\u0439");
-        return `\u041E\u043F\u0443\u0441\u0442\u0438\u043B\u0438\u0441\u044C \u043D\u0430 ${drop} ${word} \u0432 \u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0435 (\u0441 ${m.rankEarlier}-\u0433\u043E \u043D\u0430 ${m.rankLater}-\u0435 \u043C\u0435\u0441\u0442\u043E \u0438\u0437 ${total})`;
-      }
-      return `\u041C\u0435\u0441\u0442\u043E \u0432 \u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0435 \u043D\u0435 \u0438\u0437\u043C\u0435\u043D\u0438\u043B\u043E\u0441\u044C (${m.rankLater}-\u0435 \u0438\u0437 ${total})`;
-    }
-    function formatColonPeriodText(m) {
-      const word = pluralRu(m.colonLater, "\u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u044F", "\u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0438", "\u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0439");
-      if (m.colonDelta === 0) {
-        return `\u0417\u0430 \u043F\u0435\u0440\u0438\u043E\u0434: ${m.colonLater.toLocaleString("ru-RU")} ${word} (\u0431\u0435\u0437 \u043F\u0440\u0438\u0440\u043E\u0441\u0442\u0430)`;
-      }
-      const deltaWord = pluralRu(Math.abs(m.colonDelta), "\u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u044E", "\u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0438", "\u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0439");
-      const sign = m.colonDelta > 0 ? "+" : "\u2212";
-      return `\u0417\u0430 \u043F\u0435\u0440\u0438\u043E\u0434: ${sign}${Math.abs(m.colonDelta).toLocaleString("ru-RU")} ${deltaWord} (\u0432\u0441\u0435\u0433\u043E ${m.colonLater.toLocaleString("ru-RU")} ${word}, \u0431\u044B\u043B\u043E ${m.colonEarlier.toLocaleString("ru-RU")})`;
     }
     function disposeChart(id) {
       if (echartsInstances[id]) {
@@ -376,10 +464,11 @@
       const text = isPercent ? `${sign}${diff.toFixed(1)} \u043F.\u043F.` : `${sign}${Math.round(diff).toLocaleString("ru-RU")}`;
       return `<span class="m-delta" style="${cls}">${text} \u043A \u043F\u0440\u043E\u0448\u043B. \u043E\u0442\u0447\u0451\u0442\u0443</span>`;
     }
-    function openMoDrawer(mo, previousMo) {
+    function openMoDrawer(mo, previousMo, triggerEl) {
       const overlay = document.getElementById("moDrawerOverlay");
       const body = document.getElementById("moDrawerBody");
       const title = document.getElementById("moDrawerTitle");
+      const drawer = document.getElementById("moDrawer");
       if (!overlay || !body || !mo) return;
       if (title) title.textContent = mo.name || "\u041C\u041E";
       const coverage = mo.hasDev > 0 ? (mo.colon / mo.hasDev * 100).toFixed(1) : "0";
@@ -431,7 +520,7 @@
           closeMoDrawer();
           loader.ensureMoProfile().then(function() {
             if (window.MoProfile && mo.name) {
-              window.MoProfile.open(mo.name);
+              window.MoProfile.open(mo.name, profileBtn);
             }
           }).catch(function(err) {
             reportMoError("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u0433\u043B\u0443\u0431\u043E\u043A\u0438\u0439 \u0430\u043D\u0430\u043B\u0438\u0437 \u041C\u041E", err);
@@ -439,12 +528,28 @@
         });
       }
       overlay.classList.add("open");
+      overlay.setAttribute("aria-hidden", "false");
       document.body.style.overflow = "hidden";
+      drawerTriggerEl = triggerEl || document.activeElement;
+      if (drawerFocusRelease) drawerFocusRelease();
+      if (drawer) {
+        drawerFocusRelease = trapFocus(drawer);
+        focusFirst(drawer, "#moDrawerClose");
+      }
       renderMoDrawerChart(mo);
     }
     function closeMoDrawer() {
       const overlay = document.getElementById("moDrawerOverlay");
-      if (overlay) overlay.classList.remove("open");
+      if (overlay) {
+        overlay.classList.remove("open");
+        overlay.setAttribute("aria-hidden", "true");
+      }
+      if (drawerFocusRelease) {
+        drawerFocusRelease();
+        drawerFocusRelease = null;
+      }
+      restoreFocus(drawerTriggerEl);
+      drawerTriggerEl = null;
       document.body.style.overflow = "";
       disposeChart("moDrawerChart");
     }
@@ -459,7 +564,18 @@
         if (isNaN(idx) || !lastMos[idx]) return;
         const mo = lastMos[idx];
         const prevMo = lastPreviousMos ? findMoByName(lastPreviousMos, mo.name) : null;
-        openMoDrawer(mo, prevMo);
+        openMoDrawer(mo, prevMo, row);
+      });
+      tbody.addEventListener("keydown", function(e) {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        const row = e.target.closest("tr.mo-row-clickable");
+        if (!row) return;
+        e.preventDefault();
+        const idx = parseInt(row.getAttribute("data-mo-idx"), 10);
+        if (isNaN(idx) || !lastMos[idx]) return;
+        const mo = lastMos[idx];
+        const prevMo = lastPreviousMos ? findMoByName(lastPreviousMos, mo.name) : null;
+        openMoDrawer(mo, prevMo, row);
       });
     }
     function setupDrawerClose() {
@@ -488,6 +604,8 @@
     function togglePresentationMode(force) {
       const on = force !== void 0 ? force : !document.body.classList.contains("presentation-mode");
       document.body.classList.toggle("presentation-mode", on);
+      const presBtn = document.getElementById("presentationModeBtn");
+      if (presBtn) presBtn.setAttribute("aria-pressed", on ? "true" : "false");
       Object.keys(echartsInstances).forEach((id) => {
         if (echartsInstances[id]) echartsInstances[id].resize();
       });
@@ -495,13 +613,20 @@
         Object.values(Chart.instances).forEach((c) => c.resize());
       }
     }
-    function openComparePanel() {
+    function openComparePanel(triggerEl) {
       const overlay = document.getElementById("compareOverlay");
+      const panel = document.getElementById("comparePanel");
       if (overlay) {
         overlay.classList.add("open");
         overlay.setAttribute("aria-hidden", "false");
       }
       document.body.style.overflow = "hidden";
+      compareTriggerEl = triggerEl || document.activeElement;
+      if (compareFocusRelease) compareFocusRelease();
+      if (panel) {
+        compareFocusRelease = trapFocus(panel);
+        focusFirst(panel, "#comparePanelClose");
+      }
     }
     function closeComparePanel() {
       const overlay = document.getElementById("compareOverlay");
@@ -509,6 +634,12 @@
         overlay.classList.remove("open");
         overlay.setAttribute("aria-hidden", "true");
       }
+      if (compareFocusRelease) {
+        compareFocusRelease();
+        compareFocusRelease = null;
+      }
+      restoreFocus(compareTriggerEl);
+      compareTriggerEl = null;
       if (!document.getElementById("moDrawerOverlay")?.classList.contains("open")) {
         document.body.style.overflow = "";
       }
@@ -526,6 +657,121 @@
       document.addEventListener("click", function(e) {
         if (e.target.closest("#comparePanelClose")) closeComparePanel();
       });
+      setupCompareMoModeToggle();
+    }
+    function setupCompareMoModeToggle() {
+      if (compareMoModeBound) return;
+      compareMoModeBound = true;
+      document.addEventListener("click", function(e) {
+        const btn = e.target.closest("[data-compare-mo-mode]");
+        if (!btn || !document.getElementById("compareOverlay")?.classList.contains("open")) return;
+        const mode = btn.getAttribute("data-compare-mo-mode");
+        if (mode !== "low" && mode !== "high") return;
+        if (mode === compareMoListMode) return;
+        compareMoListMode = mode;
+        paintComparePanelBody();
+      });
+    }
+    function formatCompareMoDelta(m, mode) {
+      const d = m.coverageDeltaPp;
+      const formatted = Math.abs(d).toLocaleString("ru-RU", {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1
+      });
+      if (mode === "high") {
+        return `+${formatted} \u043F.\u043F. \u043E\u0445\u0432\u0430\u0442\u0430`;
+      }
+      if (d < 0) return `\u2212${formatted} \u043F.\u043F. \u043E\u0445\u0432\u0430\u0442\u0430`;
+      if (d === 0) return "\u0431\u0435\u0437 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u043E\u0445\u0432\u0430\u0442\u0430";
+      return `+${formatted} \u043F.\u043F. (\u043C\u0438\u043D\u0438\u043C\u0430\u043B\u044C\u043D\u044B\u0439 \u043F\u0440\u0438\u0440\u043E\u0441\u0442)`;
+    }
+    function renderCompareMoListItems(items, mode) {
+      if (!items.length) {
+        if (mode === "high") {
+          return `<li class="compare-mo-empty">\u041D\u0435\u0442 \u041C\u041E \u0441 \u043E\u0445\u0432\u0430\u0442\u043E\u043C \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439 \u2265 ${COLON_COVERAGE_LOW_THRESHOLD}% \u0438 \u043F\u043E\u043B\u043E\u0436\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0439 \u0434\u0438\u043D\u0430\u043C\u0438\u043A\u043E\u0439 \u0437\u0430 \u043F\u0435\u0440\u0438\u043E\u0434</li>`;
+        }
+        return `<li class="compare-mo-empty">\u041D\u0435\u0442 \u041C\u041E \u0441 \u043E\u0445\u0432\u0430\u0442\u043E\u043C \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439 \u043D\u0438\u0436\u0435 ${COLON_COVERAGE_LOW_THRESHOLD}% \u0438 \u043C\u0438\u043D\u0438\u043C\u0430\u043B\u044C\u043D\u043E\u0439 \u0434\u0438\u043D\u0430\u043C\u0438\u043A\u043E\u0439 \u0437\u0430 \u043F\u0435\u0440\u0438\u043E\u0434</li>`;
+      }
+      return items.map((m, idx) => {
+        const deltaText = formatCompareMoDelta(m, mode);
+        const deltaCls = mode === "high" ? "up" : m.coverageDeltaPp <= 0 ? "down" : "neutral";
+        return `<li class="compare-mo-rank-item" style="--stagger:${idx}">
+            <span class="compare-mo-rank-num" aria-hidden="true">${idx + 1}</span>
+            <div class="compare-mo-rank-body">
+              <div class="compare-mo-rank-title-row">
+                <strong>${escapeHtml(truncateName(m.name, 42))}</strong>
+                <span class="compare-mo-delta ${deltaCls}">${deltaText}</span>
+              </div>
+              <span class="compare-mo-list-sub">\u041E\u0445\u0432\u0430\u0442 \u043F\u0430\u0446\u0438\u0435\u043D\u0442\u043E\u0432 \u0441 (\u041A\u043D\u0421\u041A+) \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439: ${m.coverageEarlier.toFixed(1)}% \u2192 ${m.coverageLater.toFixed(1)}% (${m.colonLater.toLocaleString("ru-RU")} \u0438\u0437 ${m.hasDevLater.toLocaleString("ru-RU")})</span>
+              <span class="compare-mo-list-sub compare-mo-list-sub--meta">\u041A\u043D\u0421\u041A+ \u0437\u0430 \u043F\u0435\u0440\u0438\u043E\u0434: ${m.hasDevDelta >= 0 ? "+" : "\u2212"}${Math.abs(m.hasDevDelta).toLocaleString("ru-RU")} \xB7 \u041A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0438: ${m.colonDelta >= 0 ? "+" : "\u2212"}${Math.abs(m.colonDelta).toLocaleString("ru-RU")}</span>
+            </div>
+          </li>`;
+      }).join("");
+    }
+    function buildCompareMoListSection(mosA, mosB, mode) {
+      const listOpts = { minHasDev: 10, limit: 5 };
+      const isHigh = mode === "high";
+      const items = isHigh ? computeHighCoverageTopDynamicsMOs(mosA, mosB, listOpts) : computeLowCoverageStagnantMOs(mosA, mosB, listOpts);
+      const title = isHigh ? "5 \u041C\u041E \u0441 \u0432\u044B\u0441\u043E\u043A\u0438\u043C \u043E\u0445\u0432\u0430\u0442\u043E\u043C \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439 (\u041A\u043D\u0421\u041A+) \u0438 \u043B\u0443\u0447\u0448\u0435\u0439 \u0434\u0438\u043D\u0430\u043C\u0438\u043A\u043E\u0439" : "5 \u041C\u041E \u0441 \u043D\u0438\u0437\u043A\u0438\u043C \u043E\u0445\u0432\u0430\u0442\u043E\u043C \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439 (\u041A\u043D\u0421\u041A+) \u0438 \u043C\u0438\u043D\u0438\u043C\u0430\u043B\u044C\u043D\u043E\u0439 \u0434\u0438\u043D\u0430\u043C\u0438\u043A\u043E\u0439";
+      const note = isHigh ? `\u041E\u0445\u0432\u0430\u0442 \u2265 ${COLON_COVERAGE_LOW_THRESHOLD}% (\u043F\u043E\u0437\u0434\u043D\u0438\u0439 \u043F\u0435\u0440\u0438\u043E\u0434) \xB7 \u043F\u043E\u043B\u043E\u0436\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u043F\u0440\u0438\u0440\u043E\u0441\u0442 \u043E\u0445\u0432\u0430\u0442\u0430 \xB7 \u0441\u043E\u0440\u0442\u0438\u0440\u043E\u0432\u043A\u0430 \u043F\u043E \u0394 \u0443\u0431\u044B\u0432\u0430\u043D\u0438\u044E \xB7 \u0442\u043E\u043B\u044C\u043A\u043E \u041C\u041E \u0441 \u226510 \u041A\u043D\u0421\u041A+ \u0432 \u043E\u0431\u043E\u0438\u0445 \u043E\u0442\u0447\u0451\u0442\u0430\u0445` : `\u041E\u0445\u0432\u0430\u0442 \u043D\u0438\u0436\u0435 ${COLON_COVERAGE_LOW_THRESHOLD}% (\u043F\u043E\u0437\u0434\u043D\u0438\u0439 \u043F\u0435\u0440\u0438\u043E\u0434) \xB7 \u043C\u0438\u043D\u0438\u043C\u0430\u043B\u044C\u043D\u0430\u044F \u0434\u0438\u043D\u0430\u043C\u0438\u043A\u0430 \u043E\u0445\u0432\u0430\u0442\u0430 (\u0394 \u2264 0 \u0438\u043B\u0438 \u043D\u0435 \u0432\u044B\u0448\u0435 \u043C\u0435\u0434\u0438\u0430\u043D\u044B \u043F\u043E \u0432\u044B\u0431\u043E\u0440\u043A\u0435) \xB7 \u0442\u043E\u043B\u044C\u043A\u043E \u041C\u041E \u0441 \u226510 \u041A\u043D\u0421\u041A+ \u0432 \u043E\u0431\u043E\u0438\u0445 \u043E\u0442\u0447\u0451\u0442\u0430\u0445`;
+      return `
+      <div class="compare-mo-mode-toggle" role="tablist" aria-label="\u0420\u0435\u0436\u0438\u043C \u0441\u043F\u0438\u0441\u043A\u0430 \u041C\u041E">
+        <button type="button" class="compare-mo-mode-btn${mode === "low" ? " is-active" : ""}" role="tab" aria-selected="${mode === "low" ? "true" : "false"}" data-compare-mo-mode="low">\u041D\u0438\u0437\u043A\u0438\u0439 \u043E\u0445\u0432\u0430\u0442</button>
+        <button type="button" class="compare-mo-mode-btn${mode === "high" ? " is-active" : ""}" role="tab" aria-selected="${mode === "high" ? "true" : "false"}" data-compare-mo-mode="high">\u041B\u0443\u0447\u0448\u0430\u044F \u0434\u0438\u043D\u0430\u043C\u0438\u043A\u0430</button>
+      </div>
+      <h4 id="compareMoListTitle">${title}</h4>
+      <p class="compare-mo-block-note">${note}</p>
+      <ul class="compare-mo-list compare-mo-list--ranked" aria-labelledby="compareMoListTitle">
+        ${renderCompareMoListItems(items, mode)}
+      </ul>`;
+    }
+    function paintComparePanelBody() {
+      const content = document.getElementById("comparePanelContent");
+      const ctx = lastCompareContext;
+      if (!content || !ctx) return;
+      const { mosA, mosB, labelA, labelB, tA, tB, pctA, pctB } = ctx;
+      function deltaCell(earlier, later, isPct) {
+        const d = later - earlier;
+        let cls = "neutral";
+        if (d > 0) cls = "up";
+        else if (d < 0) cls = "down";
+        const sign = d > 0 ? "+" : "";
+        const text = isPct ? `${sign}${d.toFixed(1)} \u043F.\u043F.` : `${sign}${Math.round(d).toLocaleString("ru-RU")}`;
+        return `<span class="delta ${cls}">${text}</span>`;
+      }
+      function kpiCard(modifier, iconName, label, valA, valB, earlier, later, isPct) {
+        return `
+        <div class="compare-kpi compare-kpi--${modifier}">
+          <div class="compare-kpi-head">
+            <span class="compare-kpi-icon">${icon(iconName)}</span>
+            <span class="compare-kpi-label">${label}</span>
+          </div>
+          <div class="compare-kpi-vals">
+            <span class="compare-val compare-val--from">${valA}</span>
+            <span class="compare-val-arrow" aria-hidden="true">\u2192</span>
+            <span class="compare-val compare-val--to">${valB}</span>
+          </div>
+          ${deltaCell(earlier, later, isPct)}
+        </div>`;
+      }
+      content.innerHTML = `
+      <div class="compare-panel-body">
+      <p class="compare-period-note">
+        \u0414\u0438\u043D\u0430\u043C\u0438\u043A\u0430: <strong>${escapeHtml(labelA)}</strong> \u2192 <strong>${escapeHtml(labelB)}</strong>
+      </p>
+      <div class="compare-kpi-grid">
+        ${kpiCard("plan", "trending-up", "% \u0433\u043E\u0434. \u043F\u043B\u0430\u043D\u0430", `${pctA.toFixed(1)}%`, `${pctB.toFixed(1)}%`, pctA, pctB, true)}
+        ${kpiCard("fact", "test-tubes", "\u041A\u043D\u0421\u041A (\u0444\u0430\u043A\u0442)", tA.fact.toLocaleString("ru-RU"), tB.fact.toLocaleString("ru-RU"), tA.fact, tB.fact, false)}
+        ${kpiCard("hasdev", "triangle-alert", "\u041A\u043D\u0421\u041A+ (\u043F\u043E\u043B\u043E\u0436.)", tA.hasDev.toLocaleString("ru-RU"), tB.hasDev.toLocaleString("ru-RU"), tA.hasDev, tB.hasDev, false)}
+        ${kpiCard("colon", "stethoscope", "\u041A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u044F", tA.colon.toLocaleString("ru-RU"), tB.colon.toLocaleString("ru-RU"), tA.colon, tB.colon, false)}
+        ${kpiCard("coverage", "line-chart", "\u041E\u0445\u0432\u0430\u0442 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439", `${tA.colonPercent.toFixed(1)}%`, `${tB.colonPercent.toFixed(1)}%`, tA.colonPercent, tB.colonPercent, true)}
+        ${kpiCard("zno", "biohazard", "\u0417\u041D\u041E", String(tA.zno), String(tB.zno), tA.zno, tB.zno, false)}
+      </div>
+      <div class="compare-mo-block compare-mo-block--full">
+        ${buildCompareMoListSection(mosA, mosB, compareMoListMode)}
+      </div>
+      </div>
+    `;
     }
     function setupPresentationToggle() {
       const presBtn = document.getElementById("presentationModeBtn");
@@ -544,15 +790,23 @@
         const sorted = [...list].sort((a, b) => a.id - b.id);
         selA.value = String(sorted[sorted.length - 2].id);
         selB.value = String(sorted[sorted.length - 1].id);
-        setTimeout(prefetchCompareReports, 100);
       } else if (currentId) {
         selB.value = String(currentId);
       }
     }
-    function showCompareLoading() {
+    function showCompareWarning(message) {
+      const content = document.getElementById("comparePanelContent");
+      if (content) {
+        content.removeAttribute("aria-busy");
+        content.innerHTML = `<p class="compare-error" role="alert">${escapeHtml(message)}</p>`;
+      }
+      openComparePanel(document.getElementById("compareReportsBtn"));
+    }
+    function showCompareLoading(triggerEl) {
       const content = document.getElementById("comparePanelContent");
       if (!content) return;
-      openComparePanel();
+      content.setAttribute("aria-busy", "true");
+      openComparePanel(triggerEl);
       content.innerHTML = `
       <div class="compare-loading" aria-live="polite">
         <div class="compare-loading-spinner" aria-hidden="true"></div>
@@ -562,6 +816,7 @@
     function renderComparisonPanel(reportA, reportB, metaA, metaB) {
       const content = document.getElementById("comparePanelContent");
       if (!content) return;
+      content.removeAttribute("aria-busy");
       const mosA = buildMosFromData(reportA.mosData || reportA);
       const mosB = buildMosFromData(reportB.mosData || reportB);
       const tA = computeTotals(mosA);
@@ -569,121 +824,18 @@
       const planYear = getPlanYear();
       const pctA = planYear ? tA.fact / planYear * 100 : 0;
       const pctB = planYear ? tB.fact / planYear * 100 : 0;
-      const labelA = metaA || "\u041E\u0442\u0447\u0451\u0442 A";
-      const labelB = metaB || "\u041E\u0442\u0447\u0451\u0442 B";
-      function deltaCell(earlier, later, isPct) {
-        const d = later - earlier;
-        let cls = "neutral";
-        if (d > 0) cls = "up";
-        else if (d < 0) cls = "down";
-        const sign = d > 0 ? "+" : "";
-        const text = isPct ? `${sign}${d.toFixed(1)} \u043F.\u043F.` : `${sign}${Math.round(d).toLocaleString("ru-RU")}`;
-        return `<span class="delta ${cls}">${text}</span>`;
-      }
-      function renderColonCoverageLeaderList(items) {
-        if (!items.length) {
-          return '<li class="compare-mo-empty">\u041D\u0435\u0442 \u041C\u041E \u0441 \u0440\u043E\u0441\u0442\u043E\u043C \u043E\u0445\u0432\u0430\u0442\u0430 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439 \u0441\u0440\u0435\u0434\u0438 \u041A\u043D\u0421\u041A+ \u0437\u0430 \u043F\u0435\u0440\u0438\u043E\u0434</li>';
-        }
-        return items.map((m) => {
-          const rel = m.relativePctGrowth != null ? `+${m.relativePctGrowth.toFixed(0)}% \u043A \u0441\u0432\u043E\u0435\u043C\u0443 \u0443\u0440\u043E\u0432\u043D\u044E \u043E\u0445\u0432\u0430\u0442\u0430` : `\u0441 0% \u0434\u043E ${m.coverageLater.toFixed(1)}% \u043E\u0445\u0432\u0430\u0442\u0430`;
-          return `<li class="compare-mo-list-item--rich">
-            <span class="compare-mo-list-main">
-              <strong>${escapeHtml(truncateName(m.name, 40))}</strong>
-              <span class="compare-mo-list-sub">\u041E\u0445\u0432\u0430\u0442 \u041A\u043D\u0421\u041A+: ${m.coverageEarlier.toFixed(1)}% \u2192 ${m.coverageLater.toFixed(1)}%</span>
-              <span class="compare-mo-list-sub compare-mo-list-sub--meta">${formatRankChangeText(m)}</span>
-              <span class="compare-mo-list-sub compare-mo-list-sub--meta">${formatColonPeriodText(m)}</span>
-            </span>
-            <span class="compare-mo-list-badges">
-              <strong class="compare-mo-delta up">${rel}</strong>
-            </span>
-          </li>`;
-        }).join("");
-      }
-      const colonCoverageLeaders = computeTopColonCoverageGainers(mosA, mosB, {
-        minHasDev: 10,
-        limit: 5
-      });
-      function kpiCard(modifier, iconName, label, valA, valB, earlier, later, isPct) {
-        return `
-        <div class="compare-kpi compare-kpi--${modifier}">
-          <div class="compare-kpi-head">
-            <span class="compare-kpi-icon">${icon(iconName)}</span>
-            <span class="compare-kpi-label">${label}</span>
-          </div>
-          <div class="compare-kpi-vals">
-            <span class="compare-val compare-val--from">${valA}</span>
-            <span class="compare-val-arrow" aria-hidden="true">\u2192</span>
-            <span class="compare-val compare-val--to">${valB}</span>
-          </div>
-          ${deltaCell(earlier, later, isPct)}
-        </div>`;
-      }
-      content.innerHTML = `
-      <p class="compare-period-note">
-        \u0414\u0438\u043D\u0430\u043C\u0438\u043A\u0430: <strong>${escapeHtml(labelA)}</strong> \u2192 <strong>${escapeHtml(labelB)}</strong>
-        <span class="compare-period-hint">\u0421\u043B\u0435\u0432\u0430 \u2014 \u0440\u0430\u043D\u043D\u0438\u0439 \u043F\u0435\u0440\u0438\u043E\u0434, \u0441\u043F\u0440\u0430\u0432\u0430 \u2014 \u043F\u043E\u0437\u0434\u043D\u0438\u0439. \u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435 = \u043F\u043E\u0437\u0434\u043D\u0438\u0439 \u2212 \u0440\u0430\u043D\u043D\u0438\u0439.</span>
-      </p>
-      <div class="compare-kpi-grid">
-        ${kpiCard(
-        "plan",
-        "trending-up",
-        "% \u0433\u043E\u0434. \u043F\u043B\u0430\u043D\u0430",
-        `${pctA.toFixed(1)}%`,
-        `${pctB.toFixed(1)}%`,
+      compareMoListMode = "low";
+      lastCompareContext = {
+        mosA,
+        mosB,
+        labelA: metaA || "\u041E\u0442\u0447\u0451\u0442 A",
+        labelB: metaB || "\u041E\u0442\u0447\u0451\u0442 B",
+        tA,
+        tB,
         pctA,
-        pctB,
-        true
-      )}
-        ${kpiCard(
-        "fact",
-        "test-tubes",
-        "\u041A\u043D\u0421\u041A (\u0444\u0430\u043A\u0442)",
-        tA.fact.toLocaleString("ru-RU"),
-        tB.fact.toLocaleString("ru-RU"),
-        tA.fact,
-        tB.fact,
-        false
-      )}
-        ${kpiCard(
-        "colon",
-        "stethoscope",
-        "\u041A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u044F",
-        tA.colon.toLocaleString("ru-RU"),
-        tB.colon.toLocaleString("ru-RU"),
-        tA.colon,
-        tB.colon,
-        false
-      )}
-        ${kpiCard(
-        "coverage",
-        "line-chart",
-        "\u041E\u0445\u0432\u0430\u0442 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439",
-        `${tA.colonPercent.toFixed(1)}%`,
-        `${tB.colonPercent.toFixed(1)}%`,
-        tA.colonPercent,
-        tB.colonPercent,
-        true
-      )}
-        ${kpiCard(
-        "zno",
-        "biohazard",
-        "\u0417\u041D\u041E",
-        String(tA.zno),
-        String(tB.zno),
-        tA.zno,
-        tB.zno,
-        false
-      )}
-      </div>
-      <div class="compare-mo-block compare-mo-block--full">
-        <h4>\u0422\u043E\u043F-5 \u041C\u041E \u043F\u043E \u043E\u0442\u043D\u043E\u0441\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u043C\u0443 \u043F\u0440\u0438\u0440\u043E\u0441\u0442\u0443 \u043E\u0445\u0432\u0430\u0442\u0430 \u043A\u043E\u043B\u043E\u043D\u043E\u0441\u043A\u043E\u043F\u0438\u0435\u0439 (\u041A\u043D\u0421\u041A+)</h4>
-        <p class="compare-mo-block-note">\u0421\u043E\u0440\u0442\u0438\u0440\u043E\u0432\u043A\u0430 \u2014 \u043F\u043E \u043E\u0442\u043D\u043E\u0441\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u043C\u0443 \u043F\u0440\u0438\u0440\u043E\u0441\u0442\u0443 % \u043E\u0445\u0432\u0430\u0442\u0430 \u041A\u043D\u0421\u041A+. \u0423\u0447\u0438\u0442\u044B\u0432\u0430\u044E\u0442\u0441\u044F \u041C\u041E \u0441 \u226510 \u043F\u043E\u043B\u043E\u0436\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u043C\u0438 \u041A\u043D\u0421\u041A \u0432 \u043F\u043E\u0437\u0434\u043D\u0435\u043C \u043F\u0435\u0440\u0438\u043E\u0434\u0435. \u0420\u0435\u0439\u0442\u0438\u043D\u0433 \u043E\u0445\u0432\u0430\u0442\u0430 \u2014 \u0438\u0437 ${COVERAGE_RANK_TOTAL} \u043C\u0435\u0441\u0442.</p>
-        <ul class="compare-mo-list compare-mo-list--rich">
-          ${renderColonCoverageLeaderList(colonCoverageLeaders)}
-        </ul>
-      </div>
-    `;
-      openComparePanel();
+        pctB
+      };
+      paintComparePanelBody();
     }
     function fetchReportsForCompare(idA, idB) {
       const cachedA = getCachedArchiveReport(idA);
@@ -714,6 +866,7 @@
       const idA = parseInt(document.getElementById("compareSelectA")?.value, 10);
       const idB = parseInt(document.getElementById("compareSelectB")?.value, 10);
       if (!idA || !idB || idA === idB) return;
+      if (!isEarlierArchiveReport(idA, idB, window.archiveReportsList || [])) return;
       fetchReportsForCompare(idA, idB).catch(function() {
       });
     }
@@ -728,7 +881,14 @@
         if (onStatus) onStatus("\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0440\u0430\u0437\u043D\u044B\u0435 \u043E\u0442\u0447\u0451\u0442\u044B", false);
         return;
       }
-      showCompareLoading();
+      const reportsList = window.archiveReportsList || [];
+      if (!isEarlierArchiveReport(idA, idB, reportsList)) {
+        const message = "\u041F\u0435\u0440\u0432\u044B\u0439 \u043F\u0435\u0440\u0438\u043E\u0434 \u0434\u043E\u043B\u0436\u0435\u043D \u0431\u044B\u0442\u044C \u0440\u0430\u043D\u044C\u0448\u0435 \u0432\u0442\u043E\u0440\u043E\u0433\u043E. \u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043E\u0442\u0447\u0451\u0442\u044B \u0432 \u0445\u0440\u043E\u043D\u043E\u043B\u043E\u0433\u0438\u0447\u0435\u0441\u043A\u043E\u043C \u043F\u043E\u0440\u044F\u0434\u043A\u0435 (\u0440\u0430\u043D\u043D\u0438\u0439 \u2192 \u043F\u043E\u0437\u0434\u043D\u0438\u0439).";
+        showCompareWarning(message);
+        if (onStatus) onStatus(message, false);
+        return;
+      }
+      showCompareLoading(document.getElementById("compareReportsBtn"));
       if (onStatus) onStatus("\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u043E\u0442\u0447\u0451\u0442\u043E\u0432 \u0434\u043B\u044F \u0441\u0440\u0430\u0432\u043D\u0435\u043D\u0438\u044F\u2026", true);
       fetchReportsForCompare(idA, idB).then(function(result) {
         const metaA = (window.archiveReportsList || []).find((r) => r.id === idA)?.dateStr || `ID ${idA}`;
@@ -740,9 +900,9 @@
       }).catch(function(err) {
         const content = document.getElementById("comparePanelContent");
         if (content) {
-          content.innerHTML = `<p class="compare-error">${escapeHtml(err.message || String(err))}</p>`;
+          content.removeAttribute("aria-busy");
+          content.innerHTML = `<p class="compare-error" role="alert">${escapeHtml(err.message || String(err))}</p>`;
         }
-        openComparePanel();
         if (onStatus) onStatus("\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0440\u0430\u0432\u043D\u0435\u043D\u0438\u044F: " + err.message, false);
       });
     }

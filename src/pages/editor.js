@@ -16,26 +16,50 @@
  */
 import { renderHtmlContent, parseCSV, formatShortDate, getNextWeekPeriod, icon } from '../lib/index.js';
 import {
+  mergeReportDynamicsWeek,
+  DEFAULT_WEEKLY_DYNAMICS_LIMIT,
+} from '../lib/weeklyDynamics.js';
+import {
+  fetchWeeksTrend,
+  invalidateWeeksTrendCache,
+  setWeeksTrendCache,
+} from '../lib/weeksTrendCache.js';
+import {
   initBundleLoader,
-  waitForChart,
-  ensureDashboardPhase2,
-  ensureEcharts,
+  ensureChartsReadyLocal,
+  ensurePhase2Initialized,
+  schedulePhase2Idle,
   setMoProfileContext,
 } from '../core/bundleLoader.js';
 import { makeTrendChart, makePlanFactChart } from '../lib/charts.js';
+import { openChartDiagnostics } from '../core/chartDiagnostics.js';
+import { perfMark } from '../core/perfTracker.js';
 import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
 
 (function () {
   const gasAdapter = new GoogleAppsScriptAdapter(CONFIG.api || {});
+  initBundleLoader(gasAdapter);
 
-  if (typeof Chart !== 'undefined' && typeof ChartDataLabels !== 'undefined' && !Chart.registry.getPlugin('datalabels')) {
-    Chart.register(ChartDataLabels);
+  let chartsReady = false;
+  let chartsReadyPromise = null;
+
+  function ensureChartsReady() {
+    if (chartsReady) return Promise.resolve();
+    if (chartsReadyPromise) return chartsReadyPromise;
+    chartsReadyPromise = ensureChartsReadyLocal()
+      .then(function () {
+        chartsReady = true;
+      })
+      .catch(function (err) {
+        chartsReadyPromise = null;
+        throw err;
+      });
+    return chartsReadyPromise;
   }
 
   let currentMOSData = [];
-    let weeksData = [];
+    let autoWeeksData = [];
     let archiveReportsList = [];
-    let nextId = 1;
     const PLAN_WEEKLY = CONFIG.plans.weekly;
     let dynamicChart = null;
     let planFactChart = null;
@@ -100,60 +124,53 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
     function updateNextWeekPeriodDisplay() {
         document.getElementById('nextWeekPeriodDisplay').innerHTML = getNextWeekPeriod().display;
     }
-    
-    function addWeek() {
-        const s = document.getElementById('startDate');
-        const e = document.getElementById('endDate');
-        if (!s.value || !e.value) { alert('Выберите даты'); return; }
-        weeksData.push({ id: nextId++, start: s.value, end: e.value, value: 0 });
-        renderWeeksInput();
+
+    function weeksToChartFormat(weeks) {
+        return (weeks || []).map((w) => ({
+            period: `${formatDate(w.start)}-${formatDate(w.end)}`,
+            value: w.value,
+        }));
     }
-    
-    function removeWeek(id) {
-        weeksData = weeksData.filter(w => w.id !== id);
-        renderWeeksInput();
-    }
-    
-    function updateWeekValue(id, val) {
-        const w = weeksData.find(w => w.id === id);
-        if (w) w.value = parseInt(val) || 0;
-    }
-    
-    function renderWeeksInput() {
-        const container = document.getElementById('weeksContainer');
-        if (!weeksData.length) {
-            container.innerHTML = '<div style="padding:20px;text-align:center;color:#6c7a91;">Нет недель. Нажмите "Добавить неделю"</div>';
-            return;
-        }
-        container.innerHTML = '';
-        weeksData.forEach(w => {
-            const div = document.createElement('div');
-            div.className = 'week-card';
-            div.innerHTML = `
-                <div class="week-period-display">${icon('calendar')} ${formatDate(w.start)} - ${formatDate(w.end)}</div>
-                <label>🔬 Количество исследований</label>
-                <input type="number" class="week-value-input" value="${w.value}" step="100">
-                <button class="btn-remove-week" data-id="${w.id}">${icon('trash-2')} Удалить</button>
-            `;
-            container.appendChild(div);
-            div.querySelector('.week-value-input').addEventListener('change', (e) => updateWeekValue(w.id, e.target.value));
-            div.querySelector('.btn-remove-week').addEventListener('click', () => removeWeek(w.id));
+
+    function renderDashboardCharts(growth, weeksData) {
+        if (weeksData) autoWeeksData = weeksData;
+        ensureChartsReady().then(function () {
+            requestAnimationFrame(function () {
+                updatePlanFactChart(growth || 0);
+                updateTrendGraph();
+            });
         });
-    }
-    
-    function getCurrentWeeksData() {
-        return weeksData.map(w => ({ period: `${formatDate(w.start)}-${formatDate(w.end)}`, value: w.value }));
     }
 
     function updateTrendGraph() {
         dynamicChart = makeTrendChart({
             canvasId: 'trendChart',
-            weeks: getCurrentWeeksData(),
+            weeks: weeksToChartFormat(autoWeeksData),
             planWeekly: PLAN_WEEKLY,
-            emptyMessage: 'Добавьте недели',
+            emptyMessage: 'Нет данных по неделям. Сохраните еженедельные выгрузки в архив.',
             noteId: 'trendNote',
             previous: dynamicChart,
         });
+    }
+
+    function loadWeeklyDynamicsTrend(mosData, reportAnchor) {
+        const limit =
+            (CONFIG && CONFIG.ui && CONFIG.ui.weeklyDynamicsLimit) || DEFAULT_WEEKLY_DYNAMICS_LIMIT;
+        return fetchWeeksTrend(gasAdapter, limit)
+            .then(function (weeks) {
+                autoWeeksData = mergeReportDynamicsWeek(weeks || [], mosData || currentMOSData, reportAnchor);
+                return autoWeeksData;
+            })
+            .catch(function () {
+                autoWeeksData = mergeReportDynamicsWeek([], mosData || currentMOSData, reportAnchor);
+                return autoWeeksData;
+            });
+    }
+
+    function prefetchWeeksTrend() {
+        const limit =
+            (CONFIG && CONFIG.ui && CONFIG.ui.weeklyDynamicsLimit) || DEFAULT_WEEKLY_DYNAMICS_LIMIT;
+        fetchWeeksTrend(gasAdapter, limit).catch(function () {});
     }
 
     function updatePlanFactChart(growth) {
@@ -190,25 +207,29 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         const opts = options || {};
         if (window.DashboardPhase2) DashboardPhase2.resetTableClickBinding();
 
-        return DashboardPhase1.renderAll(data, {
+        return ensureChartsReady().then(function () {
+            perfMark('render-dashboard-start');
+            return DashboardPhase1.renderAll(data, {
             mos: mos,
             previousTotals: opts.previousTotals || null,
             previousMos: opts.previousMos || null,
             progressive: opts.progressive !== false,
         }).then(function (result) {
-            updatePlanFactChart(result.totals ? result.totals.growth : 0);
-            updateTrendGraph();
-
-            if (window.DashboardPhase2) {
-                ensureDashboardPhase2().then(function () {
+            return loadWeeklyDynamicsTrend(data, opts.reportAnchor).then(function (weeks) {
+            renderDashboardCharts(result.totals ? result.totals.growth : 0, weeks);
+            ensurePhase2Initialized({ onStatus: setStatus, gasAdapter: gasAdapter }).then(function () {
+                if (window.DashboardPhase2) {
                     DashboardPhase2.renderAll(mos, {
                         totals: result.totals,
                         previousMos: opts.previousMos || null,
                     });
-                });
-            }
+                }
+            });
             setMoProfileContext(mos, opts.archiveReportId != null ? opts.archiveReportId : null);
+            perfMark('render-dashboard-end');
             return result;
+            });
+        });
         });
     }
 
@@ -226,14 +247,8 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
             previousTotals: previousTotals,
             previousMos: previousMos || null,
             archiveReportId: reportId,
+            reportAnchor: report.timestamp || null,
         });
-        weeksData = (normalized.weeksData || []).map((w) => ({
-            id: nextId++,
-            start: w.start,
-            end: w.end,
-            value: w.value,
-        }));
-        renderWeeksInput();
         document.getElementById('doneTextInput').value = normalized.doneText || '';
         document.getElementById('plansTextInput').value = normalized.plansText || '';
         document.getElementById('periodInput').value = normalized.period || '';
@@ -278,6 +293,8 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
                     return;
                 }
 
+                if (payload.weeksTrend) setWeeksTrendCache(payload.weeksTrend);
+
                 let previousTotals = null;
                 let previousMos = null;
                 if (payload.previous && window.DashboardPhase1) {
@@ -311,7 +328,6 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         }
         const reportData = {
             mosData: currentMOSData,
-            weeksData: weeksData.map(w => ({ start: w.start, end: w.end, value: w.value })),
             doneText: document.getElementById('doneTextInput').value,
             plansText: document.getElementById('plansTextInput').value,
             period: document.getElementById('periodInput').value
@@ -321,8 +337,15 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
             gasAdapter
                 .call('saveReportToArchive', { params: [reportData] })
                 .then(function (result) {
+                    invalidateWeeksTrendCache();
                     setStatus(result.message, true);
                     loadArchiveList();
+                    loadWeeklyDynamicsTrend(currentMOSData, null).then(function (weeks) {
+                        renderDashboardCharts(
+                            currentMOSData.reduce(function (s, m) { return s + (m.growth || 0); }, 0),
+                            weeks
+                        );
+                    });
                 })
                 .catch(function (err) {
                     setStatus('Ошибка сохранения: ' + err.message, false);
@@ -353,12 +376,17 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
                             option.textContent = item.dateStr || 'Без даты';
                             select.appendChild(option);
                         });
-                        if (window.DashboardPhase2) {
-                            ensureDashboardPhase2().then(function () {
-                                DashboardPhase2.populateCompareSelects(archiveReportsList, null);
-                            });
-                        }
+                        schedulePhase2Idle({
+                            onStatus: setStatus,
+                            gasAdapter: gasAdapter,
+                            onReady: function () {
+                                if (window.DashboardPhase2) {
+                                    DashboardPhase2.populateCompareSelects(archiveReportsList, null);
+                                }
+                            },
+                        });
                         setStatus(`✅ Загружено ${archiveReportsList.length} архивных отчётов`, true);
+                        prefetchWeeksTrend();
                     } else {
                         const option = document.createElement('option');
                         option.value = '';
@@ -413,7 +441,7 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
 
     function buildExportHtml(dashboardContent, allStyles, phase1Js, phase2Js) {
     
-        const weeksDataForExport = weeksData.map(w => ({ start: w.start, end: w.end, value: w.value }));
+        const weeksDataForExport = autoWeeksData.map((w) => ({ start: w.start, end: w.end, value: w.value }));
         const mosDataForExport = currentMOSData;
         const periodText = document.getElementById('periodInput').value;
         const doneText = document.getElementById('doneTextInput').value;
@@ -611,49 +639,41 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         setStatus('HTML-файл сохранён ✅', true);
     }
     
-    // ==================== ИНИЦИАЛИЗАЦИЯ ====================
+    function bindEditorPhase2InteractionTriggers() {
+    const phase2Opts = { onStatus: setStatus, gasAdapter: gasAdapter };
+    function warmPhase2() {
+      ensurePhase2Initialized(phase2Opts).catch(function (err) {
+        console.warn('[Phase2 interaction]', err);
+      });
+    }
+    ['compareReportsBtn', 'presentationModeBtn'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', warmPhase2, { once: true, capture: true });
+    });
+    const tableBody = document.getElementById('tableBody');
+    if (tableBody) {
+      tableBody.addEventListener(
+        'click',
+        function (e) {
+          if (!e.target.closest('tr.mo-row-clickable')) return;
+          warmPhase2();
+        },
+        { once: true, capture: true }
+      );
+    }
+  }
+
+  // ==================== ИНИЦИАЛИЗАЦИЯ ====================
     window.addEventListener('load', function() {
-        function initWeeksWithLast5() {
-            const today = new Date();
-            let lastSunday = new Date(today);
-            const dow = today.getDay();
-            if (dow !== 0) lastSunday.setDate(today.getDate() - dow);
-            let lastMonday = new Date(lastSunday);
-            lastMonday.setDate(lastSunday.getDate() - 6);
-            for (let i = 0; i < 5; i++) {
-                const start = new Date(lastMonday);
-                start.setDate(lastMonday.getDate() - (i * 7));
-                const end = new Date(start);
-                end.setDate(start.getDate() + 6);
-                const format = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-                weeksData.push({ id: nextId++, start: format(start), end: format(end), value: 0 });
-            }
-            weeksData.reverse();
-            renderWeeksInput();
-            if (weeksData.length) {
-                const last = weeksData[weeksData.length-1];
-                document.getElementById('startDate').value = last.start;
-                document.getElementById('endDate').value = last.end;
-            }
-            updateTrendGraph();
-        }
-        
-        initWeeksWithLast5();
+        perfMark('window-load');
         updateNextWeekPeriodDisplay();
         syncTextsToDashboard();
         syncPeriodToDashboard();
         loadArchiveList();
+        prefetchWeeksTrend();
 
-        initBundleLoader(gasAdapter);
-
-        Promise.all([waitForChart(), ensureDashboardPhase2()]).then(function () {
-            if (window.DashboardPhase2) {
-                DashboardPhase2.init({ onStatus: setStatus, gasAdapter: gasAdapter });
-            }
-            ensureEcharts().catch(function (err) {
-                console.warn('ECharts preload:', err);
-            });
-        });
+        ensureChartsReady();
+        bindEditorPhase2InteractionTriggers();
 
         document.getElementById('csvFile').addEventListener('change', e => {
             const file = e.target.files[0];
@@ -682,12 +702,17 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         document.getElementById('loadSheetDataBtn').addEventListener('click', loadSelectedArchive);
         document.getElementById('saveToArchiveBtn').addEventListener('click', saveCurrentReportToArchive);
         document.getElementById('saveHtmlBtn').addEventListener('click', saveAsHtml);
-        document.getElementById('addWeekBtn').addEventListener('click', addWeek);
-        document.getElementById('updateDynamicChart').addEventListener('click', updateTrendGraph);
         document.getElementById('doneTextInput').addEventListener('input', syncTextsToDashboard);
         document.getElementById('plansTextInput').addEventListener('input', syncTextsToDashboard);
         document.getElementById('periodInput').addEventListener('input', syncPeriodToDashboard);
         document.getElementById('refreshArchiveBtn').addEventListener('click', loadArchiveList);
+
+        const diagBtn = document.getElementById('chartDiagnosticsBtn');
+        if (diagBtn) {
+            diagBtn.addEventListener('click', function () {
+                openChartDiagnostics({ gasAdapter: gasAdapter, onStatus: setStatus });
+            });
+        }
 
         document.getElementById('archiveSelect').addEventListener('change', function () {
             if (this.value) loadArchiveReportById(parseInt(this.value, 10));

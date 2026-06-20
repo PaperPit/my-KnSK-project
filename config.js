@@ -74,12 +74,14 @@ const CONFIG = {
     skeletonCount: 15,
     mobileBreakpoint: 768,
     animationsEnabled: true,
-    /** Ленивые бандлы: DashboardPhase2, MoProfile, VendorEcharts (datalabels — синхронно в HTML) */
+    /** Сколько последних архивных отчётов на графике «Динамика КнСК» */
+    weeklyDynamicsLimit: 5,
+    /** Chart.js и DataLabels — в HTML (sync); ECharts, Phase2, MoProfile — лениво */
     lazyBundles: true,
     icons: 'local:UiIcons',
     cdn: {
-      chartJs: 'local:VendorChartJs',
-      chartDataLabels: 'local:VendorChartDataLabels',
+      chartJs: 'sync:VendorChartJs',
+      chartDataLabels: 'sync:VendorChartDataLabels',
       echarts: 'local:VendorEcharts',
     },
   },

@@ -2,36 +2,27 @@
  * =============================================================================
  * charts.js — общие фабрики графиков Chart.js (editor/viewer)
  * =============================================================================
- *
- * Раньше updateTrendGraph и updatePlanFactChart дублировались в editor.js и
- * viewer.js с мелкими отличиями (сигнатура, categoryPercentage, null-guards).
- * Здесь они параметризованы через options — поведение идентично исходным.
- *
- * ВАЖНО: фабрики принимают уже предобработанные недели в формате
- * { period: 'dd.mm-dd.mm', value: число }. Caller отвечает за формирование period.
- *
- * Каждая фабрика уничтожает previous (если задан) и возвращает новый инстанс
- * Chart.js (или null, если данных нет). Caller хранит инстанс у себя.
- *
- * ПОСЛЕ ПРАВОК: npm run build → npm test (tests/charts.test.js)
- * =============================================================================
  */
+
+function chartAnimationsEnabled() {
+  return typeof CONFIG !== 'undefined' && CONFIG.ui && CONFIG.ui.animationsEnabled === true;
+}
+
+function updateTrendNote(noteId, weeksArr, facts, planWeekly) {
+  const note = document.getElementById(noteId);
+  if (!note || !weeksArr.length) return;
+  const last = weeksArr[weeksArr.length - 1];
+  note.innerHTML = `* Последняя точка: ${last.period} — <strong>${facts[facts.length - 1].toLocaleString()}</strong> (план ~${planWeekly.toLocaleString()})`;
+}
 
 /**
  * Линейный график динамики КнСК по неделям (факт + линия плана).
- *
- * @param {object} opts
- * @param {string} opts.canvasId   — id <canvas> ('trendChart')
- * @param {Array}  opts.weeks      — [{ period, value }] (пусто → empty state)
- * @param {number} opts.planWeekly — недельный план (плановая линия)
- * @param {string} opts.emptyMessage — подпись при отсутствии недель
- * @param {string} opts.noteId     — id элемента-подписи ('trendNote'), null-guards
- * @param {Chart|null} opts.previous — старый инстанс для destroy()
- * @returns {Chart|null} новый инстанс или null
+ * При наличии previous обновляет данные без destroy — без дёргания.
  */
 export function makeTrendChart(opts) {
   const { canvasId, weeks, planWeekly, emptyMessage, noteId, previous } = opts;
   const weeksArr = weeks || [];
+  const animate = chartAnimationsEnabled();
 
   if (!weeksArr.length) {
     const note = document.getElementById(noteId);
@@ -44,8 +35,24 @@ export function makeTrendChart(opts) {
   const facts = weeksArr.map((w) => w.value);
   const planLine = new Array(weeksArr.length).fill(planWeekly);
   const canvas = document.getElementById(canvasId);
-  const ctx = canvas.getContext('2d');
+  if (!canvas) return null;
+
+  if (
+    previous &&
+    typeof previous.update === 'function' &&
+    previous.canvas === canvas &&
+    previous.config.type === 'line'
+  ) {
+    previous.data.labels = labels;
+    previous.data.datasets[0].data = facts;
+    previous.data.datasets[1].data = planLine;
+    previous.update(animate ? 'active' : 'none');
+    updateTrendNote(noteId, weeksArr, facts, planWeekly);
+    return previous;
+  }
+
   if (previous) previous.destroy();
+  const ctx = canvas.getContext('2d');
 
   const chart = new Chart(ctx, {
     type: 'line',
@@ -59,62 +66,82 @@ export function makeTrendChart(opts) {
           borderWidth: 3,
           tension: 0.2,
           fill: false,
-          pointRadius: 6,
+          pointRadius: 5,
+          pointHoverRadius: 6,
         },
         {
           label: 'План',
           data: planLine,
           borderColor: '#e67e22',
-          borderWidth: 2.5,
+          borderWidth: 2,
           borderDash: [8, 6],
           fill: false,
+          pointRadius: 0,
         },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: true,
+      animation: animate ? { duration: 280, easing: 'easeOutQuart' } : false,
+      transitions: {
+        active: { animation: { duration: animate ? 200 : 0 } },
+      },
       plugins: {
         datalabels: { display: false },
+        legend: { display: true, position: 'bottom', labels: { boxWidth: 12, padding: 8 } },
         tooltip: {
           callbacks: {
             label: (c) => `${c.dataset.label}: ${c.raw.toLocaleString()} иссл.`,
           },
         },
       },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { maxTicksLimit: 6, callback: (v) => v.toLocaleString('ru-RU') },
+        },
+        x: {
+          ticks: { maxRotation: 0, autoSkip: false, font: { size: 10 } },
+        },
+      },
     },
   });
 
-  const note = document.getElementById(noteId);
-  if (note) {
-    const last = weeksArr[weeksArr.length - 1];
-    note.innerHTML = `* Последняя точка: ${last.period} — <strong>${facts[facts.length - 1].toLocaleString()}</strong> (план ~${planWeekly.toLocaleString()})`;
-  }
+  updateTrendNote(noteId, weeksArr, facts, planWeekly);
   return chart;
 }
 
 /**
  * Столбчатый график «Недельный план vs Факт».
- *
- * @param {object} opts
- * @param {string} opts.canvasId    — id <canvas> ('planFactChart')
- * @param {number} opts.growth      — факт недели
- * @param {number} opts.planWeekly  — недельный план
- * @param {number} [opts.categoryPercentage] — ширина группы (viewer: 0.8, editor: по умолчанию)
- * @param {string} opts.noteId      — id подписи ('planFactNote'), null-guards
- * @param {Chart|null} opts.previous — старый инстанс для destroy()
- * @returns {Chart} новый инстанс
  */
 export function makePlanFactChart(opts) {
   const { canvasId, growth, planWeekly, noteId, previous } = opts;
   const categoryPercentage = opts.categoryPercentage;
+  const animate = chartAnimationsEnabled();
+  const fact = growth || 0;
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return previous || null;
+
+  if (
+    previous &&
+    typeof previous.update === 'function' &&
+    previous.canvas === canvas &&
+    previous.config.type === 'bar'
+  ) {
+    previous.data.datasets[0].data = [planWeekly, fact];
+    previous.update(animate ? 'active' : 'none');
+    const pct = fact ? ((fact / planWeekly) * 100).toFixed(1) : 0;
+    const note = document.getElementById(noteId);
+    if (note) note.innerHTML = `⚠️ <strong>${pct}% выполнения недельного плана</strong>`;
+    return previous;
+  }
 
   if (previous) previous.destroy();
-  const canvas = document.getElementById(canvasId);
   const ctx = canvas.getContext('2d');
   const dataset = {
     label: 'Исследования КнСК',
-    data: [planWeekly, growth || 0],
+    data: [planWeekly, fact],
     backgroundColor: ['#2c7da0', '#e9b35f'],
     borderRadius: 12,
     barPercentage: 0.6,
@@ -130,6 +157,7 @@ export function makePlanFactChart(opts) {
     options: {
       responsive: true,
       maintainAspectRatio: true,
+      animation: animate ? { duration: 280, easing: 'easeOutQuart' } : false,
       plugins: {
         datalabels: {
           display: true,
@@ -150,10 +178,8 @@ export function makePlanFactChart(opts) {
     },
   });
 
-  const pct = growth ? ((growth / planWeekly) * 100).toFixed(1) : 0;
+  const pct = fact ? ((fact / planWeekly) * 100).toFixed(1) : 0;
   const note = document.getElementById(noteId);
-  if (note) {
-    note.innerHTML = `⚠️ <strong>${pct}% выполнения недельного плана</strong>`;
-  }
+  if (note) note.innerHTML = `⚠️ <strong>${pct}% выполнения недельного плана</strong>`;
   return chart;
 }

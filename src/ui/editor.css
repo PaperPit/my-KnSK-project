@@ -3,9 +3,16 @@
         .dashboard { display: flex; flex-direction: column; gap: var(--dashboard-gap, 24px); }
         .control-panel { background: linear-gradient(135deg, #1e4663 0%, #0f2b3d 100%); border-radius: 28px; padding: 20px 28px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 20px; color: white; }
         .btn-group { display: flex; flex-wrap: wrap; gap: 12px; }
-        .upload-btn, .save-html-btn { padding: 12px 24px; border-radius: 40px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 10px; border: none; color: white; font-size: 0.9rem; transition: all 0.2s; }
-        .upload-btn { background: #2c7da0; } .upload-btn:hover { background: #1f6392; transform: translateY(-1px); }
-        .save-html-btn { background: #e67e22; } .save-html-btn:hover { background: #d35400; transform: translateY(-1px); }
+        .upload-btn, .save-html-btn { padding: 12px 24px; border-radius: 40px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 10px; border: none; color: white; font-size: 0.9rem; font-family: inherit; transition: background 0.16s cubic-bezier(0.23, 1, 0.32, 1), transform 0.16s cubic-bezier(0.23, 1, 0.32, 1); }
+        .upload-btn { background: #2c7da0; }
+        @media (hover: hover) and (pointer: fine) {
+        .upload-btn:hover { background: #1f6392; transform: translateY(-1px); }
+        }
+        .upload-btn:active, .save-html-btn:active { transform: scale(0.96); }
+        .save-html-btn { background: #e67e22; }
+        @media (hover: hover) and (pointer: fine) {
+        .save-html-btn:hover { background: #d35400; transform: translateY(-1px); }
+        }
         #webVersionBtn { background: #8e44ad; } #webVersionBtn:hover { background: #6c3483; }
         input[type="file"] { display: none; }
         .info-text { font-size: 0.85rem; opacity: 0.9; }
@@ -92,4 +99,9 @@
         #archiveSelect { padding: 10px 16px; border-radius: 30px; border: none; font-weight: 500; background: white; color: #1e4663; min-width: 200px; cursor: pointer; }
         #saveToArchiveBtn { background: #27ae60; } #saveToArchiveBtn:hover { background: #1e8449; }
         #loadSheetDataBtn { background: #2980b9; } #loadSheetDataBtn:hover { background: #1f618d; }
-        .refresh-btn { transition: all 0.2s; } .refresh-btn:hover { background: #1f6392 !important; transform: rotate(180deg); }
+        .refresh-btn { transition: background 0.16s cubic-bezier(0.23, 1, 0.32, 1), transform 0.16s cubic-bezier(0.23, 1, 0.32, 1); min-width: 40px; min-height: 40px; }
+        @media (hover: hover) and (pointer: fine) {
+        .refresh-btn:hover { background: #1f6392 !important; transform: rotate(180deg); }
+        }
+        .refresh-btn:active { transform: scale(0.96); }
+        .refresh-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(44, 125, 160, 0.28); }

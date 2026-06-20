@@ -53,6 +53,7 @@ describe('build-gas.mjs', () => {
     expect(code).toContain('saveReportToArchive');
     expect(code).toContain('getArchivedReportById');
     expect(code).toContain('getMoHistoryFromArchive');
+    expect(code).toContain('getWeeklyDynamicsTrend');
     expect(code).toContain('getClientBundle');
     expect(code).not.toMatch(/\n;\n\}/);
     expect(() => new Function(code)).not.toThrow();

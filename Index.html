@@ -6,8 +6,8 @@
   ЛОГИКА: EditorPage.html (src/pages/editor.js) — не пишите большие <script> здесь
   СТИЛИ: EditorStyles.html, UiTokens.html, UiPhase2.html
 
-  Порядок загрузки: CSS в head → разметка → VendorChartJs + DashboardPhase1 + EditorPage в конце body.
-  DashboardPhase2 и MoProfile подгружаются лениво через getClientBundle.
+  Порядок загрузки: CSS в head → разметка → Chart.js (sync) → DashboardPhase1 + EditorPage.
+  Phase2, MoProfile, ECharts — лениво через getClientBundle.
 -->
 <html lang="ru">
 <head>
@@ -33,12 +33,13 @@
 <div class="dashboard" id="dashboardContainer">
     <div class="control-panel">
         <div class="btn-group">
-            <div class="upload-btn" onclick="document.getElementById('csvFile').click()"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-file-spreadsheet"/></svg> Загрузить CSV</div>
-            <div class="upload-btn" id="loadSheetDataBtn"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-cloud-download"/></svg> Загрузить выбранный архив</div>
-            <div class="upload-btn" id="saveToArchiveBtn"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-archive"/></svg> Сохранить в архив</div>
-            <div class="save-html-btn" id="saveHtmlBtn"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-download"/></svg> Сохранить как HTML</div>
-            <div class="upload-btn" id="webVersionBtn"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-globe"/></svg> Веб-версия</div>
-            <button type="button" class="toolbar-btn toolbar-btn--presentation" id="presentationModeBtn"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-maximize-2"/></svg> Презентация</button>
+            <button type="button" class="upload-btn" onclick="document.getElementById('csvFile').click()"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-file-spreadsheet"/></svg> Загрузить CSV</button>
+            <button type="button" class="upload-btn" id="loadSheetDataBtn"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-cloud-download"/></svg> Загрузить выбранный архив</button>
+            <button type="button" class="upload-btn" id="saveToArchiveBtn"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-archive"/></svg> Сохранить в архив</button>
+            <button type="button" class="save-html-btn" id="saveHtmlBtn"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-download"/></svg> Сохранить как HTML</button>
+            <button type="button" class="upload-btn" id="webVersionBtn"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-globe"/></svg> Веб-версия</button>
+            <button type="button" class="toolbar-btn toolbar-btn--presentation" id="presentationModeBtn" aria-pressed="false"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-maximize-2"/></svg> Презентация</button>
+            <button type="button" class="upload-btn knsk-diag-trigger" id="chartDiagnosticsBtn" title="Диагностика графиков"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-stethoscope"/></svg> Диагностика</button>
         </div>
         <div class="info-text">
             <svg class="knsk-icon" aria-hidden="true"><use href="#icon-info"/></svg> 
@@ -49,30 +50,18 @@
             <select id="archiveSelect">
                 <option value="">— Загрузка списка... —</option>
             </select>
-            <button class="refresh-btn" id="refreshArchiveBtn" style="background:#2c7da0;color:white;border:none;padding:8px 16px;border-radius:30px;cursor:pointer;"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-refresh-cw"/></svg></button>
+            <button type="button" class="refresh-btn" id="refreshArchiveBtn" aria-label="Обновить список архива" style="background:#2c7da0;color:white;border:none;padding:8px 16px;border-radius:30px;cursor:pointer;min-width:40px;min-height:40px;"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-refresh-cw"/></svg></button>
         </div>
         <div class="compare-controls" style="width:100%;margin-top:4px;">
-            <label style="color:white;font-size:0.85rem;"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-git-compare"/></svg> Сравнить:</label>
-            <select id="compareSelectA" title="Ранний период"></select>
-            <span style="color:white;font-size:0.85rem;">→</span>
-            <select id="compareSelectB" title="Поздний период"></select>
+            <span id="compareControlsLabel" class="compare-controls-label" style="color:white;font-size:0.85rem;"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-git-compare"/></svg> Сравнить:</span>
+            <select id="compareSelectA" aria-labelledby="compareControlsLabel compareSelectALabel"><option value="">— Ранний период —</option></select>
+            <span id="compareSelectALabel" class="visually-hidden">Ранний период</span>
+            <span style="color:white;font-size:0.85rem;" aria-hidden="true">→</span>
+            <select id="compareSelectB" aria-labelledby="compareControlsLabel compareSelectBLabel"><option value="">— Поздний период —</option></select>
+            <span id="compareSelectBLabel" class="visually-hidden">Поздний период</span>
             <button type="button" id="compareReportsBtn">Сравнить отчёты</button>
         </div>
         <input type="file" id="csvFile" accept=".csv">
-    </div>
-
-    <div class="dynamic-panel">
-        <h3><svg class="knsk-icon" aria-hidden="true"><use href="#icon-trending-up"/></svg>Настройка графика динамики КнСК</h3>
-        <div class="calendar-controls">
-            <div class="date-range"><label>Начало периода</label><input type="date" id="startDate" value="2026-02-23"></div>
-            <div class="date-range"><label>Конец периода</label><input type="date" id="endDate" value="2026-03-01"></div>
-            <button class="btn-add-week" id="addWeekBtn"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-plus"/></svg> Добавить неделю</button>
-        </div>
-        <div class="weeks-input" id="weeksContainer"></div>
-        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-            <button class="btn-update-chart" id="updateDynamicChart"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-refresh-cw"/></svg> Обновить график</button>
-            <div class="plan-note">Плановый ориентир: <strong id="planValue">4 583</strong> исследований/неделю</div>
-        </div>
     </div>
     
     <div class="period-input-panel">
@@ -151,19 +140,41 @@
             </div>
         </div>
 
-        <div class="rank-row">
-            <div class="rank-card"><h4><svg class="knsk-icon" style="color:#f39c12;" aria-hidden="true"><use href="#icon-trophy"/></svg> Топ-5 по % плана КнСК</h4><div class="rank-chart-wrap"><canvas id="top5PlanChart"></canvas></div></div>
-            <div class="rank-card"><h4><svg class="knsk-icon" style="color:#e74c3c;" aria-hidden="true"><use href="#icon-triangle-alert"/></svg> Антитоп-5 по % плана КнСК</h4><div class="rank-chart-wrap"><canvas id="bottom5PlanChart"></canvas></div></div>
-        </div>
+        <section class="rank-tabs-panel" aria-label="Рейтинги МО">
+            <div class="rank-tabs-header">
+                <h3 class="rank-tabs-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-trophy"/></svg> Рейтинги МО</h3>
+                <div class="rank-tabs-nav" id="rankPopulationGroupNav" role="tablist" aria-label="Категория МО по численности прикреплённого населения">
+                    <button type="button" class="rank-tab" data-rank-group="малая" role="tab" aria-selected="false">Малая</button>
+                    <button type="button" class="rank-tab rank-tab--active" data-rank-group="средняя" role="tab" aria-selected="true">Средняя</button>
+                    <button type="button" class="rank-tab" data-rank-group="большая" role="tab" aria-selected="false">Большая</button>
+                </div>
+            </div>
+            <p class="rank-group-hint" id="rankGroupHint" aria-live="polite"></p>
+            <div class="rank-quad-grid">
+                <div class="rank-dual-row">
+                    <div class="rank-card"><h4><svg class="knsk-icon" style="color:#f39c12;" aria-hidden="true"><use href="#icon-trophy"/></svg> Топ-5 по % плана КнСК</h4><div class="rank-chart-wrap rank-chart-wrap--horizontal"><canvas id="top5PlanChart"></canvas></div></div>
+                    <div class="rank-card"><h4><svg class="knsk-icon" style="color:#e74c3c;" aria-hidden="true"><use href="#icon-triangle-alert"/></svg> Антитоп-5 по % плана КнСК</h4><div class="rank-chart-wrap rank-chart-wrap--horizontal"><canvas id="bottom5PlanChart"></canvas></div></div>
+                </div>
+                <div class="rank-dual-row">
+                    <div class="rank-card"><h4><svg class="knsk-icon" style="color:#2c7da0;" aria-hidden="true"><use href="#icon-trophy"/></svg> Топ-5 по охвату КОЛОНОСКОПИЕЙ</h4><div class="rank-chart-wrap rank-chart-wrap--horizontal"><canvas id="top5CoverageChart"></canvas></div></div>
+                    <div class="rank-card"><h4><svg class="knsk-icon" style="color:#c0392b;" aria-hidden="true"><use href="#icon-triangle-alert"/></svg> Антитоп-5 по охвату КОЛОНОСКОПИЕЙ</h4><div class="rank-chart-wrap rank-chart-wrap--horizontal"><canvas id="bottom5CoverageChart"></canvas></div></div>
+                </div>
+                <p class="rank-chart-note">* В антитоп-5 по охвату показаны только МО с 10 и более пациентами с положительным результатом КнСК.</p>
+            </div>
+        </section>
 
-        <div class="rank-row">
-            <div class="rank-card"><h4><svg class="knsk-icon" style="color:#2c7da0;" aria-hidden="true"><use href="#icon-trophy"/></svg> Топ-5 по охвату колоноскопией</h4><div class="rank-chart-wrap"><canvas id="top5CoverageChart"></canvas></div></div>
-            <div class="rank-card"><h4><svg class="knsk-icon" style="color:#c0392b;" aria-hidden="true"><use href="#icon-triangle-alert"/></svg> Антитоп-5 по охвату колоноскопией</h4><div class="rank-chart-wrap"><canvas id="bottom5CoverageChart"></canvas></div><p class="rank-chart-note">* В антитоп-5 показаны только МО, у которых 10 и более пациентов с положительным результатом КнСК</p></div>
-        </div>
+        <section class="knsk-outlier-panel" id="knskOutlierPanel" aria-label="Высокий объём КнСК при низкой доле положительных" hidden>
+            <div class="knsk-outlier-header">
+                <h3 class="knsk-outlier-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-test-tubes"/></svg> Высокий объём КнСК при аномально низкой доле КнСК+</h3>
+                <p class="knsk-outlier-subtitle" id="knskOutlierBenchmark" aria-live="polite"></p>
+            </div>
+            <ul class="knsk-outlier-list compare-mo-list compare-mo-list--ranked" id="knskOutlierList"></ul>
+            <p class="knsk-outlier-note" id="knskOutlierNote"></p>
+        </section>
 
         <div class="charts-row charts-row--full">
             <div class="chart-card coverage-chart-card">
-                <div class="chart-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-chart-bar"/></svg> Охват колоноскопией среди пациентов КнСК+ (все МО) <span style="font-size:0.75rem;font-weight:500;color:#5b6e8c;">— прокрутите график →</span></div>
+                <div class="chart-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-chart-bar"/></svg> Охват колоноскопией среди пациентов КнСК+ (все МО) <span class="chart-title-note">— прокрутите график → · над столбцами: место в рейтинге и % охвата</span></div>
                 <div class="coverage-chart-scroll" id="coverageChartScroll">
                     <div class="coverage-chart-inner" id="coverageChartInner">
                         <canvas id="coverageChart" height="280"></canvas>
@@ -171,24 +182,15 @@
                 </div>
             </div>
         </div>
-        
-        <div class="info-blocks-row" id="customInfoBlocks">
-            <div class="info-card">
-                <h4>✅ Сделано</h4>
-                <div class="info-card-content" id="doneTextDisplay"></div>
-                <div class="info-date" id="doneDateDisplay"></div>
-            </div>
-            <div class="info-card">
-                <h4 style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">📅 Планы
-                    <span class="next-week-period" id="nextWeekPeriodDisplay">загрузка...</span>
-                </h4>
-                <div class="info-card-content" id="plansTextDisplay">—</div>
-                <div class="info-date" id="plansDateDisplay"></div>
-            </div>
-        </div>
 
         <div class="table-container">
-            <h3><svg class="knsk-icon" aria-hidden="true"><use href="#icon-table-2"/></svg> Сводная таблица по МО (скрининг КнСК) <span style="font-size:0.72rem;font-weight:500;color:#5b6e8c;">— клик по строке для деталей</span></h3>
+            <h3><svg class="knsk-icon" aria-hidden="true"><use href="#icon-table-2"/></svg> Сводная таблица по МО (скрининг КнСК)</h3>
+            <div class="table-interactive-callout" role="note">
+                <svg class="knsk-icon table-interactive-callout__icon" aria-hidden="true"><use href="#icon-mouse-pointer-click"/></svg>
+                <div class="table-interactive-callout__text">
+                    <strong>Интерактивная таблица</strong> — нажмите на любую строку МО, чтобы открыть детальный профиль с историей показателей и графиками.
+                </div>
+            </div>
             <div class="table-toolbar">
                 <input type="search" id="moTableSearch" placeholder="Поиск по названию МО…" autocomplete="off">
                 <span class="table-filter-hint" id="tableFilterHint"></span>
@@ -196,16 +198,32 @@
             <div class="table-scroll-wrap">
                 <table id="mainTable"><thead><tr><th>№</th><th>МО</th><th>План</th><th>Итого</th><th>%</th><th>Динамика</th><th>Нет откл.</th><th>Есть откл.</th><th>Колоноск.</th><th>ЗНО</th></tr></thead><tbody id="tableBody"></tbody></table>
             </div>
-            <p class="table-mo-hint"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-mouse-pointer-click"/></svg> Для более детального анализа нажмите на одну из МО в таблице</p>
-            <div style="margin-top: 12px; font-size: 0.7rem; text-align: right;" id="updateTime"></div>
+            <div class="table-update-time" id="updateTime"></div>
         </div>
+
+        <section class="info-blocks-panel" aria-label="Сделано и планы">
+            <div class="info-blocks-row" id="customInfoBlocks">
+                <div class="info-card">
+                    <h4>✅ Сделано</h4>
+                    <div class="info-card-content" id="doneTextDisplay"></div>
+                    <div class="info-date" id="doneDateDisplay"></div>
+                </div>
+                <div class="info-card">
+                    <h4 class="info-card-plans-title">📅 Планы
+                        <span class="next-week-period" id="nextWeekPeriodDisplay">загрузка...</span>
+                    </h4>
+                    <div class="info-card-content" id="plansTextDisplay">—</div>
+                    <div class="info-date" id="plansDateDisplay"></div>
+                </div>
+            </div>
+        </section>
     </div>
 </div>
 
 <button type="button" class="presentation-exit" id="presentationExitBtn">Закрыть</button>
 
-<div id="moDrawerOverlay" class="mo-drawer-overlay">
-    <div class="mo-drawer" id="moDrawer">
+<div id="moDrawerOverlay" class="mo-drawer-overlay" aria-hidden="true">
+    <div class="mo-drawer" id="moDrawer" role="dialog" aria-modal="true" aria-labelledby="moDrawerTitle">
         <button type="button" class="mo-drawer-close" id="moDrawerClose" aria-label="Закрыть">&times;</button>
         <h3 id="moDrawerTitle">МО</h3>
         <div id="moDrawerBody"></div>
@@ -216,14 +234,14 @@
     <div class="compare-panel" id="comparePanel" role="dialog" aria-modal="true" aria-labelledby="comparePanelTitle">
         <button type="button" class="compare-panel-close" id="comparePanelClose" aria-label="Закрыть">&times;</button>
         <h3 id="comparePanelTitle"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-git-compare"/></svg> Сравнение двух архивных отчётов</h3>
-        <div id="comparePanelContent"></div>
+        <div id="comparePanelContent" aria-live="polite"></div>
     </div>
 </div>
 
 <div id="moProfileOverlay" class="mo-profile-overlay" aria-hidden="true">
     <div class="mo-profile-panel" role="dialog" aria-modal="true" aria-labelledby="moProfileTitle">
         <button type="button" class="compare-panel-close" id="moProfileClose" aria-label="Закрыть">&times;</button>
-        <div id="moProfileContent"></div>
+        <div id="moProfileContent" aria-live="polite"></div>
     </div>
 </div>
 <?!= include('VendorChartJs'); ?>

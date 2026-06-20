@@ -9,6 +9,12 @@ import {
   normalizeMoKey,
   mergeDisplayedMoPoint,
   icon,
+  trapFocus,
+  focusFirst,
+  restoreFocus,
+  getMoPeerPool,
+  getMoPopulationGroup,
+  getPopulationGroupDefinition,
 } from '../lib/index.js';
 import { formatPeriodLabel } from '../lib/dateUtils.js';
 
@@ -18,6 +24,8 @@ const MoProfile = (function () {
   let currentReportId = null;
   let chartInstances = {};
   let initialized = false;
+  let profileFocusRelease = null;
+  let profileTriggerEl = null;
 
   function destroyCharts() {
     Object.keys(chartInstances).forEach(function (id) {
@@ -56,12 +64,19 @@ const MoProfile = (function () {
     });
   }
 
-  function showOverlay() {
+  function showOverlay(triggerEl) {
     const overlay = document.getElementById('moProfileOverlay');
+    const panel = document.querySelector('#moProfileOverlay .mo-profile-panel');
     if (!overlay) return;
     overlay.classList.add('open');
     overlay.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
+    profileTriggerEl = triggerEl || document.activeElement;
+    if (profileFocusRelease) profileFocusRelease();
+    if (panel) {
+      profileFocusRelease = trapFocus(panel);
+      focusFirst(panel, '#moProfileClose');
+    }
     if (document.body.classList.contains('presentation-mode')) {
       window.DashboardPhase2 && DashboardPhase2.togglePresentationMode(false);
     }
@@ -73,6 +88,12 @@ const MoProfile = (function () {
       overlay.classList.remove('open');
       overlay.setAttribute('aria-hidden', 'true');
     }
+    if (profileFocusRelease) {
+      profileFocusRelease();
+      profileFocusRelease = null;
+    }
+    restoreFocus(profileTriggerEl);
+    profileTriggerEl = null;
     document.body.style.overflow = '';
     destroyCharts();
   }
@@ -81,13 +102,13 @@ const MoProfile = (function () {
     const content = document.getElementById('moProfileContent');
     if (!content) return;
     content.innerHTML =
-      '<div class="compare-loading"><div class="compare-loading-spinner"></div><span>Загрузка истории МО…</span></div>';
+      '<div class="compare-loading" aria-live="polite" aria-busy="true"><div class="compare-loading-spinner" aria-hidden="true"></div><span>Загрузка истории МО…</span></div>';
   }
 
   function showError(msg) {
     const content = document.getElementById('moProfileContent');
     if (!content) return;
-    content.innerHTML = `<p class="compare-error">${escapeHtml(msg)}</p>`;
+    content.innerHTML = `<p class="compare-error" role="alert">${escapeHtml(msg)}</p>`;
   }
 
   function formatDelta(cur, prev, isPct) {
@@ -135,15 +156,17 @@ const MoProfile = (function () {
 
   function renderRankBadges(rankings) {
     if (!rankings.total) return '';
+    const groupDef = rankings.groupId ? getPopulationGroupDefinition(rankings.groupId) : null;
+    const groupNote = groupDef ? ` (${groupDef.label} МО)` : '';
     const badges = [];
     if (rankings.byPercent) {
       badges.push(
-        `<span class="mo-profile-rank-badge ${rankBadgeClass(rankings.byPercent, rankings.total)}">${icon('trophy')} ${rankings.byPercent} место из ${rankings.total} по % выполнения плана иссл. КнСК</span>`
+        `<span class="mo-profile-rank-badge ${rankBadgeClass(rankings.byPercent, rankings.total)}">${icon('trophy')} ${rankings.byPercent} место из ${rankings.total} по % выполнения плана иссл. КнСК${groupNote}</span>`
       );
     }
     if (rankings.byCoverage) {
       badges.push(
-        `<span class="mo-profile-rank-badge ${rankBadgeClass(rankings.byCoverage, rankings.total)}">${icon('stethoscope')} ${rankings.byCoverage} место из ${rankings.total} по охвату колоноскопией пациентов с КнСК+</span>`
+        `<span class="mo-profile-rank-badge ${rankBadgeClass(rankings.byCoverage, rankings.total)}">${icon('stethoscope')} ${rankings.byCoverage} место из ${rankings.total} по охвату колоноскопией пациентов с КнСК+${groupNote}</span>`
       );
     }
     return `<div class="mo-profile-rank-badges">${badges.join('')}</div>`;
@@ -294,11 +317,14 @@ const MoProfile = (function () {
       return;
     }
 
-    const rankings = computeMoRankings(moName, currentMos);
+    const peerMos = getMoPeerPool(moName, currentMos);
+    const rankings = computeMoRankings(moName, peerMos);
+    rankings.groupId = getMoPopulationGroup(moName);
     const lastPeriod = history.length ? formatPeriodLabel(history[history.length - 1].period) : '';
 
     const content = document.getElementById('moProfileContent');
     if (!content) return;
+    content.removeAttribute('aria-busy');
 
     content.innerHTML = `
       <header class="mo-profile-header">
@@ -335,10 +361,10 @@ const MoProfile = (function () {
     return gasAdapter.call('getMoHistoryFromArchive', { params: [moName] });
   }
 
-  function open(moName) {
+  function open(moName, triggerEl) {
     if (!moName) return;
 
-    showOverlay();
+    showOverlay(triggerEl);
     showLoading();
 
     fetchHistory(moName)

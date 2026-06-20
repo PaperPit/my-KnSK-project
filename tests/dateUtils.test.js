@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatShortDate, getNextWeekPeriod, formatPeriodLabel } from '../src/lib/dateUtils.js';
+import { formatShortDate, getNextWeekPeriod, formatPeriodLabel, parseArchiveReportDate, isEarlierArchiveReport } from '../src/lib/dateUtils.js';
 
 describe('formatShortDate', () => {
   it('formats ISO date as dd.mm', () => {
@@ -55,5 +55,43 @@ describe('formatPeriodLabel', () => {
   it('returns empty string for falsy input', () => {
     expect(formatPeriodLabel('')).toBe('');
     expect(formatPeriodLabel(null)).toBe('');
+  });
+});
+
+describe('parseArchiveReportDate', () => {
+  it('parses dd.mm.yyyy', () => {
+    expect(parseArchiveReportDate('13.01.2026')).toBe(new Date(2026, 0, 13).getTime());
+  });
+
+  it('parses ISO strings', () => {
+    expect(parseArchiveReportDate('2026-01-13T10:00:00')).toBe(Date.parse('2026-01-13T10:00:00'));
+  });
+
+  it('returns null for invalid input', () => {
+    expect(parseArchiveReportDate('')).toBeNull();
+    expect(parseArchiveReportDate('не дата')).toBeNull();
+  });
+});
+
+describe('isEarlierArchiveReport', () => {
+  const list = [
+    { id: 10, dateStr: '10.01.2026' },
+    { id: 20, dateStr: '20.01.2026' },
+    { id: 30, dateStr: '30.01.2026' },
+  ];
+
+  it('returns true when first report is earlier by date', () => {
+    expect(isEarlierArchiveReport(10, 20, list)).toBe(true);
+    expect(isEarlierArchiveReport(20, 30, list)).toBe(true);
+  });
+
+  it('returns false when order is reversed or equal', () => {
+    expect(isEarlierArchiveReport(30, 10, list)).toBe(false);
+    expect(isEarlierArchiveReport(20, 20, list)).toBe(false);
+  });
+
+  it('falls back to id when dates are missing', () => {
+    expect(isEarlierArchiveReport(5, 8, [])).toBe(true);
+    expect(isEarlierArchiveReport(8, 5, [])).toBe(false);
   });
 });

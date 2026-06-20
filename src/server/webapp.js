@@ -87,6 +87,7 @@ function include(filename) {
 
 /** Разрешённые ленивые клиентские бандлы (имя HTML-файла без расширения). */
 var CLIENT_BUNDLE_ALLOWLIST = {
+  VendorChartJs: true,
   DashboardPhase2: true,
   MoProfile: true,
   VendorChartDataLabels: true,

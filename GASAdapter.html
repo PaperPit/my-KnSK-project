@@ -1,5 +1,259 @@
 <script>
 (() => {
+  // src/lib/weeksTrendCache.js
+  var cachedWeeks = null;
+  function getWeeksTrendCache() {
+    return cachedWeeks;
+  }
+
+  // src/core/perfTracker.js
+  var MAX_MARKS = 80;
+  var MAX_GAS = 50;
+  var marks = [];
+  var gasCalls = [];
+  var originMs = null;
+  function now() {
+    return typeof performance !== "undefined" ? performance.now() : Date.now();
+  }
+  function ensureOrigin() {
+    if (originMs == null) originMs = now();
+  }
+  function perfMark(name, detail) {
+    ensureOrigin();
+    const entry = { name, t: now(), detail: detail || "" };
+    marks.push(entry);
+    if (marks.length > MAX_MARKS) marks.shift();
+    if (typeof performance !== "undefined") {
+      try {
+        performance.mark("knsk:" + name);
+      } catch (_e) {
+      }
+    }
+    return entry;
+  }
+  function estimatePayloadBytes(value) {
+    if (value == null) return 0;
+    if (typeof value === "string") return value.length;
+    try {
+      if (typeof Blob !== "undefined") {
+        return new Blob([JSON.stringify(value)]).size;
+      }
+      return JSON.stringify(value).length;
+    } catch (_e) {
+      return String(value).length;
+    }
+  }
+  function recordGasCall(functionName, durationMs, payloadBytes, ok) {
+    ensureOrigin();
+    gasCalls.push({
+      functionName,
+      durationMs: Math.round(durationMs),
+      payloadBytes: payloadBytes || 0,
+      ok: ok !== false,
+      at: now()
+    });
+    if (gasCalls.length > MAX_GAS) gasCalls.shift();
+  }
+  function getMarks() {
+    return marks.slice();
+  }
+  function getGasCalls() {
+    return gasCalls.slice();
+  }
+  function resetPerfSession() {
+    marks.length = 0;
+    gasCalls.length = 0;
+    originMs = now();
+  }
+  function formatKb(bytes) {
+    if (!bytes) return "0 KB";
+    return (bytes / 1024).toFixed(1) + " KB";
+  }
+  function navigationSummary() {
+    if (typeof performance === "undefined" || !performance.getEntriesByType) return null;
+    const nav = performance.getEntriesByType("navigation")[0];
+    if (!nav) return null;
+    return {
+      domInteractive: Math.round(nav.domInteractive),
+      domContentLoaded: Math.round(nav.domContentLoadedEventEnd),
+      loadEvent: Math.round(nav.loadEventEnd),
+      transferSize: nav.transferSize || 0
+    };
+  }
+  function scriptFootprintEstimate() {
+    if (typeof document === "undefined") return { inlineChars: 0, scriptTags: 0 };
+    let inlineChars = 0;
+    let scriptTags = 0;
+    document.querySelectorAll("script").forEach(function(el) {
+      scriptTags += 1;
+      if (el.src) return;
+      inlineChars += (el.textContent || "").length;
+    });
+    return { inlineChars, scriptTags };
+  }
+  function cacheSummary(root) {
+    const out = [];
+    try {
+      if (root.localStorage && root.localStorage.getItem("knsk_viewer_report_v1")) {
+        const raw = root.localStorage.getItem("knsk_viewer_report_v1");
+        out.push("viewer localStorage: " + formatKb(raw ? raw.length : 0));
+      } else {
+        out.push("viewer localStorage: \u043D\u0435\u0442");
+      }
+    } catch (_e) {
+      out.push("viewer localStorage: \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D");
+    }
+    const weeks = getWeeksTrendCache();
+    out.push(
+      weeks && weeks.length ? "weeksTrend client cache: " + weeks.length + " \u0442\u043E\u0447\u0435\u043A" : "weeksTrend client cache: \u043D\u0435\u0442"
+    );
+    return out;
+  }
+  function marksTable(origin) {
+    if (!marks.length) return ["(\u043C\u0435\u0442\u043E\u043A \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u2014 \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u043E\u0442\u0447\u0451\u0442)"];
+    const lines = [];
+    let prev = origin;
+    marks.forEach(function(m) {
+      const delta = Math.round(m.t - prev);
+      const fromStart = Math.round(m.t - origin);
+      lines.push(
+        `  +${String(delta).padStart(5)} ms  @${String(fromStart).padStart(6)} ms  ${m.name}${m.detail ? " \u2014 " + m.detail : ""}`
+      );
+      prev = m.t;
+    });
+    return lines;
+  }
+  function gasTable() {
+    if (!gasCalls.length) return ["(GAS-\u0432\u044B\u0437\u043E\u0432\u043E\u0432 \u0432 \u0436\u0443\u0440\u043D\u0430\u043B\u0435 \u043D\u0435\u0442)"];
+    const sorted = gasCalls.slice().sort(function(a, b) {
+      return b.durationMs - a.durationMs;
+    });
+    const totalMs = gasCalls.reduce(function(s, c) {
+      return s + c.durationMs;
+    }, 0);
+    const totalBytes = gasCalls.reduce(function(s, c) {
+      return s + c.payloadBytes;
+    }, 0);
+    const lines = [
+      `  \u0432\u0441\u0435\u0433\u043E \u0432\u044B\u0437\u043E\u0432\u043E\u0432: ${gasCalls.length}, \u0441\u0443\u043C\u043C\u0430\u0440\u043D\u043E ${totalMs} ms, ~${formatKb(totalBytes)} \u043E\u0442\u0432\u0435\u0442\u043E\u0432`,
+      ""
+    ];
+    sorted.forEach(function(c) {
+      lines.push(
+        `  ${String(c.durationMs).padStart(5)} ms  ${formatKb(c.payloadBytes).padStart(8)}  ${c.ok ? "OK" : "ERR"}  ${c.functionName}`
+      );
+    });
+    return lines;
+  }
+  async function runPerformanceReport(gasAdapter) {
+    ensureOrigin();
+    const root = typeof globalThis !== "undefined" ? globalThis : {};
+    const lines = [];
+    const t0 = now();
+    lines.push("=== KnSK Performance Report ===");
+    lines.push("\u0412\u0440\u0435\u043C\u044F: " + (/* @__PURE__ */ new Date()).toISOString());
+    lines.push("URL: " + (typeof location !== "undefined" ? location.href : "n/a"));
+    lines.push("\u0420\u0435\u0436\u0438\u043C: " + (root.document && root.document.body && root.document.body.classList.contains("viewer-mode") ? "viewer" : "editor"));
+    lines.push("");
+    const nav = navigationSummary();
+    if (nav) {
+      lines.push("--- \u041D\u0430\u0432\u0438\u0433\u0430\u0446\u0438\u044F (PerformanceNavigationTiming) ---");
+      lines.push("  DOM interactive:      " + nav.domInteractive + " ms");
+      lines.push("  DOMContentLoaded end: " + nav.domContentLoaded + " ms");
+      lines.push("  Load event end:       " + nav.loadEvent + " ms");
+      if (nav.transferSize) lines.push("  transferSize:         " + formatKb(nav.transferSize));
+      lines.push("");
+    }
+    const scripts = scriptFootprintEstimate();
+    lines.push("--- \u0421\u0438\u043D\u0445\u0440\u043E\u043D\u043D\u044B\u0439 JS \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 ---");
+    lines.push("  <script> \u0442\u0435\u0433\u043E\u0432: " + scripts.scriptTags);
+    lines.push("  inline JS:       ~" + formatKb(scripts.inlineChars));
+    lines.push("  Chart.js:        " + (typeof root.Chart !== "undefined" ? "\u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D (sync)" : "\u043D\u0435\u0442"));
+    lines.push("  DataLabels:      " + (typeof root.ChartDataLabels !== "undefined" ? "\u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D (sync)" : "\u043D\u0435\u0442"));
+    lines.push("  DashboardPhase2: " + (root.DashboardPhase2 ? "\u0434\u0430" : "lazy"));
+    lines.push("");
+    lines.push("--- \u041A\u044D\u0448 ---");
+    cacheSummary(root).forEach(function(l) {
+      lines.push("  " + l);
+    });
+    lines.push("");
+    lines.push("--- \u041C\u0435\u0442\u043A\u0438 \u0441\u0435\u0441\u0441\u0438\u0438 (\u043E\u0442 \u0441\u0442\u0430\u0440\u0442\u0430 perfTracker) ---");
+    marksTable(originMs).forEach(function(l) {
+      lines.push(l);
+    });
+    lines.push("");
+    lines.push("--- GAS google.script.run (\u0436\u0443\u0440\u043D\u0430\u043B \u0430\u0434\u0430\u043F\u0442\u0435\u0440\u0430) ---");
+    gasTable().forEach(function(l) {
+      lines.push(l);
+    });
+    lines.push("");
+    if (gasAdapter && gasAdapter.originalRun) {
+      lines.push("--- \u0416\u0438\u0432\u043E\u0439 \u0437\u0430\u043C\u0435\u0440 (1 \u0437\u0430\u043F\u0440\u043E\u0441) ---");
+      const probes = [];
+      if (root.document && root.document.body && root.document.body.classList.contains("viewer-mode")) {
+        probes.push(["getArchivedReportsList", []]);
+      } else {
+        probes.push(["getArchivedReportsList", []]);
+      }
+      for (let i = 0; i < probes.length; i++) {
+        const fn = probes[i][0];
+        const params = probes[i][1];
+        const start = now();
+        try {
+          const result = await gasAdapter.call(fn, { params });
+          const ms = Math.round(now() - start);
+          const bytes = estimatePayloadBytes(result);
+          lines.push(`  ${fn}: ${ms} ms, ~${formatKb(bytes)}`);
+        } catch (err) {
+          lines.push(`  ${fn}: ERR \u2014 ${err && err.message ? err.message : String(err)}`);
+        }
+      }
+      lines.push("");
+    }
+    const gasTotal = gasCalls.reduce(function(s, c) {
+      return s + c.durationMs;
+    }, 0);
+    const lastMark = marks.length ? marks[marks.length - 1] : null;
+    const sessionMs = lastMark ? Math.round(lastMark.t - originMs) : 0;
+    lines.push("--- \u0412\u044B\u0432\u043E\u0434 \u0434\u043B\u044F \u043E\u043F\u0442\u0438\u043C\u0438\u0437\u0430\u0446\u0438\u0438 ---");
+    if (gasTotal > sessionMs * 0.5 && gasTotal > 300) {
+      lines.push("  \u2022 GAS round-trip \u2014 \u0433\u043B\u0430\u0432\u043D\u044B\u0439 \u0443\u0437\u043A\u0438\u0439 \u0443\u0447\u0430\u0441\u0442\u043E\u043A (~" + gasTotal + " ms \u0432 \u0436\u0443\u0440\u043D\u0430\u043B\u0435).");
+      lines.push("    \u2192 \u043E\u0431\u044A\u0435\u0434\u0438\u043D\u044F\u0442\u044C bootstrap, slim payload, \u043A\u044D\u0448 \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435.");
+    }
+    if (scripts.inlineChars > 25e4) {
+      lines.push("  \u2022 \u041A\u0440\u0443\u043F\u043D\u044B\u0439 inline JS (~" + formatKb(scripts.inlineChars) + ") \u2014 \u043F\u0430\u0440\u0441\u0438\u043D\u0433 \u0431\u043B\u043E\u043A\u0438\u0440\u0443\u0435\u0442 main thread.");
+      lines.push("    \u2192 \u043B\u0435\u043D\u0438\u0432\u044B\u0439 Chart.js / Phase1 split (\u0441 sync fallback).");
+    }
+    if (typeof root.Chart !== "undefined" && scripts.inlineChars > 15e4) {
+      lines.push("  \u2022 Chart.js \u0432 sync HTML \u2014 \u043D\u0430\u0434\u0451\u0436\u043D\u043E, \u043D\u043E ~200 KB \u043A \u043A\u0440\u0438\u0442\u0438\u0447\u0435\u0441\u043A\u043E\u043C\u0443 \u043F\u0443\u0442\u0438.");
+    }
+    if (!marks.some(function(m) {
+      return m.name === "charts-painted";
+    })) {
+      lines.push("  \u2022 \u041C\u0435\u0442\u043A\u0430 charts-painted \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442 \u2014 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u043E\u0442\u0447\u0451\u0442 \u0434\u043E \u0437\u0430\u043C\u0435\u0440\u0430.");
+    }
+    lines.push("");
+    lines.push("\u0421\u0431\u043E\u0440 \u043E\u0442\u0447\u0451\u0442\u0430: " + Math.round(now() - t0) + " ms");
+    return {
+      text: lines.join("\n"),
+      gasTotalMs: gasTotal,
+      sessionMs,
+      inlineJsBytes: scripts.inlineChars
+    };
+  }
+  var api = {
+    perfMark,
+    estimatePayloadBytes,
+    recordGasCall,
+    getMarks,
+    getGasCalls,
+    resetPerfSession,
+    runPerformanceReport
+  };
+  if (typeof globalThis !== "undefined") {
+    globalThis.KnSKPerf = api;
+  }
+
   // src/core/GoogleAppsScriptAdapter.js
   var GoogleAppsScriptAdapter = class {
     constructor(config = {}) {
@@ -61,6 +315,7 @@
         return;
       }
       this.active++;
+      const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
       this._log("debug", `[Adapter] \u0412\u044B\u043F\u043E\u043B\u043D\u044F\u0435\u0442\u0441\u044F ${request.functionName} (${request.id}), \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445: ${this.active}`);
       let timeoutId;
       const timeoutPromise = new Promise((_, reject) => {
@@ -90,6 +345,12 @@
         timeoutPromise
       ]).then((result) => {
         this.active--;
+        recordGasCall(
+          request.functionName,
+          (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt,
+          estimatePayloadBytes(result),
+          true
+        );
         request.resolve(result);
         this._processQueue();
       }).catch((error) => {
@@ -105,6 +366,12 @@
           this.pendingRetries.set(request.id, timerId);
         } else {
           this._log("error", `[Adapter] ${request.functionName} \u043E\u043A\u043E\u043D\u0447\u0430\u0442\u0435\u043B\u044C\u043D\u0430\u044F \u043E\u0448\u0438\u0431\u043A\u0430:`, error);
+          recordGasCall(
+            request.functionName,
+            (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt,
+            0,
+            false
+          );
           if (this.handlers.onError) {
             this.handlers.onError(error, request);
           }

@@ -14,6 +14,7 @@
  *   getMoHistoryFromArchive(moName)     — история одной МО по всему архиву
  *   getArchivedReportWithPrevious(id)   — отчёт + предыдущий (для дельт KPI)
  *   getArchiveBootstrap(requestedId)    — список + отчёт одним вызовом (viewer)
+ *   getWeeklyDynamicsTrend(weekLimit)   — точки графика «Динамика КнСК» из архива
  *
  * Функции с суффиксом _ — внутренние (кэш, индекс строк).
  *
@@ -21,7 +22,7 @@
  * =============================================================================
  */
 
-/** Сохранение полного снимка: mosData, weeksData, doneText, plansText, period */
+/** Сохранение полного снимка: mosData, doneText, plansText, period (weeksData вычисляется из архива) */
 function saveReportToArchive(reportData) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -66,9 +67,12 @@ function saveReportToArchive(reportData) {
 
 /** Кэш списка архива на 5 минут — меньше обращений к таблице */
 var ARCHIVE_LIST_CACHE_KEY = 'knsk_archive_list_v1';
+var ARCHIVE_INDEX_CACHE_PREFIX = 'knsk_archive_index_v2_';
 var ARCHIVE_LIST_CACHE_TTL = 300;
 var ARCHIVE_DATA_VERSION_KEY = 'knsk_archive_data_ver';
 var ARCHIVE_COMPARE_CACHE_TTL = 300;
+var BOOTSTRAP_CACHE_PREFIX = 'knsk_bootstrap_v4_';
+var BOOTSTRAP_CACHE_TTL = 300;
 
 function getArchiveSheet_() {
   return SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Архив');
@@ -187,6 +191,89 @@ function slimReportForCompare_(report) {
   };
 }
 
+/** Предыдущий отчёт в bootstrap — только данные для KPI/таблицы. */
+function slimReportForBootstrap_(report) {
+  return {
+    mosData: report.mosData || [],
+    timestamp: report.timestamp || '',
+  };
+}
+
+function getArchiveIndexCacheKey_() {
+  return ARCHIVE_INDEX_CACHE_PREFIX + getArchiveDataVersion_();
+}
+
+function getCachedArchiveIndex_() {
+  try {
+    var cached = CacheService.getScriptCache().get(getArchiveIndexCacheKey_());
+    if (cached) return JSON.parse(cached);
+  } catch (e) {
+    console.warn('archive: чтение кэша индекса не удалось', e && e.message);
+  }
+  return null;
+}
+
+function putCachedArchiveIndex_(index) {
+  try {
+    if (index && index.list) {
+      CacheService.getScriptCache().put(
+        getArchiveIndexCacheKey_(),
+        JSON.stringify(index),
+        ARCHIVE_LIST_CACHE_TTL
+      );
+      putCachedArchiveList_(index.list);
+    }
+  } catch (e) {
+    console.warn('archive: запись кэша индекса не удалась', e && e.message);
+  }
+}
+
+function getArchiveIndex_(sheet) {
+  var cached = getCachedArchiveIndex_();
+  if (cached && cached.list && cached.idToRow) return cached;
+  var index = buildArchiveIndex_(sheet);
+  putCachedArchiveIndex_(index);
+  return index;
+}
+
+function getBootstrapCacheKey_(reportId) {
+  return BOOTSTRAP_CACHE_PREFIX + getArchiveDataVersion_() + '_' + reportId;
+}
+
+function getCachedBootstrap_(reportId) {
+  try {
+    var cached = CacheService.getScriptCache().get(getBootstrapCacheKey_(reportId));
+    if (cached) return JSON.parse(cached);
+  } catch (e) {
+    console.warn('archive: чтение кэша bootstrap не удалось', e && e.message);
+  }
+  return null;
+}
+
+function putCachedBootstrap_(reportId, payload) {
+  try {
+    CacheService.getScriptCache().put(
+      getBootstrapCacheKey_(reportId),
+      JSON.stringify(payload),
+      BOOTSTRAP_CACHE_TTL
+    );
+  } catch (e) {
+    console.warn('archive: запись кэша bootstrap не удалась', e && e.message);
+  }
+}
+
+/**
+ * Собрать ответ bootstrap из уже распарсенных отчётов (для тестов и сервера).
+ */
+function assembleBootstrapResponse_(index, targetId, currentReport, previousReport) {
+  return {
+    list: index.list,
+    report: currentReport,
+    previous: previousReport ? slimReportForBootstrap_(previousReport) : null,
+    reportId: targetId,
+  };
+}
+
 function readArchiveReportRows_(sheet, rowNums) {
   if (!rowNums || !rowNums.length) return [];
   if (rowNums.length === 1) {
@@ -210,11 +297,7 @@ function readArchiveReportRows_(sheet, rowNums) {
 }
 
 function getArchiveList_(sheet) {
-  var cached = getCachedArchiveList_();
-  if (cached) return cached;
-  var index = buildArchiveIndex_(sheet);
-  putCachedArchiveList_(index.list);
-  return index.list;
+  return getArchiveIndex_(sheet).list;
 }
 
 function getPreviousArchiveIdFromList_(list, currentId) {
@@ -238,12 +321,18 @@ function getArchivedReportWithPreviousFromIndex_(sheet, index, id) {
   var rowNum = index.idToRow[numId];
   if (!rowNum) throw new Error('Отчёт не найден (ID ' + numId + ')');
 
-  var report = readArchiveReportAtRow_(sheet, rowNum);
-  var previous = null;
   var prevId = getPreviousArchiveIdFromList_(index.list, numId);
+  var rowNums = [rowNum];
   if (prevId != null && index.idToRow[prevId]) {
+    rowNums.push(index.idToRow[prevId]);
+  }
+
+  var rows = readArchiveReportRows_(sheet, rowNums);
+  var report = parseArchiveReportRow_(rows[0]);
+  var previous = null;
+  if (rows.length > 1) {
     try {
-      previous = readArchiveReportAtRow_(sheet, index.idToRow[prevId]);
+      previous = slimReportForBootstrap_(parseArchiveReportRow_(rows[1]));
     } catch (e) {
       previous = null;
     }
@@ -251,9 +340,84 @@ function getArchivedReportWithPreviousFromIndex_(sheet, index, id) {
   return { report: report, previous: previous };
 }
 
+function buildWeeklyTrendFromParsed_(index, slice, parsedByRow) {
+  var weeks = [];
+  var i;
+  for (i = slice.length - 1; i >= 0; i--) {
+    var item = slice[i];
+    var rowNum = index.idToRow[item.id];
+    var report = parsedByRow[rowNum];
+    if (!report) continue;
+    var range = getDynamicsWeekMonSun_(report.timestamp || item.dateStr || '');
+    if (!range) continue;
+    weeks.push({
+      start: range.start,
+      end: range.end,
+      value: sumArchiveDynamics_(report.mosData || []),
+      reportId: item.id,
+    });
+  }
+  return weeks;
+}
+
 /**
- * Один запрос при открытии Viewer: список отчётов + выбранный отчёт + предыдущий.
- * requestedId — из URL ?id= или null (тогда последний по ID).
+ * Один batch-read: текущий отчёт, previous и (при необходимости) строки для weeksTrend.
+ */
+function loadBootstrapPayload_(sheet, index, targetId, weekLimit) {
+  var limit = weekLimit ? Math.min(Math.max(1, Number(weekLimit)), 24) : 5;
+  var targetRow = index.idToRow[targetId];
+  if (!targetRow) throw new Error('Отчёт не найден (ID ' + targetId + ')');
+
+  var prevId = getPreviousArchiveIdFromList_(index.list, targetId);
+  var seen = {};
+  var rowNums = [];
+
+  function pushRow(rowNum) {
+    if (rowNum && !seen[rowNum]) {
+      seen[rowNum] = true;
+      rowNums.push(rowNum);
+    }
+  }
+
+  pushRow(targetRow);
+  if (prevId != null) pushRow(index.idToRow[prevId]);
+
+  var cachedTrend = getCachedWeeklyTrend_(limit);
+  var trendSlice = null;
+  if (!cachedTrend) {
+    trendSlice = index.list.slice(0, limit);
+    for (var t = 0; t < trendSlice.length; t++) {
+      pushRow(index.idToRow[trendSlice[t].id]);
+    }
+  }
+
+  var rawRows = readArchiveReportRows_(sheet, rowNums);
+  var parsedByRow = {};
+  for (var j = 0; j < rowNums.length; j++) {
+    parsedByRow[rowNums[j]] = parseArchiveReportRow_(rawRows[j]);
+  }
+
+  var previousRaw = null;
+  if (prevId != null && index.idToRow[prevId]) {
+    previousRaw = parsedByRow[index.idToRow[prevId]] || null;
+  }
+
+  var weeksTrend = cachedTrend;
+  if (!weeksTrend && trendSlice) {
+    weeksTrend = buildWeeklyTrendFromParsed_(index, trendSlice, parsedByRow);
+    putCachedWeeklyTrend_(limit, weeksTrend);
+  }
+
+  return {
+    report: parsedByRow[targetRow],
+    previousRaw: previousRaw,
+    weeksTrend: weeksTrend || [],
+  };
+}
+
+/**
+ * Один запрос при открытии Viewer: список + отчёт + slim previous + weeksTrend.
+ * Индекс и строки таблицы читаются batch-ом; ответ кэшируется.
  */
 function getArchiveBootstrap(requestedId) {
   var sheet = getArchiveSheet_();
@@ -261,8 +425,7 @@ function getArchiveBootstrap(requestedId) {
     return { list: [], report: null, previous: null, reportId: null };
   }
 
-  var index = buildArchiveIndex_(sheet);
-  putCachedArchiveList_(index.list);
+  var index = getArchiveIndex_(sheet);
 
   if (!index.list.length) {
     return { list: [], report: null, previous: null, reportId: null };
@@ -273,13 +436,181 @@ function getArchiveBootstrap(requestedId) {
     targetId = index.list[0].id;
   }
 
-  var payload = getArchivedReportWithPreviousFromIndex_(sheet, index, targetId);
+  var cached = getCachedBootstrap_(targetId);
+  if (cached) return cached;
+
+  var bundle = loadBootstrapPayload_(sheet, index, targetId, 5);
+  var result = assembleBootstrapResponse_(index, targetId, bundle.report, bundle.previousRaw);
+  result.weeksTrend = bundle.weeksTrend;
+  putCachedBootstrap_(targetId, result);
+  return result;
+}
+
+function getDynamicsWeekMonSun_(anchor) {
+  var week = getCalendarWeekMonSun_(anchor);
+  if (!week) return null;
+  var monday = new Date(week.monday);
+  monday.setDate(monday.getDate() - 7);
+  var sunday = new Date(week.sunday);
+  sunday.setDate(sunday.getDate() - 7);
+
+  function pad(n) {
+    return n < 10 ? '0' + n : String(n);
+  }
+  function iso(dt) {
+    return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate());
+  }
+  function ddmm(dt) {
+    return pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1);
+  }
+
   return {
-    list: index.list,
-    report: payload.report,
-    previous: payload.previous,
-    reportId: targetId,
+    start: iso(monday),
+    end: iso(sunday),
+    period: ddmm(monday) + '-' + ddmm(sunday),
+    monday: monday,
+    sunday: sunday,
   };
+}
+
+function getCalendarWeekMonSun_(anchor) {
+  var d;
+  if (anchor instanceof Date) {
+    d = new Date(anchor.getTime());
+  } else {
+    var s = String(anchor || '').trim();
+    var m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s);
+    if (m) {
+      d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    } else {
+      d = new Date(s);
+    }
+  }
+  if (!d || isNaN(d.getTime())) return null;
+
+  var day = d.getDay();
+  var daysToMonday = day === 0 ? 6 : day - 1;
+  var monday = new Date(d);
+  monday.setDate(d.getDate() - daysToMonday);
+  monday.setHours(0, 0, 0, 0);
+  var sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  function pad(n) {
+    return n < 10 ? '0' + n : String(n);
+  }
+  function iso(dt) {
+    return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate());
+  }
+  function ddmm(dt) {
+    return pad(dt.getDate()) + '.' + pad(dt.getMonth() + 1);
+  }
+
+  return {
+    start: iso(monday),
+    end: iso(sunday),
+    period: ddmm(monday) + '-' + ddmm(sunday),
+    monday: monday,
+    sunday: sunday,
+  };
+}
+
+function sumArchiveDynamics_(mosData) {
+  if (!mosData || !mosData.length) return 0;
+  var total = 0;
+  for (var i = 0; i < mosData.length; i++) {
+    var r = mosData[i];
+    var g =
+      r.growth != null
+        ? r.growth
+        : r['Динамика с прошлой недели'] != null
+          ? r['Динамика с прошлой недели']
+          : r['Динамика'];
+    total += toNumArchive_(g);
+  }
+  return total;
+}
+
+var WEEKLY_TREND_CACHE_TTL = 300;
+
+function getCachedWeeklyTrend_(limit) {
+  try {
+    var key = 'knsk_trend_v2_' + getArchiveDataVersion_() + '_' + limit;
+    var cached = CacheService.getScriptCache().get(key);
+    if (cached) return JSON.parse(cached);
+  } catch (e) {
+    console.warn('archive: trend cache read', e && e.message);
+  }
+  return null;
+}
+
+function putCachedWeeklyTrend_(limit, data) {
+  try {
+    var key = 'knsk_trend_v2_' + getArchiveDataVersion_() + '_' + limit;
+    CacheService.getScriptCache().put(key, JSON.stringify(data), WEEKLY_TREND_CACHE_TTL);
+  } catch (e) {
+    console.warn('archive: trend cache write', e && e.message);
+  }
+}
+
+function getWeeklyDynamicsTrend_(sheet, index, weekLimit) {
+  var limit = weekLimit ? Math.min(Math.max(1, Number(weekLimit)), 24) : 5;
+  if (!index || !index.list || !index.list.length) return [];
+
+  var slice = index.list.slice(0, limit);
+  var pairs = [];
+  var i;
+
+  for (i = 0; i < slice.length; i++) {
+    var item = slice[i];
+    var rowNum = index.idToRow[item.id];
+    if (!rowNum) continue;
+    pairs.push({ item: item, rowNum: rowNum });
+  }
+  if (!pairs.length) return [];
+
+  var rowNums = pairs.map(function (p) {
+    return p.rowNum;
+  });
+  var rows = readArchiveReportRows_(sheet, rowNums);
+  var weeks = [];
+
+  for (i = pairs.length - 1; i >= 0; i--) {
+    var report = parseArchiveReportRow_(rows[i]);
+    var pairItem = pairs[i].item;
+    var range = getDynamicsWeekMonSun_(report.timestamp || pairItem.dateStr || '');
+    if (!range) continue;
+    weeks.push({
+      start: range.start,
+      end: range.end,
+      value: sumArchiveDynamics_(report.mosData || []),
+      reportId: pairItem.id,
+    });
+  }
+
+  return weeks;
+}
+
+function getWeeklyDynamicsTrendCached_(sheet, index, weekLimit) {
+  var limit = weekLimit ? Math.min(Math.max(1, Number(weekLimit)), 24) : 5;
+  var cached = getCachedWeeklyTrend_(limit);
+  if (cached) return cached;
+  var result = getWeeklyDynamicsTrend_(sheet, index, limit);
+  putCachedWeeklyTrend_(limit, result);
+  return result;
+}
+
+/** Точки графика «Динамика КнСК»: сумма столбца Динамика по МО, неделя Пн–Вс */
+function getWeeklyDynamicsTrend(weekLimit) {
+  try {
+    var sheet = getArchiveSheet_();
+    if (!sheet) return [];
+    var index = getArchiveIndex_(sheet);
+    return getWeeklyDynamicsTrendCached_(sheet, index, weekLimit);
+  } catch (error) {
+    console.error('Ошибка расчёта недельной динамики:', error);
+    return [];
+  }
 }
 
 function getArchivedReportsList() {
@@ -301,8 +632,10 @@ function getArchivedReportsList() {
 function getArchivedReportWithPrevious(id) {
   var sheet = getArchiveSheet_();
   if (!sheet) throw new Error('Лист Архив не найден');
-  var index = buildArchiveIndex_(sheet);
-  return getArchivedReportWithPreviousFromIndex_(sheet, index, id);
+  var index = getArchiveIndex_(sheet);
+  var payload = getArchivedReportWithPreviousFromIndex_(sheet, index, id);
+  payload.weeksTrend = getWeeklyDynamicsTrendCached_(sheet, index, 5);
+  return payload;
 }
 
 function getArchivedReportById(id) {
@@ -313,7 +646,7 @@ function getArchivedReportById(id) {
     var numId = Number(id);
     if (isNaN(numId)) throw new Error('Некорректный ID отчёта');
 
-    var index = buildArchiveIndex_(sheet);
+    var index = getArchiveIndex_(sheet);
     var rowNum = index.idToRow[numId];
     if (!rowNum) throw new Error('Отчёт не найден (ID ' + numId + ')');
 
@@ -343,7 +676,7 @@ function getArchivedReportsForCompare(idA, idB) {
     console.warn('archive: compare cache read', cacheReadErr && cacheReadErr.message);
   }
 
-  var index = buildArchiveIndex_(sheet);
+  var index = getArchiveIndex_(sheet);
   var rowA = index.idToRow[numA];
   var rowB = index.idToRow[numB];
   if (!rowA) throw new Error('Отчёт не найден (ID ' + numA + ')');
@@ -543,5 +876,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildMoHistoryFromRows_,
     buildMosFromArchiveData_,
     moToHistoryPoint_,
+    slimReportForBootstrap_,
+    assembleBootstrapResponse_,
+    buildWeeklyTrendFromParsed_,
   };
 }

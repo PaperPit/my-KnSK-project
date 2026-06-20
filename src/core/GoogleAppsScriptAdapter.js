@@ -13,6 +13,8 @@
  * =============================================================================
  */
 
+import { recordGasCall, estimatePayloadBytes } from './perfTracker.js';
+
 export class GoogleAppsScriptAdapter {
   constructor(config = {}) {
     this.config = {
@@ -84,6 +86,7 @@ export class GoogleAppsScriptAdapter {
     }
     
     this.active++;
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
     this._log('debug', `[Adapter] Выполняется ${request.functionName} (${request.id}), активных: ${this.active}`);
     
     let timeoutId;
@@ -124,6 +127,12 @@ export class GoogleAppsScriptAdapter {
       timeoutPromise,
     ]).then((result) => {
       this.active--;
+      recordGasCall(
+        request.functionName,
+        (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+        estimatePayloadBytes(result),
+        true
+      );
       request.resolve(result);
       this._processQueue();
     }).catch((error) => {
@@ -143,7 +152,13 @@ export class GoogleAppsScriptAdapter {
         this.pendingRetries.set(request.id, timerId);
       } else {
         this._log('error', `[Adapter] ${request.functionName} окончательная ошибка:`, error);
-        
+        recordGasCall(
+          request.functionName,
+          (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt,
+          0,
+          false
+        );
+
         if (this.handlers.onError) {
           this.handlers.onError(error, request);
         }

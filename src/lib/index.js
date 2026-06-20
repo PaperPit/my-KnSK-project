@@ -18,5 +18,7 @@ export * from './kpiCalculator.js';
 export * from './dateUtils.js';
 export * from './moUtils.js';
 export * from './moAnalytics.js';
+export * from './moPopulationGroups.js';
 export * from './moHistory.js';
 export * from './icons.js';
+export * from './dialogA11y.js';
