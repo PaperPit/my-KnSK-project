@@ -1,5 +1,8 @@
 /**
  * chartDiagnostics.js — диагностика Chart.js и производительности (GAS)
+ *
+ * Модуль активен; точка входа — #chartDiagnosticsBtn (editor.js / viewer.js).
+ * Кнопка намеренно скрыта в UI: Index.html, Viewer.html, .knsk-diag-trigger в phase2.css.
  */
 
 import { runPerformanceReport } from './perfTracker.js';

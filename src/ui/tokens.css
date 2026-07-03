@@ -53,6 +53,25 @@
 
   --z-overlay: 9500;
   --z-drawer: 9600;
+
+  /* Типографическая шкала (В1) */
+  --font-size-xs: 0.72rem;
+  --font-size-sm: 0.8rem;
+  --font-size-md: 0.9rem;
+  --font-size-lg: 1.05rem;
+  --font-size-xl: 1.5rem;
+  --font-size-kpi: 2rem;
+
+  /* Палитра графиков (В2) — единый источник для Chart.js/ECharts (chartTheme.js) */
+  --chart-primary: #2c7da0;   /* основная серия: факт, охват */
+  --chart-target: #e67e22;    /* план / цель */
+  --chart-positive: #1f8a4c;  /* рост, топ */
+  --chart-negative: #c0392b;  /* снижение, антитоп */
+  --chart-accent: #e9b35f;    /* акцентная вторая серия */
+  --chart-line: #1f6392;      /* линия тренда */
+  --chart-ink: #0f172a;       /* подписи данных */
+  --chart-muted: #334155;     /* подписи осей */
+  --chart-grid: rgba(148, 163, 184, 0.25);
 }
 
 *,
@@ -68,6 +87,8 @@ html {
 body.dashboard-phase1 {
   background: var(--color-bg);
   font-family: var(--font-sans);
+  /* В1: табличные цифры — числа не «прыгают» по ширине в KPI и таблицах */
+  font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
   margin: 0;
   min-height: 100dvh;
@@ -697,6 +718,77 @@ tr.table-row-hidden {
   display: none;
 }
 
+/* Числовые колонки (все, кроме «№» и «МО») — по центру */
+#mainTable td.num,
+#mainTable th.num {
+  text-align: center;
+}
+
+/* В4: компактная плотность строк */
+#mainTable td {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
+/* Ф5: сортируемые заголовки */
+#mainTable th[data-sort] {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+#mainTable th[data-sort]:hover {
+  background: #e2e8f0;
+  color: var(--color-primary);
+}
+
+#mainTable th[data-sort]::after {
+  content: '↕';
+  margin-left: 4px;
+  opacity: 0.35;
+  font-size: 0.85em;
+}
+
+#mainTable th[data-sort][aria-sort='ascending']::after {
+  content: '↑';
+  opacity: 1;
+  color: var(--color-accent);
+}
+
+#mainTable th[data-sort][aria-sort='descending']::after {
+  content: '↓';
+  opacity: 1;
+  color: var(--color-accent);
+}
+
+/* Ф5: кнопка экспорта CSV */
+.table-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 24px;
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease;
+}
+
+.table-export-btn:hover {
+  background: var(--color-surface-raised);
+  border-color: var(--color-accent);
+}
+
+.table-export-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 /* Heatmap % */
 td.heat-percent {
   min-width: 120px;
@@ -764,6 +856,38 @@ td.heat-percent {
 
 .coverage-chart-card .chart-title span {
   font-weight: 500;
+}
+
+/* В6: раскрытие «все МО» по клику */
+.coverage-chart-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.coverage-toggle-btn {
+  margin-left: auto;
+  padding: 6px 14px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 20px;
+  background: var(--color-surface);
+  color: var(--color-accent);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease;
+}
+
+.coverage-toggle-btn:hover {
+  background: var(--color-surface-raised);
+  border-color: var(--color-accent);
+}
+
+.coverage-toggle-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 @media (max-width: 640px) {

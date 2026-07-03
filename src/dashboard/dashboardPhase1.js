@@ -38,6 +38,11 @@ import {
   positiveRateOf,
   KNSK_HIGH_VOLUME_MIN_FACT,
   KNSK_POSITIVE_RATE_Z_THRESHOLD,
+  chartColor,
+  sortMosForTable,
+  defaultSortDir,
+  TABLE_SORT_COLUMNS,
+  buildTableCsv,
 } from '../lib/index.js';
 
 function getBundleLoader() {
@@ -83,6 +88,7 @@ const DashboardPhase1 = (function () {
   const PLAN_YEAR = plans.year;
   const PLAN_WEEKLY = plans.weekly;
   const PLAN_THRESHOLD = plans.threshold;
+  const PLAN_COVERAGE_LOW = plans.coverageLow || 50;
   const rankCharts = {};
   const MIN_POSITIVE_KNSK_FOR_COVERAGE_ANTITOP = 10;
   const RANK_CHART_LAYOUT = { padding: { top: 8, bottom: 8, left: 4, right: 108 } };
@@ -148,6 +154,16 @@ const DashboardPhase1 = (function () {
     if (pctEl) pctEl.innerHTML = `${yearPercent.toFixed(1)}%`;
     if (planFactEl) {
       planFactEl.innerHTML = `${t.fact.toLocaleString('ru-RU')} / ${PLAN_YEAR.toLocaleString('ru-RU')}`;
+    }
+
+    // Прогресс-бар до годовой цели (В3)
+    const progressFill = document.getElementById('totalPlanProgressFill');
+    if (progressFill) {
+      progressFill.style.width = `${Math.min(100, Math.max(0, yearPercent)).toFixed(1)}%`;
+      const track = progressFill.parentElement;
+      if (track) {
+        track.setAttribute('aria-valuenow', yearPercent.toFixed(1));
+      }
     }
 
     const kskEl = document.getElementById('totalKsk');
@@ -236,7 +252,7 @@ const DashboardPhase1 = (function () {
       text: `${weekPct}% недельного плана (норма ${PLAN_WEEKLY.toLocaleString('ru-RU')}/нед.) — прирост ${totals.growth.toLocaleString('ru-RU')} исследований`,
     });
 
-    const COLON_THRESHOLD = 50;
+    const COLON_THRESHOLD = PLAN_COVERAGE_LOW;
     const belowColon = mos.filter((m) => {
       const coverage = m.hasDev > 0 ? (m.colon / m.hasDev) * 100 : 0;
       return coverage < COLON_THRESHOLD;
@@ -361,7 +377,7 @@ const DashboardPhase1 = (function () {
         align: 'right',
         offset: 10,
         clip: false,
-        color: '#0f172a',
+        color: chartColor('ink'),
         font: { weight: '700', size: 10 },
         formatter: (v) => v,
       };
@@ -372,7 +388,7 @@ const DashboardPhase1 = (function () {
       align: 'right',
       offset: 12,
       clip: false,
-      color: '#0f172a',
+      color: chartColor('ink'),
       font: { weight: '700', size: 10 },
       textAlign: 'center',
       textStrokeColor: 'rgba(255,255,255,0.92)',
@@ -417,7 +433,7 @@ const DashboardPhase1 = (function () {
       ticks: {
         callback: (v) => (valueKey === 'percent' || valueKey === 'coverage' ? `${v}%` : v),
       },
-      grid: { color: 'rgba(148, 163, 184, 0.25)' },
+      grid: { color: chartColor('grid') },
     };
     const xScale = Object.assign({}, defaultXScale, xScaleOptions || {});
 
@@ -488,7 +504,7 @@ const DashboardPhase1 = (function () {
             ticks: {
               autoSkip: false,
               font: { size: 10, weight: '500' },
-              color: '#334155',
+              color: chartColor('muted'),
             },
             grid: { display: false },
           },
@@ -508,12 +524,12 @@ const DashboardPhase1 = (function () {
     const sortedByPlanActive = [...mosWithKnsk].sort((a, b) => b.percent - a.percent);
     const bottom5 = sortedByPlanActive.slice(-5).reverse();
 
-    renderVerticalRankChart('top5PlanChart', top5, 'percent', '#1f8a4c', '% плана', {
+    renderVerticalRankChart('top5PlanChart', top5, 'percent', chartColor('positive'), '% плана', {
       min: 0,
       max: 150,
       beginAtZero: true,
     });
-    renderVerticalRankChart('bottom5PlanChart', bottom5, 'percent', '#e67e22', '% плана');
+    renderVerticalRankChart('bottom5PlanChart', bottom5, 'percent', chartColor('target'), '% плана');
   }
 
   function renderCoverageRankCharts(mos) {
@@ -530,7 +546,7 @@ const DashboardPhase1 = (function () {
       'top5CoverageChart',
       sortedCov.slice(0, 5),
       'coverage',
-      '#2c7da0',
+      chartColor('primary'),
       '% охвата',
       coverageYScale
     );
@@ -538,7 +554,7 @@ const DashboardPhase1 = (function () {
       'bottom5CoverageChart',
       bottomCovPool.slice(-5).reverse(),
       'coverage',
-      '#c0392b',
+      chartColor('negative'),
       '% охвата',
       coverageYScale
     );
@@ -550,6 +566,10 @@ const DashboardPhase1 = (function () {
     const def = getPopulationGroupDefinition(selectedRankGroup);
     if (!def) {
       hint.textContent = '';
+      return;
+    }
+    if (!filteredCount) {
+      hint.textContent = `В категории «${def.label}» (${def.populationRange}) нет МО в текущем отчёте`;
       return;
     }
     hint.textContent = `Топы и антитопы среди ${filteredCount} МО категории «${def.label}» (${def.populationRange})`;
@@ -578,10 +598,41 @@ const DashboardPhase1 = (function () {
       if (!btn || !nav.contains(btn)) return;
       setRankPopulationGroup(btn.getAttribute('data-rank-group'));
     });
+    // Клавиатура: ArrowLeft / ArrowRight / Home / End — для пользователей screen reader и tablist-семантики.
+    nav.addEventListener('keydown', function (e) {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+      const tabs = Array.from(nav.querySelectorAll('[data-rank-group]'));
+      if (!tabs.length) return;
+      const currentIdx = tabs.indexOf(document.activeElement);
+      let nextIdx = currentIdx;
+      if (e.key === 'ArrowLeft') nextIdx = currentIdx <= 0 ? tabs.length - 1 : currentIdx - 1;
+      else if (e.key === 'ArrowRight') nextIdx = currentIdx >= tabs.length - 1 ? 0 : currentIdx + 1;
+      else if (e.key === 'Home') nextIdx = 0;
+      else if (e.key === 'End') nextIdx = tabs.length - 1;
+      e.preventDefault();
+      const target = tabs[nextIdx];
+      target.focus();
+      setRankPopulationGroup(target.getAttribute('data-rank-group'));
+    });
   }
 
   function getFilteredRankMos(mos) {
     return filterMosByPopulationGroup(mos, selectedRankGroup);
+  }
+
+  function clearRankChartsForEmptyGroup() {
+    ['top5PlanChart', 'bottom5PlanChart', 'top5CoverageChart', 'bottom5CoverageChart'].forEach(
+      function (id) {
+        const canvas = document.getElementById(id);
+        if (!canvas) return;
+        releaseCanvasChart(canvas);
+        if (rankCharts[id]) {
+          rankCharts[id] = null;
+        }
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    );
   }
 
   function renderRankCharts(mos) {
@@ -589,6 +640,11 @@ const DashboardPhase1 = (function () {
     setupRankGroupNav();
     const filtered = getFilteredRankMos(mos);
     updateRankGroupHint(filtered.length);
+    if (!filtered.length) {
+      // Категория пуста — старые графики предыдущей группы вводят в заблуждение.
+      clearRankChartsForEmptyGroup();
+      return;
+    }
     renderPlanRankCharts(filtered);
     renderCoverageRankCharts(filtered);
   }
@@ -698,19 +754,19 @@ const DashboardPhase1 = (function () {
         return `<tr class="${match ? 'mo-row-clickable' : 'table-row-hidden'}" data-mo-idx="${i}" data-mo-name="${escapeHtml(m.name)}"${match ? ` tabindex="0" role="button" aria-label="Открыть детали МО ${escapeHtml(m.name)}"` : ''}>
         <td>${i + 1}</td>
         <td style="text-align:left;font-weight:600;">${escapeHtml(m.name)}</td>
-        <td>${m.plan.toLocaleString('ru-RU')}</td>
-        <td>${m.fact.toLocaleString('ru-RU')}</td>
+        <td class="num">${m.plan.toLocaleString('ru-RU')}</td>
+        <td class="num">${m.fact.toLocaleString('ru-RU')}</td>
         <td class="heat-percent">
           <div class="cell-bar-wrap">
             <div class="cell-bar-fill ${hClass}" style="width:${barW}%"></div>
             <span class="cell-bar-label progress-badge ${bClass}">${m.percent.toFixed(1)}%</span>
           </div>
         </td>
-        <td class="${growthCls}">${m.growth >= 0 ? '+' : ''}${m.growth}</td>
-        <td>${m.noDev}</td>
-        <td>${m.hasDev}</td>
-        <td>${m.colon}</td>
-        <td>${m.zno}</td>
+        <td class="num ${growthCls}">${m.growth >= 0 ? '+' : ''}${m.growth}</td>
+        <td class="num">${m.noDev}</td>
+        <td class="num">${m.hasDev}</td>
+        <td class="num">${m.colon}</td>
+        <td class="num">${m.zno}</td>
       </tr>`;
       })
       .join('');
@@ -723,9 +779,14 @@ const DashboardPhase1 = (function () {
   }
 
   let tableSearchBound = false;
+  let tableSortBound = false;
+  let tableExportBound = false;
+  let lastMosSource = [];
   let lastMosForTable = [];
   let lastTableQuery = null;
   let searchTimer = null;
+  let tableSortKey = 'percent';
+  let tableSortDir = 'desc';
 
   function setupTableSearch() {
     const input = document.getElementById('moTableSearch');
@@ -745,12 +806,87 @@ const DashboardPhase1 = (function () {
     });
   }
 
-  function renderTable(mos) {
-    const sorted = [...mos].sort((a, b) => b.percent - a.percent);
-    lastMosForTable = sorted;
+  // --- Сортировка таблицы по столбцам (Ф5) ---
+  function updateSortHeaders() {
+    const thead = document.querySelector('#mainTable thead');
+    if (!thead) return;
+    thead.querySelectorAll('th[data-sort]').forEach(function (th) {
+      const key = th.getAttribute('data-sort');
+      if (key === tableSortKey) {
+        th.setAttribute('aria-sort', tableSortDir === 'asc' ? 'ascending' : 'descending');
+      } else {
+        th.removeAttribute('aria-sort');
+      }
+    });
+  }
+
+  function applyTableSort(key) {
+    if (!TABLE_SORT_COLUMNS[key]) return;
+    if (key === tableSortKey) {
+      tableSortDir = tableSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      tableSortKey = key;
+      tableSortDir = defaultSortDir(key);
+    }
+    lastMosForTable = sortMosForTable(lastMosSource, tableSortKey, tableSortDir);
     const input = document.getElementById('moTableSearch');
-    renderTableRows(sorted, input ? input.value : '');
+    renderTableRows(lastMosForTable, input ? input.value : '');
+    updateSortHeaders();
+  }
+
+  function setupTableSort() {
+    if (tableSortBound) return;
+    const thead = document.querySelector('#mainTable thead');
+    if (!thead) return;
+    tableSortBound = true;
+    thead.addEventListener('click', function (e) {
+      const th = e.target.closest('th[data-sort]');
+      if (!th) return;
+      applyTableSort(th.getAttribute('data-sort'));
+    });
+  }
+
+  // --- Экспорт текущего представления таблицы в CSV (Ф5) ---
+  function getVisibleTableMos() {
+    const input = document.getElementById('moTableSearch');
+    const q = (input && input.value ? input.value : '').trim().toLowerCase();
+    if (!q) return lastMosForTable;
+    return lastMosForTable.filter((m) => (m.name || '').toLowerCase().includes(q));
+  }
+
+  function exportTableCsv() {
+    const rows = getVisibleTableMos();
+    if (!rows.length) return;
+    // BOM — чтобы Excel корректно открыл кириллицу в UTF-8
+    const csv = '\uFEFF' + buildTableCsv(rows);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `knsk_table_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function setupTableExport() {
+    if (tableExportBound) return;
+    const btn = document.getElementById('tableExportBtn');
+    if (!btn) return;
+    tableExportBound = true;
+    btn.addEventListener('click', exportTableCsv);
+  }
+
+  function renderTable(mos) {
+    lastMosSource = mos || [];
+    lastMosForTable = sortMosForTable(lastMosSource, tableSortKey, tableSortDir);
+    const input = document.getElementById('moTableSearch');
+    renderTableRows(lastMosForTable, input ? input.value : '');
     setupTableSearch();
+    setupTableSort();
+    setupTableExport();
+    updateSortHeaders();
   }
 
   let coverageChartInstance = null;
@@ -758,6 +894,10 @@ const DashboardPhase1 = (function () {
   let coverageResizeBound = false;
   let coverageObserverBound = false;
   let coveragePainted = false;
+  // В6: по умолчанию — только топ-N, все МО раскрываются по клику
+  const COVERAGE_TOP_LIMIT = 10;
+  let coverageShowAll = false;
+  let coverageToggleBound = false;
 
   function getCoverageChartWidth(moCount) {
     const scroll = document.getElementById('coverageChartScroll');
@@ -834,10 +974,13 @@ const DashboardPhase1 = (function () {
       m.rank = idx + 1;
       m.rankTotal = rankTotal;
     });
-    const chartWidth = getCoverageChartWidth(sorted.length);
-    const labels = sorted.map((m) => truncateName(m.name, 26));
-    const data = sorted.map((m) => m.coverage);
-    canvas._knskCoverageSorted = sorted;
+    // В6: без раскрытия показываем только топ-N (ранг в тултипе — по всем МО)
+    const shown = coverageShowAll ? sorted : sorted.slice(0, COVERAGE_TOP_LIMIT);
+    updateCoverageToggle(rankTotal, shown.length);
+    const chartWidth = getCoverageChartWidth(shown.length);
+    const labels = shown.map((m) => truncateName(m.name, 26));
+    const data = shown.map((m) => m.coverage);
+    canvas._knskCoverageSorted = shown;
 
     let existing = coverageChartInstance || getChartOnCanvas(canvas);
     if (existing && existing.canvas !== canvas) {
@@ -884,7 +1027,7 @@ const DashboardPhase1 = (function () {
           {
             label: 'Охват колоноскопией, %',
             data,
-            backgroundColor: '#2c7da0',
+            backgroundColor: chartColor('primary'),
             borderRadius: 8,
             barPercentage: 0.75,
             categoryPercentage: 0.9,
@@ -919,13 +1062,11 @@ const DashboardPhase1 = (function () {
           },
           datalabels: {
             display: true,
-            color: '#1e293b',
+            color: chartColor('ink'),
             anchor: 'end',
             align: 'top',
-            formatter: (val, ctx) => {
-              const rank = ctx.dataIndex + 1;
-              return `${rank} место\n${val.toFixed(1)}%`;
-            },
+            // В6: только значение; место в рейтинге — в тултипе
+            formatter: (val) => `${val.toFixed(1)}%`,
             font: { weight: '700', size: 9 },
             lineHeight: 1.25,
           },
@@ -946,13 +1087,83 @@ const DashboardPhase1 = (function () {
     coveragePainted = true;
   }
 
+  function updateCoverageToggle(total, shownCount) {
+    const btn = document.getElementById('coverageToggleBtn');
+    if (!btn) return;
+    if (total <= COVERAGE_TOP_LIMIT) {
+      btn.hidden = true;
+      return;
+    }
+    btn.hidden = false;
+    btn.setAttribute('aria-expanded', coverageShowAll ? 'true' : 'false');
+    btn.textContent = coverageShowAll
+      ? `Показать топ-${COVERAGE_TOP_LIMIT}`
+      : `Показать все МО (${total})`;
+    const hint = document.getElementById('coverageChartHint');
+    if (hint) {
+      hint.textContent = coverageShowAll
+        ? `Все ${total} МО — прокрутите график →`
+        : `Топ-${shownCount} из ${total} МО по охвату`;
+    }
+  }
+
+  function setupCoverageToggle() {
+    if (coverageToggleBound) return;
+    const btn = document.getElementById('coverageToggleBtn');
+    if (!btn) return;
+    coverageToggleBound = true;
+    btn.addEventListener('click', function () {
+      coverageShowAll = !coverageShowAll;
+      if (lastCoverageMos && lastCoverageMos.length) {
+        paintCoverageChart(lastCoverageMos);
+      }
+    });
+  }
+
   function buildCoverageChart(mosData) {
     lastCoverageMos = mosData;
     bindCoverageResize();
+    setupCoverageToggle();
     observeCoverageChart();
     if (mosData && mosData.length && isCoverageChartNearViewport()) {
       paintCoverageChart(mosData);
     }
+  }
+
+  /** Мини-тренд по неделям в KPI-карточке «КнСК с начала года» (В3). */
+  function renderKskSparkline(weeks) {
+    const host = document.getElementById('kskSparkline');
+    if (!host) return;
+    const vals = (weeks || []).map((w) => Number(w && w.value) || 0);
+    if (vals.length < 2) {
+      host.innerHTML = '';
+      return;
+    }
+    const tail = vals.slice(-8);
+    const w = 120;
+    const h = 26;
+    const pad = 2;
+    const min = Math.min.apply(null, tail);
+    const max = Math.max.apply(null, tail);
+    const span = max - min || 1;
+    const pts = tail
+      .map(function (v, i) {
+        const x = pad + (i * (w - pad * 2)) / (tail.length - 1);
+        const y = h - pad - ((v - min) * (h - pad * 2)) / span;
+        return x.toFixed(1) + ',' + y.toFixed(1);
+      })
+      .join(' ');
+    host.innerHTML = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/></svg>`;
+  }
+
+  /**
+   * Панель прогноза (плитки «Прогноз годового плана» и «Охват колоноскопией»)
+   * удалена из разметки по решению пользователя. Точка входа сохранена:
+   * из editor.js/viewer.js сюда приходят недельные точки для мини-тренда KPI.
+   * Расчёты run-rate остались в src/lib/forecast.js на будущее.
+   */
+  function renderForecast(totals, weeks) {
+    renderKskSparkline(weeks);
   }
 
   const KPI_SKELETON_IDS = [
@@ -1114,6 +1325,7 @@ const DashboardPhase1 = (function () {
     computeTotalsFromMosData,
     getPreviousArchiveId,
     renderAll,
+    renderForecast,
     showLoadingState,
     hideLoadingState,
     renderKpis,

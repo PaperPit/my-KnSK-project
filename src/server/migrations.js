@@ -185,8 +185,8 @@ function migrateArchivePlansTo2026(dryRun) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return 'В архиве нет отчётов';
 
-  var ids = sheet.getRange(2, 1, lastRow, 1).getValues();
-  var jsonCells = sheet.getRange(2, 3, lastRow, 1).getValues();
+  var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  var jsonCells = sheet.getRange(2, 3, lastRow - 1, 1).getValues();
 
   var summary = {
     dryRun: dryRun,
@@ -228,7 +228,9 @@ function migrateArchivePlansTo2026(dryRun) {
   }
 
   if (!dryRun) {
-    invalidateArchiveListCache_();
+    // Bump версии данных: инвалидирует кэши списка, индекса, bootstrap,
+    // сравнения и истории МО (все ключи включают версию).
+    bumpArchiveDataVersion_();
   }
 
   var notFoundList = Object.keys(summary.notFound);

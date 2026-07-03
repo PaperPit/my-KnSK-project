@@ -30,16 +30,78 @@ function getWebAppUrl() {
 }
 
 /**
+ * =============================================================================
+ * Настраиваемые пороги сигналов (Ф10) — PropertiesService
+ * =============================================================================
+ * Администратор меняет значения в окне «Настройки» редактора; сохранённые
+ * значения перекрывают константы config.js при формировании clientConfigJson.
+ */
+var SIGNAL_SETTINGS_PROP_KEY = 'knsk_signal_settings_v1';
+
+var SIGNAL_SETTINGS_FIELDS = {
+  planYear: { min: 1, max: 100000000 },
+  planWeekly: { min: 1, max: 10000000 },
+  planThreshold: { min: 1, max: 100 },
+  coverageLowThreshold: { min: 1, max: 100 },
+  coverageTarget: { min: 1, max: 100 },
+};
+
+/** Валидация настроек: только известные ключи, числа в допустимых пределах. */
+function sanitizeSignalSettings_(input) {
+  var out = {};
+  if (!input || typeof input !== 'object') return out;
+  Object.keys(SIGNAL_SETTINGS_FIELDS).forEach(function (key) {
+    var bounds = SIGNAL_SETTINGS_FIELDS[key];
+    var num = Number(input[key]);
+    if (isFinite(num) && num >= bounds.min && num <= bounds.max) {
+      out[key] = Math.round(num);
+    }
+  });
+  return out;
+}
+
+function getSavedSignalSettings_() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(SIGNAL_SETTINGS_PROP_KEY);
+    return raw ? sanitizeSignalSettings_(JSON.parse(raw)) : {};
+  } catch (e) {
+    console.warn('settings: чтение не удалось', e && e.message);
+    return {};
+  }
+}
+
+/** Сохранить пользовательские пороги (вызывается из окна «Настройки»). */
+function saveSignalSettings(settings) {
+  var clean = sanitizeSignalSettings_(settings);
+  PropertiesService.getScriptProperties().setProperty(
+    SIGNAL_SETTINGS_PROP_KEY,
+    JSON.stringify(clean)
+  );
+  return { message: '✅ Настройки сохранены', settings: clean };
+}
+
+/** Сбросить пороги к значениям config.js. */
+function resetSignalSettings() {
+  PropertiesService.getScriptProperties().deleteProperty(SIGNAL_SETTINGS_PROP_KEY);
+  return { message: '✅ Настройки сброшены к значениям по умолчанию' };
+}
+
+/**
  * Настройки для браузера: планы, CDN, API, webAppUrl.
  * Подставляется в Index.html / Viewer.html как <?!= clientConfigJson ?>
  */
 function getClientConfigJson() {
+  var saved = getSavedSignalSettings_();
+  var defaultsPlans = CONFIG.plans || {};
   return JSON.stringify({
     plans: {
-      year: PLAN_YEAR,
-      weekly: PLAN_WEEKLY,
-      threshold: PLAN_THRESHOLD,
+      year: saved.planYear || PLAN_YEAR,
+      weekly: saved.planWeekly || PLAN_WEEKLY,
+      threshold: saved.planThreshold || PLAN_THRESHOLD,
+      coverageLow: saved.coverageLowThreshold || defaultsPlans.coverageLowThreshold || 50,
+      coverageTarget: saved.coverageTarget || defaultsPlans.coverageTarget || 70,
     },
+    signalSettingsSource: Object.keys(saved).length ? 'custom' : 'default',
     api: CONFIG.api,
     csv: CONFIG.csv,
     table: CONFIG.table,
@@ -140,6 +202,7 @@ function getCurrentData() {
     return obj;
   });
 }
+
 
 /**
  * =============================================================================
@@ -259,7 +322,7 @@ function buildArchiveIndex_(sheet) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return { list: [], idToRow: {} };
 
-  var values = sheet.getRange(2, 1, lastRow, 2).getValues();
+  var values = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
   var list = [];
   var idToRow = {};
 
@@ -421,7 +484,7 @@ function readArchiveReportRows_(sheet, rowNums) {
   if (!rowNums || !rowNums.length) return [];
   if (rowNums.length === 1) {
     var r0 = rowNums[0];
-    return [sheet.getRange(r0, 1, r0, 4).getValues()[0]];
+    return [sheet.getRange(r0, 1, 1, 4).getValues()[0]];
   }
 
   var sorted = rowNums.slice().sort(function (a, b) {
@@ -429,7 +492,7 @@ function readArchiveReportRows_(sheet, rowNums) {
   });
   var minR = sorted[0];
   var maxR = sorted[sorted.length - 1];
-  var block = sheet.getRange(minR, 1, maxR, 4).getValues();
+  var block = sheet.getRange(minR, 1, maxR - minR + 1, 4).getValues();
   var byRow = {};
   for (var i = 0; i < block.length; i++) {
     byRow[minR + i] = block[i];
@@ -455,7 +518,7 @@ function getPreviousArchiveIdFromList_(list, currentId) {
 }
 
 function readArchiveReportAtRow_(sheet, rowNum) {
-  var row = sheet.getRange(rowNum, 1, rowNum, 4).getValues()[0];
+  var row = sheet.getRange(rowNum, 1, 1, 4).getValues()[0];
   return parseArchiveReportRow_(row);
 }
 
@@ -953,7 +1016,9 @@ function buildMoHistoryFromRows_(rows, moName) {
 }
 
 function getMoHistoryCacheKey_(moName) {
-  return 'mo_history_v1_' + normalizeMoKey_(moName);
+  // Версия данных архива в ключе: после сохранения нового отчёта
+  // (bumpArchiveDataVersion_) история МО не отдаётся из устаревшего кэша.
+  return 'mo_history_v2_' + getArchiveDataVersion_() + '_' + normalizeMoKey_(moName);
 }
 
 function getCachedMoHistory_(moName) {
@@ -1003,7 +1068,7 @@ function getMoHistoryFromArchive(moName) {
     };
   }
 
-  var values = sheet.getRange(2, 1, lastRow, 4).getValues();
+  var values = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
   var result = buildMoHistoryFromRows_(values, moName);
   putCachedMoHistory_(moName, result);
   return result;
@@ -1197,8 +1262,8 @@ function migrateArchivePlansTo2026(dryRun) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return 'В архиве нет отчётов';
 
-  var ids = sheet.getRange(2, 1, lastRow, 1).getValues();
-  var jsonCells = sheet.getRange(2, 3, lastRow, 1).getValues();
+  var ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  var jsonCells = sheet.getRange(2, 3, lastRow - 1, 1).getValues();
 
   var summary = {
     dryRun: dryRun,
@@ -1240,7 +1305,9 @@ function migrateArchivePlansTo2026(dryRun) {
   }
 
   if (!dryRun) {
-    invalidateArchiveListCache_();
+    // Bump версии данных: инвалидирует кэши списка, индекса, bootstrap,
+    // сравнения и истории МО (все ключи включают версию).
+    bumpArchiveDataVersion_();
   }
 
   var notFoundList = Object.keys(summary.notFound);

@@ -116,7 +116,7 @@ function buildArchiveIndex_(sheet) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return { list: [], idToRow: {} };
 
-  var values = sheet.getRange(2, 1, lastRow, 2).getValues();
+  var values = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
   var list = [];
   var idToRow = {};
 
@@ -278,7 +278,7 @@ function readArchiveReportRows_(sheet, rowNums) {
   if (!rowNums || !rowNums.length) return [];
   if (rowNums.length === 1) {
     var r0 = rowNums[0];
-    return [sheet.getRange(r0, 1, r0, 4).getValues()[0]];
+    return [sheet.getRange(r0, 1, 1, 4).getValues()[0]];
   }
 
   var sorted = rowNums.slice().sort(function (a, b) {
@@ -286,7 +286,7 @@ function readArchiveReportRows_(sheet, rowNums) {
   });
   var minR = sorted[0];
   var maxR = sorted[sorted.length - 1];
-  var block = sheet.getRange(minR, 1, maxR, 4).getValues();
+  var block = sheet.getRange(minR, 1, maxR - minR + 1, 4).getValues();
   var byRow = {};
   for (var i = 0; i < block.length; i++) {
     byRow[minR + i] = block[i];
@@ -312,7 +312,7 @@ function getPreviousArchiveIdFromList_(list, currentId) {
 }
 
 function readArchiveReportAtRow_(sheet, rowNum) {
-  var row = sheet.getRange(rowNum, 1, rowNum, 4).getValues()[0];
+  var row = sheet.getRange(rowNum, 1, 1, 4).getValues()[0];
   return parseArchiveReportRow_(row);
 }
 
@@ -810,7 +810,9 @@ function buildMoHistoryFromRows_(rows, moName) {
 }
 
 function getMoHistoryCacheKey_(moName) {
-  return 'mo_history_v1_' + normalizeMoKey_(moName);
+  // Версия данных архива в ключе: после сохранения нового отчёта
+  // (bumpArchiveDataVersion_) история МО не отдаётся из устаревшего кэша.
+  return 'mo_history_v2_' + getArchiveDataVersion_() + '_' + normalizeMoKey_(moName);
 }
 
 function getCachedMoHistory_(moName) {
@@ -860,7 +862,7 @@ function getMoHistoryFromArchive(moName) {
     };
   }
 
-  var values = sheet.getRange(2, 1, lastRow, 4).getValues();
+  var values = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
   var result = buildMoHistoryFromRows_(values, moName);
   putCachedMoHistory_(moName, result);
   return result;

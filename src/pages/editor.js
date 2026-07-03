@@ -14,7 +14,7 @@
  * KPI и таблица — DashboardPhase1/2 (через window). Математика — KnSKLib.
  * =============================================================================
  */
-import { renderHtmlContent, parseCSV, formatShortDate, getNextWeekPeriod, icon } from '../lib/index.js';
+import { renderHtmlContent, parseCSV, formatShortDate, getNextWeekPeriod, icon, trapFocus, focusFirst, restoreFocus } from '../lib/index.js';
 import {
   mergeReportDynamicsWeek,
   DEFAULT_WEEKLY_DYNAMICS_LIMIT,
@@ -118,7 +118,8 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
     
     function syncPeriodToDashboard() {
         const period = document.getElementById('periodInput').value.trim();
-        document.getElementById('periodDisplayText').innerHTML = period || 'Период не указан';
+        // textContent, чтобы исключить XSS через ввод пользователя.
+        document.getElementById('periodDisplayText').textContent = period || 'Период не указан';
     }
 
     function updateNextWeekPeriodDisplay() {
@@ -217,6 +218,9 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         }).then(function (result) {
             return loadWeeklyDynamicsTrend(data, opts.reportAnchor).then(function (weeks) {
             renderDashboardCharts(result.totals ? result.totals.growth : 0, weeks);
+            if (result.totals && DashboardPhase1.renderForecast) {
+                DashboardPhase1.renderForecast(result.totals, weeks);
+            }
             ensurePhase2Initialized({ onStatus: setStatus, gasAdapter: gasAdapter }).then(function () {
                 if (window.DashboardPhase2) {
                     DashboardPhase2.renderAll(mos, {
@@ -345,6 +349,9 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
                             currentMOSData.reduce(function (s, m) { return s + (m.growth || 0); }, 0),
                             weeks
                         );
+                        if (window.DashboardPhase1 && DashboardPhase1.renderForecast) {
+                            DashboardPhase1.renderForecast(DashboardPhase1.computeTotals(currentMOSData), weeks);
+                        }
                     });
                 })
                 .catch(function (err) {
@@ -424,22 +431,37 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         const styleNodes = document.querySelectorAll('style');
         styleNodes.forEach(style => { allStyles += style.innerHTML; });
 
+        // Локальный fallback на спрайт SVG из DOM, если fetch UiIcons.html не сработает в GAS.
+        function readIconSpriteFromDom() {
+            try {
+                const sprites = document.querySelectorAll('svg[xmlns]');
+                for (const sprite of sprites) {
+                    if (sprite.querySelector('symbol[id^="icon-"]')) {
+                        return sprite.outerHTML;
+                    }
+                }
+            } catch (_e) {}
+            return '';
+        }
+
         const assetsPromise = Promise.all([
             fetch('UiPhase2.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
             fetch('UiTokens.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
             fetch('DashboardPhase1.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
             fetch('DashboardPhase2.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
+            fetch('UiIcons.html').then((r) => (r.ok ? r.text() : '')).catch(() => ''),
         ]);
 
-        assetsPromise.then(([phase2Css, tokensCss, phase1Js, phase2Js]) => {
+        assetsPromise.then(([phase2Css, tokensCss, phase1Js, phase2Js, iconSprite]) => {
             const cssOnly = (tokensCss + '\n' + phase2Css).replace(/<\/?style[^>]*>/gi, '').trim();
-            buildExportHtml(dashboardContent, allStyles + '\n' + cssOnly, phase1Js, phase2Js);
+            const sprite = iconSprite || readIconSpriteFromDom();
+            buildExportHtml(dashboardContent, allStyles + '\n' + cssOnly, phase1Js, phase2Js, sprite);
         }).catch(() => {
-            buildExportHtml(dashboardContent, allStyles, '', '');
+            buildExportHtml(dashboardContent, allStyles, '', '', readIconSpriteFromDom());
         });
     }
 
-    function buildExportHtml(dashboardContent, allStyles, phase1Js, phase2Js) {
+    function buildExportHtml(dashboardContent, allStyles, phase1Js, phase2Js, iconSprite) {
     
         const weeksDataForExport = autoWeeksData.map((w) => ({ start: w.start, end: w.end, value: w.value }));
         const mosDataForExport = currentMOSData;
@@ -491,12 +513,25 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         </style>
     </head>
     <body class="dashboard-phase1">
+    ${iconSprite || ''}
     <div class="dashboard">
         ${dashboardContent.outerHTML}
     <\/div>
     <script>
         Chart.register(ChartDataLabels);
-        
+
+        // Локальный shim для icon() — бандл DashboardPhase1 не экспонирует функцию на window.
+        function icon(name, options) {
+            if (!name) return '';
+            var className = '';
+            var style = '';
+            if (typeof options === 'string') className = options;
+            else if (options) { className = options.className || ''; style = options.style || ''; }
+            var cls = ['knsk-icon', className].filter(Boolean).join(' ');
+            var styleAttr = style ? ' style="' + style + '"' : '';
+            return '<svg class="' + cls + '"' + styleAttr + ' aria-hidden="true"><use href="#icon-' + name + '"/><\/svg>';
+        }
+
         const EXPORTED_WEEKS = ${JSON.stringify(weeksDataForExport)};
         const EXPORTED_MOS = ${JSON.stringify(mosDataForExport)};
         const PLAN_WEEKLY = ${PLAN_WEEKLY};
@@ -552,8 +587,8 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         document.getElementById('plansTextDisplay').innerHTML = renderHtmlContent(PLANS_TEXT);
         document.getElementById('doneDateDisplay').innerHTML = icon('calendar') + ' ' + CURRENT_DATE;
         document.getElementById('plansDateDisplay').innerHTML = icon('calendar') + ' ' + CURRENT_DATE;
-        document.getElementById('nextWeekPeriodDisplay').innerHTML = NEXT_WEEK_PERIOD;
-        document.getElementById('periodDisplayText').innerHTML = PERIOD_TEXT || 'Период не указан';
+        document.getElementById('nextWeekPeriodDisplay').textContent = NEXT_WEEK_PERIOD;
+        document.getElementById('periodDisplayText').textContent = PERIOD_TEXT || 'Период не указан';
         
         let dynamicChart = null, planFactChart = null;
         
@@ -639,10 +674,149 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         setStatus('HTML-файл сохранён ✅', true);
     }
     
-    function bindEditorPhase2InteractionTriggers() {
+    // ==================== НАСТРОЙКИ ПОРОГОВ (Ф10) ====================
+  let settingsFocusRelease = null;
+  let settingsTriggerEl = null;
+
+  const SETTINGS_FIELDS = [
+    { key: 'planYear', cfg: 'year', label: 'Годовой план КнСК, исследований', min: 1, max: 100000000 },
+    { key: 'planWeekly', cfg: 'weekly', label: 'Недельный план КнСК, исследований', min: 1, max: 10000000 },
+    { key: 'planThreshold', cfg: 'threshold', label: 'Порог сигнала «низкий % плана», %', min: 1, max: 100 },
+    { key: 'coverageLowThreshold', cfg: 'coverageLow', label: 'Порог «низкий охват колоноскопией», %', min: 1, max: 100 },
+    { key: 'coverageTarget', cfg: 'coverageTarget', label: 'Цель по охвату колоноскопией (КнСК+), %', min: 1, max: 100 },
+  ];
+
+  function ensureSettingsDialog() {
+    let overlay = document.getElementById('settingsOverlay');
+    if (overlay) return overlay;
+
+    overlay = document.createElement('div');
+    overlay.id = 'settingsOverlay';
+    overlay.className = 'compare-overlay settings-overlay';
+    overlay.setAttribute('aria-hidden', 'true');
+
+    const rows = SETTINGS_FIELDS.map(function (f) {
+      return (
+        '<label class="settings-row">' +
+        '<span class="settings-row-label">' + f.label + '</span>' +
+        '<input type="number" id="settings_' + f.key + '" min="' + f.min + '" max="' + f.max + '" step="1">' +
+        '</label>'
+      );
+    }).join('');
+
+    overlay.innerHTML =
+      '<div class="compare-panel settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsPanelTitle">' +
+      '<button type="button" class="compare-panel-close" id="settingsPanelClose" aria-label="Закрыть">&times;</button>' +
+      '<h3 id="settingsPanelTitle">⚙️ Настройки порогов и планов</h3>' +
+      '<p class="settings-note">Значения перекрывают константы <code>config.js</code> и применяются ко всем пользователям после перезагрузки страницы. «Сбросить» возвращает значения по умолчанию.</p>' +
+      '<div class="settings-rows">' + rows + '</div>' +
+      '<div class="settings-actions">' +
+      '<button type="button" class="upload-btn settings-save-btn" id="settingsSaveBtn">Сохранить и перезагрузить</button>' +
+      '<button type="button" class="settings-reset-btn" id="settingsResetBtn">Сбросить к умолчаниям</button>' +
+      '</div>' +
+      '</div>';
+
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeSettingsDialog();
+    });
+    document.getElementById('settingsPanelClose').addEventListener('click', closeSettingsDialog);
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && overlay.classList.contains('open')) closeSettingsDialog();
+    });
+
+    document.getElementById('settingsSaveBtn').addEventListener('click', saveSettingsFromDialog);
+    document.getElementById('settingsResetBtn').addEventListener('click', function () {
+      if (!gasAdapter.originalRun) {
+        setStatus('Настройки доступны только в веб-приложении Google Apps Script', false);
+        return;
+      }
+      setStatus('Сброс настроек...');
+      gasAdapter
+        .call('resetSignalSettings')
+        .then(function (result) {
+          setStatus(result.message, true);
+          location.reload();
+        })
+        .catch(function (err) {
+          setStatus('Ошибка сброса настроек: ' + err.message, false);
+        });
+    });
+
+    return overlay;
+  }
+
+  function openSettingsDialog(triggerEl) {
+    const overlay = ensureSettingsDialog();
+    const plansCfg = (CONFIG && CONFIG.plans) || {};
+    SETTINGS_FIELDS.forEach(function (f) {
+      const input = document.getElementById('settings_' + f.key);
+      if (input && plansCfg[f.cfg] != null) input.value = plansCfg[f.cfg];
+    });
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+    settingsTriggerEl = triggerEl || document.activeElement;
+    const panel = overlay.querySelector('.settings-panel');
+    if (settingsFocusRelease) settingsFocusRelease();
+    if (panel) {
+      settingsFocusRelease = trapFocus(panel);
+      focusFirst(panel, '#settings_planYear');
+    }
+  }
+
+  function closeSettingsDialog() {
+    const overlay = document.getElementById('settingsOverlay');
+    if (overlay) {
+      overlay.classList.remove('open');
+      overlay.setAttribute('aria-hidden', 'true');
+    }
+    if (settingsFocusRelease) {
+      settingsFocusRelease();
+      settingsFocusRelease = null;
+    }
+    restoreFocus(settingsTriggerEl);
+    settingsTriggerEl = null;
+    document.body.style.overflow = '';
+  }
+
+  function saveSettingsFromDialog() {
+    if (!gasAdapter.originalRun) {
+      setStatus('Настройки доступны только в веб-приложении Google Apps Script', false);
+      return;
+    }
+    const payload = {};
+    let invalid = null;
+    SETTINGS_FIELDS.forEach(function (f) {
+      const input = document.getElementById('settings_' + f.key);
+      const num = input ? Number(input.value) : NaN;
+      if (!isFinite(num) || num < f.min || num > f.max) {
+        invalid = invalid || f.label;
+        return;
+      }
+      payload[f.key] = Math.round(num);
+    });
+    if (invalid) {
+      setStatus('Проверьте значение поля: ' + invalid, false);
+      return;
+    }
+    setStatus('Сохранение настроек...');
+    gasAdapter
+      .call('saveSignalSettings', { params: [payload] })
+      .then(function (result) {
+        setStatus(result.message, true);
+        location.reload();
+      })
+      .catch(function (err) {
+        setStatus('Ошибка сохранения настроек: ' + err.message, false);
+      });
+  }
+
+  function bindEditorPhase2InteractionTriggers() {
     const phase2Opts = { onStatus: setStatus, gasAdapter: gasAdapter };
     function warmPhase2() {
-      ensurePhase2Initialized(phase2Opts).catch(function (err) {
+      return ensurePhase2Initialized(phase2Opts).catch(function (err) {
         console.warn('[Phase2 interaction]', err);
       });
     }
@@ -652,11 +826,18 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
     });
     const tableBody = document.getElementById('tableBody');
     if (tableBody) {
+      // Первый клик по строке МО может пройти до того, как Phase2 успеет повесить обработчик.
+      // Перевызываем .click() на той же строке после инициализации, чтобы открыть drawer без второго клика.
       tableBody.addEventListener(
         'click',
         function (e) {
-          if (!e.target.closest('tr.mo-row-clickable')) return;
-          warmPhase2();
+          const row = e.target.closest('tr.mo-row-clickable');
+          if (!row) return;
+          warmPhase2().then(function () {
+            if (window.DashboardPhase2 && document.contains(row)) {
+              row.click();
+            }
+          });
         },
         { once: true, capture: true }
       );
@@ -676,7 +857,8 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         bindEditorPhase2InteractionTriggers();
 
         document.getElementById('csvFile').addEventListener('change', e => {
-            const file = e.target.files[0];
+            const input = e.target;
+            const file = input.files[0];
             if (!file) return;
             const reader = new FileReader();
             reader.onload = ev => {
@@ -688,6 +870,8 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
                 });
             };
             reader.readAsText(file);
+            // Сброс value, чтобы повторный выбор того же файла снова инициировал change.
+            input.value = '';
         });
         
         document.getElementById('webVersionBtn').addEventListener('click', function () {
@@ -707,6 +891,12 @@ import { GoogleAppsScriptAdapter } from '../core/GoogleAppsScriptAdapter.js';
         document.getElementById('periodInput').addEventListener('input', syncPeriodToDashboard);
         document.getElementById('refreshArchiveBtn').addEventListener('click', loadArchiveList);
 
+        const settingsBtn = document.getElementById('signalSettingsBtn');
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', function () { openSettingsDialog(settingsBtn); });
+        }
+
+        // Диагностика графиков: обработчик оставлен намеренно; кнопка #chartDiagnosticsBtn скрыта в UI (Index.html + .knsk-diag-trigger).
         const diagBtn = document.getElementById('chartDiagnosticsBtn');
         if (diagBtn) {
             diagBtn.addEventListener('click', function () {

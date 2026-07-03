@@ -89,9 +89,10 @@ import {
 
     function bindPhase2InteractionTriggers() {
         function warmPhase2() {
-            ensurePhase2Initialized(getPhase2Options())
-                .then(function () {
+            return ensurePhase2Initialized(getPhase2Options())
+                .then(function (phase2) {
                     flushPendingPhase2(null);
+                    return phase2;
                 })
                 .catch(function (err) {
                     console.warn('[Phase2 interaction]', err);
@@ -105,11 +106,17 @@ import {
 
         const tableBody = document.getElementById('tableBody');
         if (tableBody) {
+            // См. editor.js: первый клик может пройти до того, как Phase2 повесит обработчик.
             tableBody.addEventListener(
                 'click',
                 function (e) {
-                    if (!e.target.closest('tr.mo-row-clickable')) return;
-                    warmPhase2();
+                    const row = e.target.closest('tr.mo-row-clickable');
+                    if (!row) return;
+                    warmPhase2().then(function () {
+                        if (window.DashboardPhase2 && document.contains(row)) {
+                            row.click();
+                        }
+                    });
                 },
                 { once: true, capture: true }
             );
@@ -299,6 +306,9 @@ import {
             const reportAnchor = report.timestamp || null;
             return mergeWeeksTrendForReport(mosData, reportAnchor, weeksTrend).then(function (merged) {
               renderDashboardCharts(result.totals ? result.totals.growth : 0, merged);
+              if (result.totals && DashboardPhase1.renderForecast) {
+                DashboardPhase1.renderForecast(result.totals, merged);
+              }
             pendingPhase2Render = {
                 mos: mos,
                 totals: result.totals,
@@ -322,6 +332,28 @@ import {
         });
     }
     
+  function renderFromCacheFallback(reason) {
+    const cached = loadViewerCache();
+    if (!cached || !cached.report) return false;
+    if (window.DashboardPhase1) DashboardPhase1.hideLoadingState();
+    const prevCtx = resolvePreviousContext(cached.previous);
+    applyReportToDashboard(
+      cached.report,
+      prevCtx.previousTotals,
+      prevCtx.previousMos,
+      cached.reportId,
+      null
+    );
+    const list = document.getElementById('signalsList');
+    if (list && reason) {
+      const note = document.createElement('li');
+      note.className = 'signal-warn';
+      note.textContent = '⚠ Сеть недоступна — показан последний сохранённый отчёт из локального кэша';
+      list.prepend(note);
+    }
+    return true;
+  }
+
   window.addEventListener('DOMContentLoaded', function () {
         perfMark('dom-content-loaded');
         ensureChartsReady();
@@ -386,9 +418,11 @@ import {
             })
             .catch(function (err) {
                 if (window.DashboardPhase1) DashboardPhase1.hideLoadingState();
+                console.error('Ошибка инициализации viewer:', err);
+                // Если есть кэш отчёта в localStorage — показываем его как офлайн-fallback.
+                if (renderFromCacheFallback(err && err.message)) return;
                 document.getElementById('signalsList').innerHTML =
                     '<li>Ошибка загрузки: ' + escapeHtml(err.message || String(err)) + '</li>';
-                console.error('Ошибка инициализации viewer:', err);
             });
 
         document.getElementById('archiveSelect').addEventListener('change', function () {
@@ -398,6 +432,7 @@ import {
             }
         });
 
+        // Диагностика графиков: обработчик оставлен намеренно; кнопка #chartDiagnosticsBtn скрыта в UI (Viewer.html + .knsk-diag-trigger).
         const diagBtn = document.getElementById('chartDiagnosticsBtn');
         if (diagBtn) {
             diagBtn.addEventListener('click', function () {

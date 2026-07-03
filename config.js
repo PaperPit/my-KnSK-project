@@ -25,6 +25,10 @@ const CONFIG = {
     year: PLAN_YEAR,
     weekly: PLAN_WEEKLY,
     threshold: PLAN_THRESHOLD,
+    /** Порог «низкий охват колоноскопией» в сигналах, % */
+    coverageLowThreshold: 50,
+    /** Цель проекта по охвату колоноскопией пациентов с КнСК+, % */
+    coverageTarget: 70,
   },
 
   // Настройки API

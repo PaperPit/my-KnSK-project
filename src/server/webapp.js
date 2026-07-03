@@ -29,16 +29,78 @@ function getWebAppUrl() {
 }
 
 /**
+ * =============================================================================
+ * Настраиваемые пороги сигналов (Ф10) — PropertiesService
+ * =============================================================================
+ * Администратор меняет значения в окне «Настройки» редактора; сохранённые
+ * значения перекрывают константы config.js при формировании clientConfigJson.
+ */
+var SIGNAL_SETTINGS_PROP_KEY = 'knsk_signal_settings_v1';
+
+var SIGNAL_SETTINGS_FIELDS = {
+  planYear: { min: 1, max: 100000000 },
+  planWeekly: { min: 1, max: 10000000 },
+  planThreshold: { min: 1, max: 100 },
+  coverageLowThreshold: { min: 1, max: 100 },
+  coverageTarget: { min: 1, max: 100 },
+};
+
+/** Валидация настроек: только известные ключи, числа в допустимых пределах. */
+function sanitizeSignalSettings_(input) {
+  var out = {};
+  if (!input || typeof input !== 'object') return out;
+  Object.keys(SIGNAL_SETTINGS_FIELDS).forEach(function (key) {
+    var bounds = SIGNAL_SETTINGS_FIELDS[key];
+    var num = Number(input[key]);
+    if (isFinite(num) && num >= bounds.min && num <= bounds.max) {
+      out[key] = Math.round(num);
+    }
+  });
+  return out;
+}
+
+function getSavedSignalSettings_() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(SIGNAL_SETTINGS_PROP_KEY);
+    return raw ? sanitizeSignalSettings_(JSON.parse(raw)) : {};
+  } catch (e) {
+    console.warn('settings: чтение не удалось', e && e.message);
+    return {};
+  }
+}
+
+/** Сохранить пользовательские пороги (вызывается из окна «Настройки»). */
+function saveSignalSettings(settings) {
+  var clean = sanitizeSignalSettings_(settings);
+  PropertiesService.getScriptProperties().setProperty(
+    SIGNAL_SETTINGS_PROP_KEY,
+    JSON.stringify(clean)
+  );
+  return { message: '✅ Настройки сохранены', settings: clean };
+}
+
+/** Сбросить пороги к значениям config.js. */
+function resetSignalSettings() {
+  PropertiesService.getScriptProperties().deleteProperty(SIGNAL_SETTINGS_PROP_KEY);
+  return { message: '✅ Настройки сброшены к значениям по умолчанию' };
+}
+
+/**
  * Настройки для браузера: планы, CDN, API, webAppUrl.
  * Подставляется в Index.html / Viewer.html как <?!= clientConfigJson ?>
  */
 function getClientConfigJson() {
+  var saved = getSavedSignalSettings_();
+  var defaultsPlans = CONFIG.plans || {};
   return JSON.stringify({
     plans: {
-      year: PLAN_YEAR,
-      weekly: PLAN_WEEKLY,
-      threshold: PLAN_THRESHOLD,
+      year: saved.planYear || PLAN_YEAR,
+      weekly: saved.planWeekly || PLAN_WEEKLY,
+      threshold: saved.planThreshold || PLAN_THRESHOLD,
+      coverageLow: saved.coverageLowThreshold || defaultsPlans.coverageLowThreshold || 50,
+      coverageTarget: saved.coverageTarget || defaultsPlans.coverageTarget || 70,
     },
+    signalSettingsSource: Object.keys(saved).length ? 'custom' : 'default',
     api: CONFIG.api,
     csv: CONFIG.csv,
     table: CONFIG.table,
@@ -138,4 +200,10 @@ function getCurrentData() {
     });
     return obj;
   });
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    sanitizeSignalSettings_,
+  };
 }

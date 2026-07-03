@@ -17,8 +17,6 @@ const ARTIFACTS = [
   'VendorChartJs.html',
   'VendorChartDataLabels.html',
   'VendorEcharts.html',
-  'LibBundle.html',
-  'GASAdapter.html',
   'DashboardPhase1.html',
   'DashboardPhase2.html',
   'MoProfile.html',
@@ -38,13 +36,6 @@ describe('build-gas.mjs', () => {
       expect(fs.existsSync(full), `missing ${file}`).toBe(true);
       expect(fs.statSync(full).size).toBeGreaterThan(0);
     }
-  });
-
-  it('bundles KnSKLib into LibBundle.html', () => {
-    const lib = fs.readFileSync(path.join(ROOT, 'LibBundle.html'), 'utf8');
-    expect(lib).toContain('window.KnSKLib');
-    expect(lib).toContain('parseCSV');
-    expect(lib).toContain('normalizeArchiveReport');
   });
 
   it('generates Code.js from server modules', () => {

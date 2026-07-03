@@ -20,8 +20,6 @@ const ARTIFACTS = [
   'VendorChartJs.html',
   'VendorChartDataLabels.html',
   'VendorEcharts.html',
-  'LibBundle.html',
-  'GASAdapter.html',
   'DashboardPhase1.html',
   'DashboardPhase2.html',
   'MoProfile.html',

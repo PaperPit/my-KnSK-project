@@ -18,8 +18,10 @@ export function getPlans(config) {
       year: cfg.plans.year,
       weekly: cfg.plans.weekly,
       threshold: cfg.plans.threshold,
+      coverageLow: cfg.plans.coverageLow || 50,
+      coverageTarget: cfg.plans.coverageTarget || 70,
     };
   }
   // Значения по умолчанию совпадают с config.js
-  return { year: 220000, weekly: 4583, threshold: 70 };
+  return { year: 220000, weekly: 4583, threshold: 70, coverageLow: 50, coverageTarget: 70 };
 }

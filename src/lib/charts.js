@@ -3,6 +3,7 @@
  * charts.js — общие фабрики графиков Chart.js (editor/viewer)
  * =============================================================================
  */
+import { chartColor } from './chartTheme.js';
 
 function chartAnimationsEnabled() {
   return typeof CONFIG !== 'undefined' && CONFIG.ui && CONFIG.ui.animationsEnabled === true;
@@ -62,7 +63,7 @@ export function makeTrendChart(opts) {
         {
           label: 'Факт КнСК',
           data: facts,
-          borderColor: '#1f6392',
+          borderColor: chartColor('line'),
           borderWidth: 3,
           tension: 0.2,
           fill: false,
@@ -72,7 +73,7 @@ export function makeTrendChart(opts) {
         {
           label: 'План',
           data: planLine,
-          borderColor: '#e67e22',
+          borderColor: chartColor('target'),
           borderWidth: 2,
           borderDash: [8, 6],
           fill: false,
@@ -142,7 +143,7 @@ export function makePlanFactChart(opts) {
   const dataset = {
     label: 'Исследования КнСК',
     data: [planWeekly, fact],
-    backgroundColor: ['#2c7da0', '#e9b35f'],
+    backgroundColor: [chartColor('primary'), chartColor('accent')],
     borderRadius: 12,
     barPercentage: 0.6,
   };
@@ -161,7 +162,7 @@ export function makePlanFactChart(opts) {
       plugins: {
         datalabels: {
           display: true,
-          color: '#1e293b',
+          color: chartColor('ink'),
           anchor: 'center',
           align: 'center',
           font: { size: 14, weight: 'bold' },

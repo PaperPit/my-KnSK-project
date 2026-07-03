@@ -77,3 +77,37 @@ body.dashboard-phase1 .kpi-card.kpi-card--zno .kpi-delta {
   background: rgba(255, 255, 255, 0.15);
   color: #fff;
 }
+
+/* В3: прогресс до годовой цели в карточке «План на год» */
+body.dashboard-phase1 .kpi-progress {
+  position: relative;
+  z-index: 1;
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.22);
+  overflow: hidden;
+}
+
+body.dashboard-phase1 .kpi-progress-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.92);
+  transition: width 0.4s ease;
+}
+
+/* В3: мини-тренд по неделям в карточке «КнСК с начала года» */
+body.dashboard-phase1 .kpi-sparkline {
+  position: relative;
+  z-index: 1;
+  height: 26px;
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+body.dashboard-phase1 .kpi-sparkline svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

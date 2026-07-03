@@ -39,7 +39,9 @@
             <button type="button" class="save-html-btn" id="saveHtmlBtn"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-download"/></svg> Сохранить как HTML</button>
             <button type="button" class="upload-btn" id="webVersionBtn"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-globe"/></svg> Веб-версия</button>
             <button type="button" class="toolbar-btn toolbar-btn--presentation" id="presentationModeBtn" aria-pressed="false"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-maximize-2"/></svg> Презентация</button>
-            <button type="button" class="upload-btn knsk-diag-trigger" id="chartDiagnosticsBtn" title="Диагностика графиков"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-stethoscope"/></svg> Диагностика</button>
+            <button type="button" class="upload-btn" id="signalSettingsBtn" title="Настройки порогов и планов">⚙️ Настройки</button>
+            <!-- Диагностика: кнопка скрыта намеренно (см. .knsk-diag-trigger в phase2.css). Логика — editor.js + chartDiagnostics.js -->
+            <button type="button" class="upload-btn knsk-diag-trigger" id="chartDiagnosticsBtn" title="Диагностика графиков" hidden aria-hidden="true"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-stethoscope"/></svg> Диагностика</button>
         </div>
         <div class="info-text">
             <svg class="knsk-icon" aria-hidden="true"><use href="#icon-info"/></svg> 
@@ -105,12 +107,14 @@
                 <div class="kpi-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-trending-up"/></svg> План на год</div>
                 <div class="kpi-value" id="totalPercent">--</div>
                 <div class="kpi-sub" id="totalPlanFact">--</div>
+                <div class="kpi-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Прогресс годового плана"><div class="kpi-progress-fill" id="totalPlanProgressFill"></div></div>
                 <div id="totalPercentDelta"></div>
             </div>
             <div class="kpi-card kpi-card--ksk">
                 <div class="kpi-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-test-tubes"/></svg> КНСК с начала года</div>
                 <div class="kpi-value" id="totalKsk">--</div>
                 <div class="kpi-sub" id="weeklyGrowth">--</div>
+                <div class="kpi-sparkline" id="kskSparkline" aria-hidden="true"></div>
                 <div id="totalGrowthDelta"></div>
             </div>
             <div class="kpi-card kpi-card--colon">
@@ -174,7 +178,7 @@
 
         <div class="charts-row charts-row--full">
             <div class="chart-card coverage-chart-card">
-                <div class="chart-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-chart-bar"/></svg> Охват колоноскопией среди пациентов КнСК+ (все МО) <span class="chart-title-note">— прокрутите график → · над столбцами: место в рейтинге и % охвата</span></div>
+                <div class="chart-title coverage-chart-title"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-chart-bar"/></svg> Охват колоноскопией среди пациентов КнСК+ <span class="chart-title-note" id="coverageChartHint">— место в рейтинге при наведении на столбец</span><button type="button" class="coverage-toggle-btn" id="coverageToggleBtn" aria-expanded="false" hidden>Показать все МО</button></div>
                 <div class="coverage-chart-scroll" id="coverageChartScroll">
                     <div class="coverage-chart-inner" id="coverageChartInner">
                         <canvas id="coverageChart" height="280"></canvas>
@@ -194,9 +198,10 @@
             <div class="table-toolbar">
                 <input type="search" id="moTableSearch" placeholder="Поиск по названию МО…" autocomplete="off">
                 <span class="table-filter-hint" id="tableFilterHint"></span>
+                <button type="button" class="table-export-btn" id="tableExportBtn" title="Скачать текущее представление таблицы (с учётом сортировки и поиска) в CSV"><svg class="knsk-icon" aria-hidden="true"><use href="#icon-download"/></svg> CSV</button>
             </div>
             <div class="table-scroll-wrap">
-                <table id="mainTable"><thead><tr><th>№</th><th>МО</th><th>План</th><th>Итого</th><th>%</th><th>Динамика</th><th>Нет откл.</th><th>Есть откл.</th><th>Колоноск.</th><th>ЗНО</th></tr></thead><tbody id="tableBody"></tbody></table>
+                <table id="mainTable"><thead><tr><th scope="col">№</th><th scope="col" data-sort="name" title="Сортировать по названию">МО</th><th scope="col" class="num" data-sort="plan" title="Сортировать">План</th><th scope="col" class="num" data-sort="fact" title="Сортировать">Итого</th><th scope="col" data-sort="percent" title="Сортировать">%</th><th scope="col" class="num" data-sort="growth" title="Сортировать">Динамика</th><th scope="col" class="num" data-sort="noDev" title="Сортировать">Нет откл.</th><th scope="col" class="num" data-sort="hasDev" title="Сортировать">Есть откл.</th><th scope="col" class="num" data-sort="colon" title="Сортировать">Колоноск.</th><th scope="col" class="num" data-sort="zno" title="Сортировать">ЗНО</th></tr></thead><tbody id="tableBody"></tbody></table>
             </div>
             <div class="table-update-time" id="updateTime"></div>
         </div>

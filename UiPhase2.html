@@ -1725,7 +1725,11 @@ body.presentation-mode .presentation-exit {
   max-height: min(50vh, 480px);
 }
 
+/* Диагностика графиков: кнопка намеренно скрыта в UI.
+   Функционал сохранён (chartDiagnostics.js, #chartDiagnosticsBtn, обработчики в editor/viewer).
+   Чтобы снова показать кнопку — удалите display: none ниже. */
 .knsk-diag-trigger {
+  display: none !important;
   background: #475569 !important;
   border: none !important;
   color: #fff !important;
@@ -1733,5 +1737,83 @@ body.presentation-mode .presentation-exit {
 
 .knsk-diag-trigger:hover {
   background: #334155 !important;
+}
+
+/* В2/В5: дельты в drawer МО — классы вместо inline-цветов */
+.m-delta--up { color: var(--chart-positive); }
+.m-delta--down { color: var(--chart-negative); }
+
+/* Ф10: окно «Настройки порогов» */
+.settings-panel {
+  max-width: 460px;
+}
+
+.settings-note {
+  font-size: 0.78rem;
+  color: var(--text-tertiary, #5b6e8c);
+  margin: 4px 0 14px;
+}
+
+.settings-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-row-label {
+  font-size: 0.82rem;
+  color: var(--text-secondary, #334155);
+}
+
+.settings-row input[type='number'] {
+  width: 120px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-strong, rgba(15, 43, 61, 0.16));
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.settings-row input[type='number']:focus-visible {
+  outline: none;
+  border-color: var(--color-accent, #2c7da0);
+  box-shadow: var(--focus-ring);
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+.settings-actions .settings-save-btn {
+  background: var(--color-accent, #2c7da0);
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 24px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.settings-reset-btn {
+  background: none;
+  border: none;
+  color: var(--color-danger, #c0392b);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 10px;
 }
 </style>

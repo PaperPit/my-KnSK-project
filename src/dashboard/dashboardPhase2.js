@@ -30,6 +30,7 @@ import {
   focusFirst,
   restoreFocus,
   isEarlierArchiveReport,
+  chartColor,
 } from '../lib/index.js';
 
 function getBundleLoader() {
@@ -125,9 +126,9 @@ const DashboardPhase2 = (function () {
       const other = Math.max(0, fact - accounted);
 
       const slices = [
-        { name: 'Кол-во иссл. КнСК без отклонений', value: noDev, color: '#2c7da0' },
-        { name: 'КнСК+, без колоноскопии', value: positiveNoColon, color: '#e67e22' },
-        { name: 'Кол-во колоноскопий пац. с КнСК+', value: colon, color: '#1f8a4c' },
+        { name: 'Кол-во иссл. КнСК без отклонений', value: noDev, color: chartColor('primary') },
+        { name: 'КнСК+, без колоноскопии', value: positiveNoColon, color: chartColor('target') },
+        { name: 'Кол-во колоноскопий пац. с КнСК+', value: colon, color: chartColor('positive') },
       ];
       if (other > 0) {
         slices.push({ name: 'Прочие', value: other, color: '#94a3b8' });
@@ -193,10 +194,10 @@ const DashboardPhase2 = (function () {
     if (prev == null || prev === undefined) return '';
     const diff = cur - prev;
     if (diff === 0) return '<span class="m-delta">без изм.</span>';
-    const cls = diff > 0 ? 'color:#1f8a4c' : 'color:#c0392b';
+    const cls = diff > 0 ? 'm-delta--up' : 'm-delta--down';
     const sign = diff > 0 ? '+' : '';
     const text = isPercent ? `${sign}${diff.toFixed(1)} п.п.` : `${sign}${Math.round(diff).toLocaleString('ru-RU')}`;
-    return `<span class="m-delta" style="${cls}">${text} к прошл. отчёту</span>`;
+    return `<span class="m-delta ${cls}">${text} к прошл. отчёту</span>`;
   }
 
   function openMoDrawer(mo, previousMo, triggerEl) {

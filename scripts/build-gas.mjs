@@ -8,12 +8,12 @@
  *
  * ЧТО ДЕЛАЕТ:
  *   1. CSS из src/ui/           → UiTokens.html, EditorStyles.html, …
- *   2. JS из src/lib/ (esbuild) → LibBundle.html (window.KnSKLib)
- *   3. JS клиентских модулей (esbuild, format=iife):
- *      - GoogleAppsScriptAdapter → GASAdapter.html
+ *   2. JS клиентских модулей (esbuild, format=iife, minify):
  *      - dashboardPhase1/2       → DashboardPhase1/2.html (window.DashboardPhaseN)
+ *      - moProfile               → MoProfile.html
  *      - editor/viewer           → EditorPage/ViewerPage.html
- *   4. JS из src/server/        → Code.js (конкатенация, НЕ править Code.js вручную!)
+ *      Общая библиотека src/lib/ и GASAdapter вбандливаются в каждый модуль.
+ *   3. JS из src/server/        → Code.js (конкатенация, НЕ править Code.js вручную!)
  *      GAS требует bare top-level function declarations — esbuild не подходит.
  *
  * Incremental: артефакт перезаписывается только при изменении хеша контента.
@@ -73,7 +73,7 @@ async function buildClient(entry, outHtml, options = {}) {
     format: 'iife',
     target: ['es2020'],
     platform: 'browser',
-    minify: false,
+    minify: true,
     write: false,
     absWorkingDir: ROOT,
     sourcemap: options.sourcemap || false,
@@ -83,20 +83,6 @@ async function buildClient(entry, outHtml, options = {}) {
   });
   const js = result.outputFiles[0].text;
   wrapScriptCode(js, outHtml);
-}
-
-/**
- * Создать временный entry-файл-обёртку, который импортирует модуль и выставляет
- * его публичный API в window (нужно для include-порядка между <script>-бандлами).
- * Возвращает путь к временному файлу.
- */
-function makeEntryWrapper(importFrom, windowAssignment, name) {
-  const tmpDir = path.join(ROOT, '.build-tmp');
-  fs.mkdirSync(tmpDir, { recursive: true });
-  const tmpFile = path.join(tmpDir, `${name}.entry.js`);
-  const code = `import * as M from '${importFrom}';\n${windowAssignment}\n`;
-  fs.writeFileSync(tmpFile, code, 'utf8');
-  return tmpFile;
 }
 
 /** Склейка серверных модулей в корневой Code.js (без esbuild — GAS-требование). */
@@ -183,16 +169,7 @@ buildVendorLibs();
 console.log('build-gas: icon sprite (Lucide)');
 buildUiIcons();
 
-console.log('build-gas: lib bundle (esbuild)');
-const libEntry = makeEntryWrapper(
-  '../src/lib/index.js',
-  'window.KnSKLib = M;',
-  'lib'
-);
-await buildClient(libEntry, 'LibBundle.html', { banner: '/* KnSK shared library */' });
-
 console.log('build-gas: client modules (esbuild)');
-await buildClient('src/core/GoogleAppsScriptAdapter.js', 'GASAdapter.html');
 await buildClient('src/dashboard/dashboardPhase1.js', 'DashboardPhase1.html');
 await buildClient('src/dashboard/dashboardPhase2.js', 'DashboardPhase2.html');
 await buildClient('src/dashboard/moProfile.js', 'MoProfile.html');
@@ -201,8 +178,5 @@ await buildClient('src/pages/viewer.js', 'ViewerPage.html');
 
 console.log('build-gas: server (concatenation)');
 buildCodeJs();
-
-// Чистка временных entry-обёрток
-fs.rmSync(path.join(ROOT, '.build-tmp'), { recursive: true, force: true });
 
 console.log('build-gas: done');
